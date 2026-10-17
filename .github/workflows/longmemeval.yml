@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        embeddings: [none, local]
+        variant: ["--embeddings none", "--embeddings local", "--embeddings none --shuffle 7", "--embeddings none --whole-session"]
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -33,12 +33,12 @@ jobs:
           test -s longmemeval_s_cleaned.json || curl -fsSL -o longmemeval_s_cleaned.json \
             "$(node -e 'import("./eval/longmemeval.js").then(m=>console.log(m.DATASET_URL))')"
           ls -la longmemeval_s_cleaned.json
-      - name: Run (${{ matrix.embeddings }})
+      - name: Run (${{ matrix.variant }})
         env:
           GITHIPPO_HOME: ${{ runner.temp }}/gh
           EMBED_IDLE_MS: "3600000"
         run: |
-          node eval/longmemeval.js --data longmemeval_s_cleaned.json --embeddings ${{ matrix.embeddings }} > lme.md
+          node eval/longmemeval.js --data longmemeval_s_cleaned.json ${{ matrix.variant }} > lme.md
           {
             echo "### LongMemEval-S for ${GITHUB_SHA::7}"
             echo

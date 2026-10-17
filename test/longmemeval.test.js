@@ -24,3 +24,15 @@ test("LongMemEval harness: recall@K, MRR, NDCG and per-type breakdown", async ()
   assert.deepEqual(Object.keys(r.byType).sort(), ["multi-session", "single-session-user"]);
   assert.match(formatLongMemEval(r), /\| \*\*all\*\* \| 3 \| \*\*100%\*\*/);
 });
+
+test("LongMemEval harness: shuffling sessions doesn't change the result on the sample", async () => {
+  const filler = ["I went hiking last weekend in the mountains", "Can you recommend a pasta recipe", "My laptop battery drains fast", "What is a good sci-fi novel"];
+  const data = [entry("Which city did I say my sister moved to?", "single-session-user", [...filler, "My sister just moved to Lisbon for work"], ["sess_4"])];
+  const a = await runLongMemEval(data, { embeddings: "none" });
+  const b = await runLongMemEval(data, { embeddings: "none", shuffle: 7 });
+  const c = await runLongMemEval(data, { embeddings: "none", wholeSession: true });
+  assert.equal(a.all.r5, b.all.r5);
+  assert.equal(a.all.mrr, b.all.mrr);
+  assert.equal(c.all.n, 1);
+  assert.match(b.embeddings, /shuffled/);
+});

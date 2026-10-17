@@ -52,6 +52,23 @@ export async function runEval({ embeddings = "none" } = {}) {
     return { ok, wrong, missed };
   };
   const test = await route(ROUTING);
+  // Inbox triage: for held-out facts parked in the inbox, is the suggested home right? And do genuinely
+  // unrelated facts (expected inbox) stay without a suggestion?
+  const tri = { parked: 0, right: 0, wrongSuggest: 0, unrelated: 0, unrelatedSuggested: 0 };
+  for (const [fact, want] of ROUTING) {
+    const b = await vault(embedder);
+    const r = await b.remember(fact);
+    if (r.path !== "inbox.md") continue;
+    const home = await b.suggestHome(fact);
+    if (want === "inbox.md") {
+      tri.unrelated++;
+      if (home) tri.unrelatedSuggested++;
+    } else {
+      tri.parked++;
+      if (home?.path === want) tri.right++;
+      else if (home) tri.wrongSuggest++;
+    }
+  }
   const dev = await route(DEV_ROUTING);
   const routed = test.ok;
   const routeMisses = test.missed;
@@ -73,6 +90,7 @@ export async function runEval({ embeddings = "none" } = {}) {
     byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, summary(v)])),
     routing: { n: ROUTING.length, accuracy: pct(routed, ROUTING.length), wrongNote: test.wrong, dev: { n: DEV_ROUTING.length, accuracy: pct(dev.ok, DEV_ROUTING.length), wrongNote: dev.wrong } },
     dedupe: { n: DEDUPE.length, accuracy: pct(classified, DEDUPE.length) },
+    triage: tri,
     ms: Date.now() - t0,
     rssMB: Math.round(process.memoryUsage().rss / 1e6),
     misses,
@@ -93,5 +111,6 @@ export function formatEval(r) {
     "",
     `filing, held-out test: ${r.routing.accuracy}% of ${r.routing.n} (${r.routing.wrongNote} in a wrong note, rest in the inbox) · dev set: ${r.routing.dev.accuracy}% of ${r.routing.dev.n} (${r.routing.dev.wrongNote} wrong note)`,
     `duplicate / update / new classification: ${r.dedupe.accuracy}% of ${r.dedupe.n}`,
+    `inbox triage (held-out): right home suggested for ${r.triage.right} of ${r.triage.parked} parked facts (${r.triage.wrongSuggest} wrong suggestions) · unrelated facts given a suggestion: ${r.triage.unrelatedSuggested} of ${r.triage.unrelated}`,
   ].join("\n");
 }

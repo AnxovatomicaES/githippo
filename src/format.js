@@ -46,6 +46,7 @@ export const fmt = {
       if (v.length) out.push(`${k}: ${v.join(", ")}`);
     }
     if (r.broken_links.length) out.push(`broken links: ${r.broken_links.map((b) => `${b.from}→${b.target}`).join(", ")}`);
+    if (r.inbox?.length) out.push(`inbox → suggested homes (maintain tidy=true to move):\n${r.inbox.slice(0, 15).map((x) => `  ${q(x.fact)} → ${x.path} (${x.why})`).join("\n")}`);
     if (r.decay && (r.decay.inbox || r.decay.sessions) && !r.actions.some((a) => /archived|removed/.test(a))) {
       out.push(`decay candidates (${r.decay.active_days}+ active days old): ${r.decay.inbox} inbox facts, ${r.decay.sessions} checkpoints → maintain decay=true`);
     }

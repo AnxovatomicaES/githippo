@@ -172,7 +172,7 @@ export class MemoryIndex {
       await Promise.all(
         changed.map(async (f) => {
           const file = await read(f);
-          if (file) this.files.set(f.path, { ...parseFile(f.path, file.content), version: file.version, content: file.content });
+          if (file) this.files.set(f.path, { ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content });
         }),
       );
       await this.embedMissing();

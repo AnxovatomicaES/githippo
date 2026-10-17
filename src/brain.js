@@ -252,7 +252,7 @@ export class Brain {
    * the fact (one found in at most 2 notes) and clearly beats the runner-up. Common words ("manual",
    * "prefers") can't route a fact anywhere; with no distinctive match the fact goes to the inbox.
    */
-  distinctiveMatch(fact) {
+  distinctiveMatch(fact, { maxFiles = 2, margin = 1.5 } = {}) {
     const lex = this.index.lexical;
     if (!lex) return null;
     const fileOf = new Map();
@@ -268,14 +268,14 @@ export class Brain {
     for (const t of new Set(tokenize(fact))) {
       if (t.length < 3 || /^\d+$/.test(t) || /\d/.test(t) && t.length < 4 || EVERYDAY.has(t)) continue;
       const files = fileOf.get(t);
-      if (!files || files.size > 2 || files.size > Math.max(1, nFiles * 0.15)) continue;
+      if (!files || files.size > maxFiles || files.size > Math.max(1, nFiles * 0.15)) continue;
       const idf = Math.log(1 + nFiles / files.size);
       for (const f of files) score.set(f, (score.get(f) || 0) + idf);
     }
     const ranked = [...score].sort((a, b) => b[1] - a[1]);
     if (!ranked.length) return null;
     const [top, second] = ranked;
-    return !second || top[1] >= 1.5 * second[1] ? top[0] : null;
+    return !second || top[1] >= margin * second[1] ? top[0] : null;
   }
 
   /** Where a fact may actually be written: its natural home, or the user's own inbox if that's off-limits. */
@@ -317,6 +317,7 @@ export class Brain {
     // Duplicate / supersession check against target + nearest files.
     const candidates = new Set([target.path]);
     for (const h of await this.search(clean, { k: 3, expand: false })) candidates.add(h.path);
+    if (opts.movingFrom) candidates.delete(opts.movingFrom); // a fact being moved isn't a duplicate of itself
     const lines = [];
     for (const p of candidates) {
       const f = this.file(p);
@@ -486,7 +487,21 @@ export class Brain {
     return stale;
   }
 
-  async maintain({ reindex = false, rewrite = null, decay = false, active_days = this.decayActiveDays } = {}) {
+  /**
+   * A home for a fact sitting in the inbox. Looser than automatic filing (which refuses to guess on weak
+   * evidence): any keyword match, or a semantic match above the model's floor, in a note the user can write.
+   * Only applied by `maintain tidy=true`, i.e. when someone asks.
+   */
+  async suggestHome(fact) {
+    const lexical = this.distinctiveMatch(fact, { maxFiles: 3, margin: 1 });
+    if (lexical && this.acl.canWrite(lexical)) return { path: lexical, why: "shared key words" };
+    if (!this.index.embedder) return null;
+    const hits = await this.search(fact, { k: 5, expand: false });
+    const h = hits.find((x) => !SYSTEM_FILES.has(x.path) && !/^users\/[^/]+\/inbox\.md$/.test(x.path) && this.acl.canWrite(x.path) && (x.signals.cosine ?? 0) >= this.t.floor + 0.1);
+    return h ? { path: h.path, why: `similar (${h.signals.cosine.toFixed(2)})` } : null;
+  }
+
+  async maintain({ reindex = false, rewrite = null, decay = false, tidy = false, active_days = this.decayActiveDays } = {}) {
     if (!this.acl.isAdmin) throw new MemoryError("maintain works on the whole vault, so it needs full write access.");
     await this.index.sync({ maxAgeMs: 0 });
     const files = [...this.index.files.values()].filter((f) => !f.path.startsWith("sessions/"));
@@ -516,6 +531,28 @@ export class Brain {
       broken_links: health.broken_links,
       actions: [],
     };
+
+    // Inbox triage: suggest homes; move them only when asked (tidy=true).
+    const inboxFile = this.file("inbox.md");
+    report.inbox = [];
+    for (const raw of inboxFile ? factLines(inboxFile.body) : []) {
+      const fact = plain(raw);
+      const home = await this.suggestHome(fact);
+      if (home) report.inbox.push({ fact, ...home });
+    }
+    if (tidy && report.inbox.length) {
+      let moved = 0;
+      for (const { fact, path } of report.inbox) {
+        const r = await this.remember(fact, { path, movingFrom: "inbox.md" });
+        // Delete the inbox copy only once the fact verifiably lives in the destination note.
+        const landed = (r.status === "saved" && r.path === path) || (r.status === "duplicate" && r.path === path);
+        if (!landed) continue;
+        await this.forget(fact, { path: "inbox.md" }).catch(() => {});
+        moved++;
+      }
+      report.actions.push(`moved ${moved} inbox facts to their suggested notes`);
+      report.inbox = [];
+    }
 
     const stale = await this.decayCandidates(active_days).catch(() => ({ inbox: [], sessions: [] }));
     report.decay = { inbox: stale.inbox.length, sessions: stale.sessions.length, active_days };

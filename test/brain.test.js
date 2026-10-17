@@ -155,3 +155,15 @@ test("maintain reports possible contradictions separately from duplicates", asyn
   assert.equal(r.conflicts.length, 1);
   assert.match(fmt.maintain(r), /possible contradictions[\s\S]*Monday at 8am[\s\S]*Tuesday at 9am/);
 });
+
+test("maintain suggests homes for inbox facts and moves them only with tidy=true", async () => {
+  const { brain, gh } = setup();
+  gh.seed("memory/inbox.md", "---\nname: inbox\n---\n\n- Johnny wake word should also work in Catalan\n- Likes jazz while coding\n");
+  const report = await brain.maintain({});
+  assert.deepEqual(report.inbox.map((x) => [x.fact, x.path]), [["Johnny wake word should also work in Catalan", "projects/johnny.md"]]);
+  assert.match(gh.text("memory/inbox.md"), /Catalan/, "nothing moved without tidy");
+  await brain.maintain({ tidy: true });
+  assert.doesNotMatch(gh.text("memory/inbox.md"), /Catalan/);
+  assert.match(gh.text("memory/inbox.md"), /jazz/, "unrelated fact stays");
+  assert.match(gh.text("memory/projects/johnny.md"), /Catalan/);
+});

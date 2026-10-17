@@ -133,8 +133,8 @@ export function buildServer(brain) {
 
   reg(
     "maintain",
-    "Health report. reindex rebuilds index.md; decay archives stale inbox; rewrite=path merges dupes (LLM).",
-    { reindex: z.boolean().optional(), decay: z.boolean().optional(), rewrite: z.string().optional() },
+    "Health report, homes for inbox facts. tidy moves them; reindex; decay archives stale; rewrite=path merges dupes (LLM).",
+    { reindex: z.boolean().optional(), decay: z.boolean().optional(), tidy: z.boolean().optional(), rewrite: z.string().optional() },
     RW,
     fmt.maintain,
     (a) => brain.maintain(a),
