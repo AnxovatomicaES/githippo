@@ -1,0 +1,53 @@
+name: longmemeval
+# Public benchmark: LongMemEval-S retrieval (500 questions), same protocol as agentmemory's published
+# numbers. Weekly and on demand; results posted to issue #3.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"
+permissions:
+  contents: read
+  issues: write
+jobs:
+  run:
+    strategy:
+      fail-fast: false
+      matrix:
+        embeddings: [none, local]
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Cache the dataset
+        uses: actions/cache@v4
+        with:
+          path: longmemeval_s_cleaned.json
+          key: longmemeval-s-cleaned-98d7416c
+      - name: Download LongMemEval-S (pinned revision)
+        run: |
+          test -s longmemeval_s_cleaned.json || curl -fsSL -o longmemeval_s_cleaned.json \
+            "$(node -e 'import("./eval/longmemeval.js").then(m=>console.log(m.DATASET_URL))')"
+          ls -la longmemeval_s_cleaned.json
+      - name: Run (${{ matrix.embeddings }})
+        env:
+          GITHIPPO_HOME: ${{ runner.temp }}/gh
+          EMBED_IDLE_MS: "3600000"
+        run: |
+          node eval/longmemeval.js --data longmemeval_s_cleaned.json --embeddings ${{ matrix.embeddings }} > lme.md
+          {
+            echo "### LongMemEval-S for ${GITHUB_SHA::7}"
+            echo
+            cat lme.md
+            echo
+            echo "Same protocol as [agentmemory's published results](https://github.com/rohitg00/agentmemory/blob/main/benchmark/LONGMEMEVAL.md): recall_any@K over sessions, one fresh index per question, retrieval only (not the official QA accuracy, which needs an LLM reader and judge)."
+          } > comment.md
+          cat comment.md
+      - name: Post to issue #3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 3 --body-file comment.md
