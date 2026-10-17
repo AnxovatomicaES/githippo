@@ -26,11 +26,16 @@ export function salient(text) {
   return out;
 }
 
-/** True if either side has a salient token the other text doesn't contain at all. */
-export function salientDiffers(a, b) {
+/**
+ * True if either side has a salient token the other text doesn't contain at all.
+ * `ignore`: names of the entity the fact is filed under ("Sample rate for Johnny is 16 kHz" in Johnny's
+ * own file says the same as "Sample rate is 16 kHz").
+ */
+export function salientDiffers(a, b, ignore = new Set()) {
   const ta = new Set(plain(a).toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []);
   const tb = new Set(plain(b).toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []);
-  return [...salient(a)].some((t) => !tb.has(t)) || [...salient(b)].some((t) => !ta.has(t));
+  const keep = (t) => !ignore.has(t);
+  return [...salient(a)].filter(keep).some((t) => !tb.has(t)) || [...salient(b)].filter(keep).some((t) => !ta.has(t));
 }
 
 export const approxTokens = (s) => Math.ceil(s.length / 4);
@@ -112,7 +117,9 @@ export class Brain {
   }
 
   get t() {
-    return this.index.embedder?.profile || { dup: 0.93, related: 0.75, conflict: 0.85, strong: 0.45, floor: 0.3 };
+    // No embedder → similarity is token overlap (Jaccard), whose scale differs from cosine: a one-word
+    // change in a five-word fact scores ~0.6. Thresholds from that arithmetic, not tuned on the eval set.
+    return this.index.embedder?.profile || { dup: 0.8, related: 0.5, conflict: 0.6, strong: 0.45, floor: 0.3 };
   }
 
   file(path) {
@@ -265,7 +272,9 @@ export class Brain {
     const sims = await this.similarity(clean, lines.map((l) => l.line));
     const scored = lines.map((l, i) => ({ ...l, sim: sims[i] })).sort((a, b) => b.sim - a.sim);
     // A duplicate must match in meaning AND in details: "end of Q1" vs "end of Q2" embed almost identically.
-    const dup = scored.find((s) => s.sim >= this.t.dup && !salientDiffers(clean, s.line));
+    const node = this.graph.nodes.get(this.graph.idOf(target.path));
+    const own = new Set((node?.names || []).flatMap((n) => n.toLowerCase().split(/[\s_-]+/)));
+    const dup = scored.find((s) => s.sim >= this.t.dup && !salientDiffers(clean, s.line, s.path === target.path ? own : undefined));
     if (dup) return { status: "duplicate", path: dup.path, existing: plain(dup.line) };
     const related = scored.filter((s) => s.sim >= this.t.related).slice(0, 2);
 

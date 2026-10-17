@@ -351,6 +351,14 @@ async function users() {
   }
 }
 
+/** Retrieval-quality benchmark on a labelled vault: githippo eval [--embeddings none|local|voyage] [--json] */
+async function evalCmd() {
+  const { runEval, formatEval } = await import("../eval/run.js");
+  const flag = (n) => (rest.includes(`--${n}`) ? rest[rest.indexOf(`--${n}`) + 1] : undefined);
+  const r = await runEval({ embeddings: flag("embeddings") || loadConfig().EMBEDDINGS || "local" });
+  console.log(rest.includes("--json") ? JSON.stringify(r, null, 2) : formatEval(r));
+}
+
 /** Downloads the embedding runtime + model once, so semantic recall is instant afterwards. */
 async function warm() {
   const { importTransformers, ensureRuntime, createEmbedder } = await import("./embed.js");
@@ -450,12 +458,13 @@ async function bench() {
   await client.close();
 }
 
-const commands = { setup, sync, warm, users, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
+const commands = { setup, sync, warm, users, eval: evalCmd, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
 if (cmd === "--version" || cmd === "-v") console.log(VERSION);
 else if (!commands[cmd]) {
   console.log(`githippo ${VERSION}\nusage: githippo setup [--github [repo-name]]   one command, everything
        githippo sync [--github [repo-name]]    back up / sync the vault
        githippo users add <id> --acl "shared/:write,people/:read" | list | remove <id> | reset <id>
+       githippo eval [--embeddings none|local|voyage]   retrieval-quality benchmark
        githippo demo | doctor | warm | bench
        githippo serve | http | statusline | hook <event> | install | init`);
   process.exit(1);

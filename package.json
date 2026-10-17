@@ -45,7 +45,9 @@
     "hooks",
     ".mcp.json",
     "INSTALL_FOR_AGENTS.md",
-    "install.sh"
+    "install.sh",
+    "eval",
+    "docs"
   ],
   "repository": {
     "type": "git",
