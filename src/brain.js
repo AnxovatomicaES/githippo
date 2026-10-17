@@ -227,7 +227,11 @@ export class Brain {
 
   // ---------- remember ----------
   async chooseTarget(fact, { about, path, kind }) {
-    if (path) return { path: normalizePath(path), reason: "explicit" };
+    if (path) {
+      // a new note created by explicit path still gets a proper title and type when we know them
+      const create = about ? { title: oneLine(about), kind: kind || (/^people\//.test(path) ? "person" : "topic") } : undefined;
+      return { path: normalizePath(path), reason: "explicit", ...(create ? { create } : {}) };
+    }
     if (about) {
       const id = this.graph.resolve(about);
       if (id) return { path: this.graph.nodes.get(id).path, reason: `entity:${id}` };

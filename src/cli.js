@@ -351,6 +351,17 @@ async function users() {
   }
 }
 
+/** Import from the MCP reference memory server: githippo import <memory.jsonl> */
+async function importCmd() {
+  const file = rest[0];
+  if (!file) return console.error("usage: githippo import <path/to/memory.jsonl>"), process.exit(1);
+  const { importReferenceMemory } = await import("./importer.js");
+  const brain = brainOrExit("import");
+  if (brain.store.ensure) await brain.store.ensure();
+  const r = await importReferenceMemory(brain, await readFile(file, "utf8"));
+  console.log(`✓ ${r.entities} entities → ${r.facts} facts, ${r.relations} relations` + (r.duplicates ? ` · ${r.duplicates} already known` : "") + (r.blocked ? ` · ${r.blocked} blocked by the secrets guard` : "") + (r.skippedLines ? ` · ${r.skippedLines} unreadable lines skipped` : ""));
+}
+
 /** Retrieval-quality benchmark on a labelled vault: githippo eval [--embeddings none|local|voyage] [--json] */
 async function evalCmd() {
   const { runEval, formatEval } = await import("../eval/run.js");
@@ -458,13 +469,14 @@ async function bench() {
   await client.close();
 }
 
-const commands = { setup, sync, warm, users, eval: evalCmd, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
+const commands = { setup, sync, warm, users, eval: evalCmd, import: importCmd, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
 if (cmd === "--version" || cmd === "-v") console.log(VERSION);
 else if (!commands[cmd]) {
   console.log(`githippo ${VERSION}\nusage: githippo setup [--github [repo-name]]   one command, everything
        githippo sync [--github [repo-name]]    back up / sync the vault
        githippo users add <id> --acl "shared/:write,people/:read" | list | remove <id> | reset <id>
        githippo eval [--embeddings none|local|voyage]   retrieval-quality benchmark
+       githippo import <memory.jsonl>                     from the MCP reference memory server
        githippo demo | doctor | warm | bench
        githippo serve | http | statusline | hook <event> | install | init`);
   process.exit(1);
