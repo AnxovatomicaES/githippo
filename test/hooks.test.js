@@ -39,6 +39,31 @@ test("transcript → deterministic checkpoint", () => {
   assert.doesNotMatch(text, /\/cost/);
 });
 
+test("transcript: current TaskCreate/TaskUpdate format (real Claude Code shape)", () => {
+  const L = (o) => JSON.stringify(o);
+  const t = parseTranscript([
+    L({ type: "user", cwd: "/x/app", message: { role: "user", content: "Ship the export feature" } }),
+    L({ type: "assistant", message: { role: "assistant", content: [
+      { type: "tool_use", id: "tu1", name: "TaskCreate", input: { subject: "Write exporter", description: "d", activeForm: "Writing exporter" } },
+      { type: "tool_use", id: "tu2", name: "TaskCreate", input: { subject: "Add tests", description: "d", activeForm: "Adding tests" } },
+      { type: "tool_use", id: "tu3", name: "TaskCreate", input: { subject: "Update docs", description: "d", activeForm: "Updating docs" } },
+    ] } }),
+    L({ type: "user", message: { role: "user", content: [
+      { type: "tool_result", tool_use_id: "tu1", content: "Task #4 created successfully: Write exporter" },
+      { type: "tool_result", tool_use_id: "tu2", content: "Task #5 created successfully: Add tests" },
+      { type: "tool_result", tool_use_id: "tu3", content: "Task #6 created successfully: Update docs" },
+    ] } }),
+    L({ type: "assistant", message: { role: "assistant", content: [
+      { type: "tool_use", id: "tu4", name: "TaskUpdate", input: { taskId: "4", status: "completed" } },
+      { type: "tool_use", id: "tu5", name: "TaskUpdate", input: { taskId: "5", status: "in_progress" } },
+      { type: "tool_use", id: "tu6", name: "TaskUpdate", input: { taskId: "6", status: "deleted" } },
+    ] } }),
+  ].join("\n"));
+  const { text } = renderCheckpoint(t, { sessionId: "s" });
+  assert.match(text, /## Tasks\n- \[x\] Write exporter\n- \[~\] Add tests\n/);
+  assert.doesNotMatch(text, /Update docs/);
+});
+
 test("PreCompact saves locally + to repo; SessionStart(compact) injects the state itself", async () => {
   const tp = join(home, "t.jsonl");
   await writeFile(tp, transcript);

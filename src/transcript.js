@@ -40,7 +40,10 @@ export function parseTranscript(jsonl) {
   const prompts = [];
   const files = new Map();
   const commands = [];
-  let todos = null;
+  let todos = null; // legacy TodoWrite list
+  const tasks = new Map(); // current TaskCreate/TaskUpdate list: id -> { subject, status }
+  const creates = new Map(); // tool_use id -> provisional task id
+  let seq = 0;
   let lastAssistant = "";
   let priorSummary = "";
   let cwd = "";
@@ -50,6 +53,19 @@ export function parseTranscript(jsonl) {
     if (e.type === "summary" && e.summary) priorSummary = e.summary;
     const p = promptText(e);
     if (p) prompts.push(p);
+    if (e.type === "user") {
+      // TaskCreate results say "Task #N created…": use the real id if it differs from our provisional one.
+      for (const b of blocks(e.message)) {
+        if (b.type !== "tool_result" || !creates.has(b.tool_use_id)) continue;
+        const text = typeof b.content === "string" ? b.content : JSON.stringify(b.content || "");
+        const real = text.match(/#(\d+)/)?.[1];
+        const prov = creates.get(b.tool_use_id);
+        if (real && real !== prov && tasks.has(prov)) {
+          tasks.set(real, tasks.get(prov));
+          tasks.delete(prov);
+        }
+      }
+    }
     if (e.type !== "assistant") continue;
     for (const b of blocks(e.message)) {
       if (b.type === "text" && b.text.trim()) lastAssistant = b.text.trim();
@@ -60,9 +76,20 @@ export function parseTranscript(jsonl) {
         files.set(f, (files.get(f) || 0) + 1);
       }
       if (b.name === "TodoWrite" && Array.isArray(input.todos)) todos = input.todos;
+      if (b.name === "TaskCreate" && (input.subject || input.description)) {
+        const id = String(++seq);
+        tasks.set(id, { content: input.subject || input.description, status: "pending" });
+        creates.set(b.id, id);
+      }
+      if (b.name === "TaskUpdate" && input.taskId != null) {
+        const t = tasks.get(String(input.taskId));
+        if (t && input.status === "deleted") tasks.delete(String(input.taskId));
+        else if (t && input.status) t.status = input.status;
+      }
       if (b.name === "Bash" && input.command) commands.push(oneLine(input.command));
     }
   }
+  if (tasks.size) todos = [...tasks.values()];
   return { prompts, files, commands, todos, lastAssistant, priorSummary, cwd };
 }
 
