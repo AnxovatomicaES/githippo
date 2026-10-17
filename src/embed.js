@@ -16,7 +16,7 @@ export const PROFILES = {
 };
 export const DEFAULT_LOCAL_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
 
-import { spawn } from "node:child_process";
+import { fork, spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -66,53 +66,73 @@ const normalize = (v) => {
   return Float32Array.from(v, (x) => x / n);
 };
 
+/**
+ * Local embeddings in a child process. The model loads on the first query and the child exits after
+ * EMBED_IDLE_MS (default 10 min) without use, so an idle githippo uses ~50 MB instead of ~500 MB. The next
+ * query restarts it (model cached on disk). If the child dies, the next call starts a new one.
+ */
 export function localEmbedder(model = DEFAULT_LOCAL_MODEL) {
-  // B17: cache the loading promise, so concurrent first calls share one model load. A failed load can be retried.
-  // Idle unload: after EMBED_IDLE_MS (default 10 min) without use the model is released, so a memory
-  // server that sits idle all day doesn't hold ~500 MB; the next query reloads it from disk in ~1 s.
-  let loading;
-  let idleTimer;
+  const prefix = (kind) => (/e5/i.test(model) ? (kind === "query" ? "query: " : "passage: ") : "");
   const idleMs = Number(process.env.EMBED_IDLE_MS || 600_000);
-  const touch = () => {
+  let child = null;
+  let seq = 0;
+  let idleTimer;
+  const pending = new Map();
+  const failAll = (msg) => {
+    for (const { reject } of pending.values()) reject(new Error(msg));
+    pending.clear();
+  };
+  const start = () => {
+    child = fork(new URL("./embed-worker.js", import.meta.url).pathname, [], {
+      env: { ...process.env, GITHIPPO_EMBED_MODEL: model },
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
+    });
+    const me = child;
+    // An open IPC channel keeps the parent alive; only hold it while a request is in flight, so CLI
+    // commands (eval, warm, demo) exit as soon as they're done instead of waiting for the idle timeout.
+    me.unref();
+    me.channel?.unref();
+    me.on("message", (m) => {
+      const p = pending.get(m.id);
+      if (!p) return;
+      pending.delete(m.id);
+      if (!pending.size) me.channel?.unref();
+      m.error ? p.reject(new Error(m.error)) : p.resolve(m);
+    });
+    me.on("exit", () => {
+      if (child === me) child = null;
+      failAll("embedding worker exited");
+    });
+  };
+  const call = (msg) => {
+    if (!child) start();
     clearTimeout(idleTimer);
     if (idleMs > 0) {
-      idleTimer = setTimeout(async () => {
-        const p = loading;
-        loading = undefined;
-        try {
-          await (await p)?.dispose?.();
-        } catch {}
-        globalThis.gc?.();
-      }, idleMs);
+      idleTimer = setTimeout(() => child?.kill(), idleMs);
       idleTimer.unref?.();
     }
+    const id = ++seq;
+    child.channel?.ref();
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      child.send({ id, ...msg });
+    });
   };
-  const load = () => {
-    touch();
-    return (loading ??= importTransformers()
-      .then(({ pipeline }) => pipeline("feature-extraction", model, { dtype: "q8" }))
-      .catch((e) => {
-        loading = undefined;
-        throw e;
-      }));
-  };
-  // e5 models expect role prefixes.
-  const prefix = (kind) => (/e5/i.test(model) ? (kind === "query" ? "query: " : "passage: ") : "");
   return {
     id: `local:${model}`,
     get loaded() {
-      return !!loading;
+      return !!child;
     },
     profile: PROFILES[model] || PROFILES.default,
     async embed(texts, kind = "document") {
-      const ex = await load();
-      const out = [];
-      for (let i = 0; i < texts.length; i += 16) {
-        const batch = texts.slice(i, i + 16).map((t) => prefix(kind) + t);
-        const res = await ex(batch, { pooling: "mean", normalize: true });
-        out.push(...res.tolist().map(normalize));
-      }
-      return out;
+      const r = await call({ texts: texts.map((t) => prefix(kind) + t), kind });
+      return r.vecs.map(normalize);
+    },
+    async workerRssMB() {
+      return child ? (await call({ type: "stats" })).rssMB : 0;
+    },
+    stop() {
+      child?.kill();
     },
   };
 }
