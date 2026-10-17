@@ -45,7 +45,8 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
   const flush = () => {
     const text = buf.join("\n").trim();
     if (text) {
-      const embedText = `${title}${heading ? ` › ${heading}` : ""}\n${text}`;
+      // The description is the file's best semantic summary ("Johnny" means nothing to a model; "Voice assistant for the Mac" does).
+      const embedText = `${title}${meta.description && meta.description !== title ? ` — ${meta.description}` : ""}${heading ? ` › ${heading}` : ""}\n${text}`;
       chunks.push({
         id: `${path}#${chunks.length}`,
         path,
