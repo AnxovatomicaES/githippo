@@ -11,10 +11,26 @@ const STOP = new Set(
   "the a an and or of to in on for with is are was were be by at as it this that from de la el los las y o en un una por con para que del al se es su lo".split(" "),
 );
 
-export const tokenize = (s) =>
-  (s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").match(/[\p{L}\p{N}]+/gu) || []).filter(
-    (t) => t.length > 1 && !STOP.has(t),
-  );
+/**
+ * Code-aware tokenizer (idea from claude-memory-hub): "handleRefund", "batch_insert" and "src/api/wake.ts"
+ * also index as their parts ("handle", "refund", "batch", "insert", "api", "wake", "ts"), keeping the whole too.
+ */
+export const tokenize = (s) => {
+  const out = [];
+  const raw = s.normalize("NFD").replace(/\p{M}/gu, "").match(/[\p{L}\p{N}_./-]+/gu) || [];
+  for (const w of raw) {
+    const whole = w.toLowerCase().replace(/^[./-]+|[./-]+$/g, "");
+    const parts = w
+      .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2")
+      .replace(/(\p{Lu})(\p{Lu}\p{Ll})/gu, "$1 $2")
+      .split(/[\s_./-]+/)
+      .map((x) => x.toLowerCase())
+      .filter(Boolean);
+    if (parts.length > 1 && whole) out.push(whole);
+    out.push(...parts);
+  }
+  return out.filter((t) => t.length > 1 && !STOP.has(t));
+};
 
 export class Bm25 {
   constructor(chunks) {

@@ -19,8 +19,11 @@
 Long-term memory for Claude and any MCP client, stored as plain Markdown in **your own private GitHub repo**. Hybrid semantic search, a knowledge graph, auto-memory, compaction survival, and about 46% less per-turn overhead than a naive memory server. Every memory is a git commit you can read, diff and revert.
 
 ```bash
-npm i -g githippo && githippo install && claude mcp add githippo --scope user -- githippo serve
+npx githippo demo          # try it in 30 seconds, no repo or token
+npm i -g githippo && githippo install
 ```
+
+Or as a Claude Code plugin: `/plugin marketplace add AnxovatomicaES/githippo` then `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md).
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -45,7 +48,9 @@ Because each good idea out there lives in a different tool. githippo takes the b
 | Consolidation / dedupe | mcp-memory-service, Mem0 | Embedding-based duplicate detection on every write, plus `maintain` health reports; optional LLM merge that **refuses lossy rewrites** (dropped links or frontmatter) |
 | Remote MCP for claude.ai | Supermemory, Mem0 | Self-hosted Streamable HTTP; your data never leaves your repo and your server |
 
-And things nobody else does, as far as we know:
+Version 3.1 adds the best idea from each of nine other memory tools, read in their source and credited in [docs/prior-art.md](docs/prior-art.md): `<private>` tags, compaction steering and summary capture, session diffing, activity-aware decay, a code-aware tokenizer, errors in checkpoints, an honest status line, plugin packaging and `alwaysLoad` registration.
+
+And things we haven't seen elsewhere, as far as we know:
 
 - **Compliance guard.** Blocks API keys, tokens, private keys, IBANs (mod-97 checked), card numbers (Luhn checked), Spanish DNI/NIE (checksum) and US SSNs *before* they become permanent git history.
 - **Compaction-proof by design**, three ways (see below).
@@ -73,7 +78,9 @@ flowchart LR
 2. **Hook-driven checkpoint** (Claude Code). A common complaint is that a post-compaction hook which only *reminds* Claude to re-read a state file is hit or miss. githippo injects the content directly.
 3. **`checkpoint` tool** (any client, including claude.ai). Claude saves task, state and next step at milestones. After context loss, `checkpoint` with no args restores it.
 
-Bonus: a fresh session in the same project within 24h gets a brief "last time you were…" note, and the **UserPromptSubmit** hook proactively surfaces up to three relevant memories when the match is confident. It's capped at 300 tokens and never repeats within a session.
+Bonus: a fresh session in the same project and branch within 24h gets a brief "last time you were…" note, including what changed in git since (commits, commits by others, branch switches, deleted files). The **UserPromptSubmit** hook proactively surfaces up to three relevant memories when the match is confident. It's capped at 300 tokens, skips trivial prompts and never repeats within a session. Before compaction, githippo also tells the compactor what must survive, and after compaction it keeps the compactor's summary with the checkpoint.
+
+Wrap anything in `<private>…</private>` and it never reaches memory. Turn hooks off without editing files: `GITHIPPO_HOOK_PROFILE=minimal` or `GITHIPPO_DISABLED_HOOKS=prompt,steer`.
 
 ## Token budget (measured, `githippo bench`)
 
@@ -96,7 +103,7 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 | `graph` | Typed relations around an entity |
 | `history` | Commit timeline, or the file as of a date |
 | `checkpoint` | Save or resume working state |
-| `maintain` | Duplicates, orphans, broken links, oversized files; rebuild index; LLM merge |
+| `maintain` | Duplicates, possible contradictions, orphans, broken links, stale inbox; rebuild index; activity-aware decay; LLM merge |
 | `files` | Raw list/read/write/edit/delete with version checks |
 
 ## Setup
@@ -197,7 +204,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 ## Develop
 
 ```bash
-npm ci && npm test      # 24 tests: unit, hooks, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 42 tests: unit, hooks, adopted features, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 

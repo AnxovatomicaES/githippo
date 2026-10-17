@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// githippo CLI: serve | http | hook <event> | install | init | doctor | bench
+// githippo CLI: serve | http | hook <event> | statusline | install | init | doctor | demo | bench
 import { mkdir, readFile, writeFile, copyFile, chmod } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildServer, createBrain, instructions, VERSION } from "./server.js";
 import { loadConfig, CONFIG_FILE, HOME_DIR } from "./config.js";
-import { preCompact, sessionStart, promptRecall, readStdin, cleanupOld } from "./hooks.js";
+import { preCompact, postCompact, sessionStart, promptRecall, readStdin, cleanupOld, statusLine } from "./hooks.js";
 import { createHttpApp } from "./http.js";
 
 const [cmd = "serve", ...rest] = process.argv.slice(2);
@@ -37,14 +38,16 @@ async function hook(event) {
     const input = await readStdin();
     const cfg = loadConfig();
     let out = "";
+    const repoBrain = () => (cfg.GITHUB_TOKEN && cfg.MEMORY_REPO ? createBrain(process.env, { source: event }) : null);
     if (event === "precompact") {
-      const brain = cfg.GITHUB_TOKEN && cfg.MEMORY_REPO ? createBrain(process.env, { source: "precompact" }) : null;
-      out = await preCompact(input, { brain });
+      out = await preCompact(input, { brain: repoBrain() });
       await cleanupOld();
+    } else if (event === "postcompact") {
+      out = await postCompact(input, { brain: repoBrain() });
     } else if (event === "session-start") {
       out = await sessionStart(input);
     } else if (event === "prompt") {
-      if (cfg.PROMPT_RECALL !== "0") out = await promptRecall(input, { cacheDir: cfg.CACHE_DIR });
+      out = await promptRecall(input, { cacheDir: cfg.CACHE_DIR });
     }
     if (out) process.stdout.write(out);
   } catch (e) {
@@ -53,13 +56,47 @@ async function hook(event) {
   process.exit(0);
 }
 
+async function statusline() {
+  try {
+    const out = await statusLine(await readStdin(), { cacheDir: loadConfig().CACHE_DIR });
+    if (out) process.stdout.write(out);
+  } catch {}
+  process.exit(0);
+}
+
 const HOOKS = {
   PreCompact: "githippo hook precompact",
+  PostCompact: "githippo hook postcompact",
   SessionStart: "githippo hook session-start",
   UserPromptSubmit: "githippo hook prompt",
 };
 
+/**
+ * Register the MCP server with alwaysLoad (lesson from token-savior: without it, Claude Code may hide the
+ * tools behind ToolSearch and the model never calls them). Falls back cleanly on CLIs that reject the key.
+ */
+function registerMcp() {
+  const run = (json) => execFileSync("claude", ["mcp", "add-json", "githippo", JSON.stringify(json), "--scope", "user"], { stdio: "pipe" });
+  try {
+    execFileSync("claude", ["mcp", "get", "githippo"], { stdio: "pipe" });
+    return "already registered";
+  } catch {}
+  const base = { type: "stdio", command: "githippo", args: ["serve"] };
+  try {
+    run({ ...base, alwaysLoad: true });
+    return "registered (alwaysLoad)";
+  } catch {
+    try {
+      run(base);
+      return "registered (this Claude Code version ignores alwaysLoad)";
+    } catch (e) {
+      return `not registered (${String(e.message).split("\n")[0]}); run: claude mcp add githippo --scope user -- githippo serve`;
+    }
+  }
+}
+
 async function install() {
+  const configOnly = rest.includes("--config-only");
   const cfg = loadConfig();
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = async (q, def) => (await rl.question(`${q}${def ? ` [${def}]` : ""}: `)).trim() || def;
@@ -72,6 +109,10 @@ async function install() {
   await writeFile(CONFIG_FILE, JSON.stringify(file, null, 2));
   await chmod(CONFIG_FILE, 0o600);
 
+  if (configOnly) {
+    console.log(`\n✓ config → ${CONFIG_FILE} (chmod 600). Hooks and MCP come from the Claude Code plugin.\n`);
+    return;
+  }
   const settingsPath = join(homedir(), ".claude", "settings.json");
   const settings = JSON.parse(await readFile(settingsPath, "utf8").catch(() => "{}"));
   await copyFile(settingsPath, `${settingsPath}.githippo-backup`).catch(() => {});
@@ -81,9 +122,14 @@ async function install() {
     const has = settings.hooks[event].some((g) => g.hooks?.some((h) => h.command?.startsWith("githippo hook")));
     if (!has) settings.hooks[event].push({ hooks: [{ type: "command", command, timeout: event === "PreCompact" ? 15 : 5 }] });
   }
+  let status = "kept your existing status line";
+  if (!settings.statusLine) {
+    settings.statusLine = { type: "command", command: "githippo statusline" };
+    status = "added";
+  }
   await mkdir(join(homedir(), ".claude"), { recursive: true });
   await writeFile(settingsPath, JSON.stringify(settings, null, 2));
-  console.log(`\n✓ config → ${CONFIG_FILE} (chmod 600)\n✓ hooks → ${settingsPath} (backup saved)\n\nNext:\n  claude mcp add githippo --scope user -- githippo serve\n  githippo init     # seed the repo\n  githippo doctor   # verify\n`);
+  console.log(`\n✓ config → ${CONFIG_FILE} (chmod 600)\n✓ hooks → ${settingsPath} (backup saved)\n✓ status line: ${status}\n✓ MCP: ${registerMcp()}\n\nNext:\n  githippo init     # seed the repo\n  githippo doctor   # verify\n`);
 }
 
 async function init() {
@@ -124,6 +170,33 @@ async function doctor() {
   ok(settings.includes("githippo hook precompact"), "Claude Code compaction hooks installed");
 }
 
+/** Try githippo in 30 seconds: no repo, no token (idea from agentmemory's demo). */
+async function demo() {
+  const { InMemoryStore } = await import("./memstore.js");
+  const { MemoryIndex } = await import("./search.js");
+  const { createEmbedder } = await import("./embed.js");
+  const { Brain } = await import("./brain.js");
+  const { fmt } = await import("./format.js");
+  const store = new InMemoryStore();
+  const seed = {
+    "people/sam-okafor.md": "---\nname: sam-okafor\ntitle: Sam Okafor\ndescription: Tech lead, payments\naliases: [Sam]\n---\n\n- Tech lead for the payments team\n",
+    "projects/billing-v2.md": "---\nname: billing-v2\ntitle: Billing v2\ndescription: Billing rewrite\n---\n\n- owner:: [[sam-okafor]]\n- Launch target is end of Q1\n",
+    "projects/johnny.md": "---\nname: johnny\ntitle: Johnny\ndescription: Voice assistant for the Mac\n---\n\n- Needs a wake word and runs locally on the Mac mini\n",
+  };
+  for (const [p, c] of Object.entries(seed)) await store.write(p, c, "new", "seed");
+  const emb = createEmbedder(loadConfig());
+  const brain = new Brain({ store, index: new MemoryIndex(store, emb, {}) });
+  const show = (label, text) => console.log(`\n\x1b[35m${label}\x1b[0m\n${text}`);
+  console.log(`githippo demo · in-memory vault · embeddings: ${emb?.id || "keyword only"}${emb?.id?.startsWith("local") ? " (first run downloads the model)" : ""}`);
+  show('› remember "Launch target is end of Q2"', fmt.remember(await brain.remember("Launch target is end of Q2")));
+  show('› remember "The launch target is the end of Q2"   (same fact, reworded)', fmt.remember(await brain.remember("The launch target is the end of Q2")));
+  show('› remember "Sam prefers written RFCs over meetings"', fmt.remember(await brain.remember("Sam prefers written RFCs over meetings")));
+  show('› recall "¿Qué necesita el asistente de voz?"   (Spanish question, English notes)', fmt.recall(await brain.recall("¿Qué necesita el asistente de voz?", { mode: "brief" })));
+  show("› graph sam", fmt.graph(await brain.neighbors("sam")));
+  show("› maintain", fmt.maintain(await brain.maintain({})));
+  console.log(`\nThat's githippo. Your real memory lives in your own private repo: githippo install\n`);
+}
+
 async function bench() {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
@@ -141,9 +214,9 @@ async function bench() {
   await client.close();
 }
 
-const commands = { serve, http, hook: () => hook(rest[0]), install, init, doctor, bench };
+const commands = { serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
 if (cmd === "--version" || cmd === "-v") console.log(VERSION);
 else if (!commands[cmd]) {
-  console.log(`githippo ${VERSION}\nusage: githippo [serve|http|hook <precompact|session-start|prompt>|install|init|doctor|bench]`);
+  console.log(`githippo ${VERSION}\nusage: githippo [serve|http|hook <precompact|postcompact|session-start|prompt>|statusline|install [--config-only]|init|doctor|demo|bench]`);
   process.exit(1);
 } else await commands[cmd]();

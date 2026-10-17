@@ -24,7 +24,7 @@ test("graph expansion respects scope (index/core never leak into recall)", async
 test("new files have a blank line after frontmatter", async () => {
   const { brain, gh } = setup();
   await brain.remember("Runs the APAC desk", { about: "Vik Rao", kind: "person" });
-  assert.match(gh.text("memory/people/vik-rao.md"), /\n---\n\n- Runs the APAC desk\n$/);
+  assert.match(gh.text("memory/people/vik-rao.md"), /\n---\n\n- Runs the APAC desk <!--\+\d{4}-\d{2}-\d{2}-->\n$/);
 });
 
 test("compact output is much smaller than JSON", async () => {
@@ -65,12 +65,12 @@ test("supersede keeps the old fact in a dated History section, excluded from rec
   const r = await brain.remember("Primary colour is teal", { path: "topics/brand.md", replaces: "Primary colour is navy" });
   assert.equal(r.status, "superseded");
   const txt = gh.text("memory/topics/brand.md");
-  assert.match(txt, /- Primary colour is teal\n\n## History\n- ~~Primary colour is navy~~ \(until \d{4}-\d{2}-\d{2}\)/);
+  assert.match(txt, /- Primary colour is teal <!--\+[\d-]+-->\n\n## History\n- ~~Primary colour is navy~~ \(until \d{4}-\d{2}-\d{2}\)/);
   const rc = await brain.recall("primary colour");
   assert.doesNotMatch(rc.context, /navy/);
   // later facts go above History
   await brain.remember("Logo is a lighthouse", { path: "topics/brand.md" });
-  assert.match(gh.text("memory/topics/brand.md"), /lighthouse\n\n## History/);
+  assert.match(gh.text("memory/topics/brand.md"), /lighthouse <!--\+[\d-]+-->\n\n## History/);
 });
 
 test("pin: core memory, budget enforced, loaded for instructions", async () => {

@@ -10,7 +10,7 @@ export const CONFIG_FILE = join(HOME_DIR, "config.json");
 const KEYS = [
   "GITHUB_TOKEN", "MEMORY_REPO", "MEMORY_BRANCH", "MEMORY_ROOT", "EMBEDDINGS", "LOCAL_EMBED_MODEL",
   "VOYAGE_API_KEY", "VOYAGE_MODEL", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "MCP_SECRET", "CACHE_DIR",
-  "CORE_BUDGET_TOKENS", "PROMPT_RECALL",
+  "CORE_BUDGET_TOKENS", "PROMPT_RECALL", "GITHIPPO_HOOK_PROFILE", "GITHIPPO_DISABLED_HOOKS", "DECAY_ACTIVE_DAYS",
 ];
 
 export function loadConfig(env = process.env) {
@@ -23,4 +23,18 @@ export function loadConfig(env = process.env) {
   cfg.CACHE_DIR ??= join(HOME_DIR, "cache");
   cfg.CORE_BUDGET_TOKENS = Number(cfg.CORE_BUDGET_TOKENS || 400);
   return cfg;
+}
+
+/**
+ * Hook runtime switches (idea from Everything Claude Code), no file edits needed:
+ *   GITHIPPO_HOOK_PROFILE=minimal  → only compaction save/restore
+ *   GITHIPPO_HOOK_PROFILE=standard → everything (default)
+ *   GITHIPPO_DISABLED_HOOKS=prompt,startup-note,steer,drift,postcompact
+ */
+export function hookEnabled(feature, cfg = loadConfig()) {
+  const disabled = String(cfg.GITHIPPO_DISABLED_HOOKS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (feature === "prompt" && cfg.PROMPT_RECALL === "0") return false;
+  if (disabled.includes(feature)) return false;
+  if ((cfg.GITHIPPO_HOOK_PROFILE || "standard") === "minimal") return ["precompact", "restore"].includes(feature);
+  return true;
 }

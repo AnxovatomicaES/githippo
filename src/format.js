@@ -7,7 +7,7 @@ const q = (s) => `"${s}"`;
 export const fmt = {
   recall(r) {
     if (r.mode === "brief") {
-      return r.hits.length ? r.hits.map((h) => `${h.ref} ${h.text}${h.via ? ` ←${h.via}` : ""}`).join("\n") : "∅ no match";
+      return r.hits.length ? r.hits.map((h) => `${h.ref} ~${h.cost}t ${h.text}${h.via ? ` ←${h.via}` : ""}`).join("\n") : "∅ no match";
     }
     return r.context ? `${r.context}\n[~${r.tokens} tok, ${r.files} files]` : "∅ no relevant memory";
   },
@@ -46,6 +46,9 @@ export const fmt = {
       if (v.length) out.push(`${k}: ${v.join(", ")}`);
     }
     if (r.broken_links.length) out.push(`broken links: ${r.broken_links.map((b) => `${b.from}→${b.target}`).join(", ")}`);
+    if (r.decay && (r.decay.inbox || r.decay.sessions) && !r.actions.some((a) => /archived|removed/.test(a))) {
+      out.push(`decay candidates (${r.decay.active_days}+ active days old): ${r.decay.inbox} inbox facts, ${r.decay.sessions} checkpoints → maintain decay=true`);
+    }
     if (r.actions.length) out.push(`done: ${r.actions.join("; ")}`);
     if (out.length === 1) out.push("healthy");
     return out.join("\n");

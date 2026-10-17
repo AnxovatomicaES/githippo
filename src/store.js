@@ -153,6 +153,19 @@ export class GitHubMemoryStore {
     return { path: p, deleted: true };
   }
 
+  /** Distinct days with any memory commit since a date: the clock that decay runs on (idea from claude-memory-system). */
+  async activeDays(sinceIso) {
+    const days = new Set();
+    for (let page = 1; page <= 5; page++) {
+      const q = `sha=${encodeURIComponent(this.branch)}&since=${encodeURIComponent(sinceIso)}&per_page=100&page=${page}`;
+      const commits = (await this.api("GET", `/commits?${q}`)) || [];
+      for (const c of commits) days.add((c.commit.committer?.date || c.commit.author?.date || "").slice(0, 10));
+      if (commits.length < 100) break;
+    }
+    days.delete("");
+    return [...days].sort();
+  }
+
   /** Commit log for one file, newest first. */
   async history(path, limit = 20) {
     const p = normalizePath(path);

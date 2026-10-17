@@ -43,7 +43,7 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
   let startLine = 0;
 
   const flush = () => {
-    const text = buf.join("\n").trim();
+    const text = buf.join("\n").replace(/\s*<!--[\s\S]*?-->/g, "").trim();
     if (text) {
       // The description is the file's best semantic summary ("Johnny" means nothing to a model; "Voice assistant for the Mac" does).
       const embedText = `${title}${meta.description && meta.description !== title ? ` — ${meta.description}` : ""}${heading ? ` › ${heading}` : ""}\n${text}`;
@@ -51,7 +51,7 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
         id: `${path}#${chunks.length}`,
         path,
         heading,
-        history: /^history$/i.test(heading),
+        history: /^(history|archived)$/i.test(heading),
         line: startLine,
         text,
         embedText,
@@ -82,19 +82,52 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
     const embedText = `${title}\n${meta.description}`;
     chunks.push({ id: `${path}#0`, path, heading: "", history: false, line: 1, text: meta.description, embedText, hash: hash(embedText) });
   }
-  const live = body.split(/^#{1,6}\s+history\s*$/im)[0];
+  const live = body.split(/^#{1,6}\s+(?:history|archived)\s*$/im)[0];
   const tags = [...new Set([...live.matchAll(/(?:^|\s)#([\p{L}][\p{L}\p{N}_-]*)/gu)].map((m) => m[1].toLowerCase()))];
   return { path, name, title, description: meta.description || "", aliases, type: meta.type || folder(path), meta, body, live, tags, chunks };
 }
 
 /** Renders [[id|Word]] as Word and [[id]] as id: the graph lives server-side, so links cost tokens for nothing. */
-export const plain = (s) => s.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1");
+export const plain = (s) => s.replace(/\s*<!--[\s\S]*?-->/g, "").replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1");
 
 export function factLines(body) {
   return body
-    .split(/^#{1,6}\s+history\s*$/im)[0]
+    .split(/^#{1,6}\s+(?:history|archived)\s*$/im)[0]
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => /^[-*]\s+/.test(l))
     .map((l) => l.replace(/^[-*]\s+/, ""));
 }
+
+// Tags whose content must never be stored (idea from claude-mem):
+//  <private>…</private>          user opt-out for sensitive text
+//  <githippo-context>…</…>      what our own hooks injected (prevents re-saving memory as new memory)
+//  <system-reminder>…</…>       harness-injected text
+const MEMORY_TAGS = ["private", "githippo-context", "system-reminder"];
+
+/** Removes balanced memory-tag blocks (nested ok). An unclosed "<private>" in ordinary prose is left alone. */
+export function stripMemoryTags(input) {
+  if (!input || !input.includes("<")) return { text: input || "", removed: 0 };
+  let text = input;
+  let removed = 0;
+  for (let pass = 0; pass < 8; pass++) {
+    let changed = false;
+    for (const tag of MEMORY_TAGS) {
+      // innermost-first: an opener with no other opener of the same tag before its closer
+      const re = new RegExp(`<${tag}(?:\\s[^>]*)?>(?:(?!<${tag}[\\s>])[\\s\\S])*?<\\/${tag}\\s*>`, "gi");
+      text = text.replace(re, () => {
+        removed++;
+        changed = true;
+        return "";
+      });
+    }
+    if (!changed) break;
+  }
+  return { text: text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(), removed };
+}
+
+export const wrapContext = (s) => (s ? `<githippo-context>\n${s}\n</githippo-context>` : s);
+
+/** Hidden creation stamp on a fact line: invisible in Obsidian, stripped before recall and embedding. */
+export const stamp = (date = new Date().toISOString().slice(0, 10)) => ` <!--+${date}-->`;
+export const stampOf = (line) => line.match(/<!--\+(\d{4}-\d{2}-\d{2})-->/)?.[1] || null;

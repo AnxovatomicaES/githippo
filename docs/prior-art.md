@@ -1,0 +1,17 @@
+# Prior art and what githippo borrowed
+
+githippo exists because other people solved pieces of this first. Each idea below was read in the original source code (not just the README) on 2026-10-17, adapted to githippo's constraints (git-backed Markdown, no LLM on the write path, tokens counted), and covered by a test in `test/adopted.test.js`.
+
+| Project | Idea | How githippo adapts it |
+|---|---|---|
+| [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) | `<private>` tags; stripping injected context before storage; per-result token cost in a search index | Same tag semantics (an unclosed tag in prose is left alone); hooks wrap what they inject in `<githippo-context>` so memory is never re-saved as new memory; `recall mode=brief` shows `~Nt` per hit |
+| [nikhilsitaram/claude-memory-system](https://github.com/nikhilsitaram/claude-memory-system) | Age-based decay counted in working days; pinned sections never decay; recoverable archive | `maintain decay=true` counts *active days* from git history; only inbox facts and session checkpoints decay; archived facts stay in the file, out of recall |
+| [TranHoaiHung/claude-memory-hub](https://github.com/TranHoaiHung/claude-memory-hub) | PreCompact priority list for the compactor; PostCompact summary capture; code-aware tokenizer | PreCompact prints open tasks, files, errors and the latest request (≤1000 chars); PostCompact stores the cleaned summary with the checkpoint; BM25 splits camelCase, snake_case and paths |
+| [Nagendhra-web/memory-bank](https://github.com/Nagendhra-web/memory-bank) | Session diffing; branch-aware memory | On resume/startup githippo reports commits since the checkpoint (and how many by others), branch changes and deleted files; checkpoints are keyed per branch |
+| [Mibayy/token-savior](https://github.com/Mibayy/token-savior) | `alwaysLoad`, and the lesson that a benchmark must check the tools were actually called | `githippo install` registers the MCP server with `alwaysLoad` and falls back if the CLI rejects it |
+| [Mintsolester/claude-meister](https://github.com/Mintsolester/claude-meister) | Complexity routing (skip trivial tasks); status line | Trivial prompts ("ok", "continue", slash commands) never trigger recall; `githippo statusline` shows only measured numbers |
+| [BryantChi/claude-sustain](https://github.com/BryantChi/claude-sustain) | Distribution as a Claude Code plugin marketplace | `/plugin marketplace add AnxovatomicaES/githippo` |
+| Everything Claude Code (copy reviewed at sumitkashyape2/claude) | Hook profiles and per-hook switches via env | `GITHIPPO_HOOK_PROFILE=minimal|standard`, `GITHIPPO_DISABLED_HOOKS=prompt,steer,drift,…` |
+| [rohitg00/agentmemory](https://github.com/rohitg00/agentmemory) | Errors as first-class observations; a demo command; install instructions for agents | Failed tool calls go into checkpoints; `githippo demo` runs with no repo or token; [`INSTALL_FOR_AGENTS.md`](../INSTALL_FOR_AGENTS.md) |
+
+Reviewed but not adopted: **adeeljames/claude-memory-mcp** (a 106-line demo whose design makes the model retype every turn into a tool call, which costs tokens) and **speedydivid/TokenForge** (its README describes token optimization, but most of the code manages browser fingerprints and proxies).

@@ -2,6 +2,7 @@
 // deterministically: no LLM call, so it works inside a PreCompact hook.
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { stripMemoryTags } from "./parse.js";
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -18,7 +19,7 @@ function promptText(entry) {
   if (entry.type !== "user" || entry.isMeta) return null;
   const bs = blocks(entry.message);
   if (bs.some((b) => b.type === "tool_result")) return null;
-  const text = bs.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+  const text = stripMemoryTags(bs.filter((b) => b.type === "text").map((b) => b.text).join("\n")).text;
   if (!text || /^<(command|local-command|system|user-prompt-submit-hook)/.test(text)) return null;
   if (/^Caveat:|This session is being continued from a previous conversation/.test(text)) return null;
   return text;
@@ -40,6 +41,9 @@ export function parseTranscript(jsonl) {
   const prompts = [];
   const files = new Map();
   const commands = [];
+  const errors = [];
+  const toolNames = new Map(); // tool_use id -> tool name, to label errors
+  let branch = "";
   let todos = null; // legacy TodoWrite list
   const tasks = new Map(); // current TaskCreate/TaskUpdate list: id -> { subject, status }
   const creates = new Map(); // tool_use id -> provisional task id
@@ -50,10 +54,18 @@ export function parseTranscript(jsonl) {
 
   for (const e of entries) {
     cwd ||= e.cwd || "";
+    if (e.gitBranch) branch = e.gitBranch;
     if (e.type === "summary" && e.summary) priorSummary = e.summary;
     const p = promptText(e);
     if (p) prompts.push(p);
     if (e.type === "user") {
+      // Failed tool calls: "what broke" is the first thing lost in compaction (idea from agentmemory).
+      for (const b of blocks(e.message)) {
+        if (b.type !== "tool_result" || !b.is_error) continue;
+        const text = typeof b.content === "string" ? b.content : (Array.isArray(b.content) ? b.content.map((x) => x.text || "").join(" ") : "");
+        const msg = oneLine(stripMemoryTags(text).text);
+        if (msg) errors.push(`${toolNames.get(b.tool_use_id) || "tool"}: ${msg}`);
+      }
       // TaskCreate results say "Task #N created…": use the real id if it differs from our provisional one.
       for (const b of blocks(e.message)) {
         if (b.type !== "tool_result" || !creates.has(b.tool_use_id)) continue;
@@ -68,8 +80,9 @@ export function parseTranscript(jsonl) {
     }
     if (e.type !== "assistant") continue;
     for (const b of blocks(e.message)) {
-      if (b.type === "text" && b.text.trim()) lastAssistant = b.text.trim();
+      if (b.type === "text" && b.text.trim()) lastAssistant = stripMemoryTags(b.text).text;
       if (b.type !== "tool_use") continue;
+      toolNames.set(b.id, b.name);
       const input = b.input || {};
       if (EDIT_TOOLS.has(b.name) && (input.file_path || input.notebook_path)) {
         const f = input.file_path || input.notebook_path;
@@ -90,7 +103,7 @@ export function parseTranscript(jsonl) {
     }
   }
   if (tasks.size) todos = [...tasks.values()];
-  return { prompts, files, commands, todos, lastAssistant, priorSummary, cwd };
+  return { prompts, files, commands, todos, lastAssistant, priorSummary, cwd, branch, errors };
 }
 
 /** Renders a checkpoint that fits a token budget (~4 chars per token). */
@@ -104,6 +117,8 @@ export function renderCheckpoint(t, { sessionId = "", budgetTokens = 900 } = {})
     `description: Working state of a Claude Code session in ${project}, saved before compaction`,
     `session: ${sessionId}`,
     `project: ${project}`,
+    ...(t.branch ? [`branch: ${t.branch}`] : []),
+    ...(t.cwd ? [`cwd: ${t.cwd}`] : []),
     `updated: ${new Date().toISOString()}`,
     "---",
     "",
@@ -121,6 +136,7 @@ export function renderCheckpoint(t, { sessionId = "", budgetTokens = 900 } = {})
   }
   const files = [...t.files].sort((a, b) => b[1] - a[1]).slice(0, 15);
   section("Files changed", files.map(([f, n]) => `- ${f}${n > 1 ? ` (${n} edits)` : ""}`));
+  section("Recent errors", [...new Set(t.errors || [])].slice(-4).map((e) => `- ${clip(e, 200)}`));
   section("Recent commands", [...new Set(t.commands)].slice(-5).map((c) => `- \`${clip(c, 120)}\``));
   if (t.lastAssistant) section("Where it stopped", [`- ${clip(oneLine(t.lastAssistant), 600)}`]);
   if (t.priorSummary) section("Earlier summary", [`- ${clip(oneLine(t.priorSummary), 500)}`]);

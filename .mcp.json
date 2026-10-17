@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "githippo": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "githippo@3", "serve"]
+    }
+  }
+}

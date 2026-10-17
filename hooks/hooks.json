@@ -1,0 +1,49 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v githippo >/dev/null 2>&1 && githippo hook precompact || npx -y githippo@3 hook precompact",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v githippo >/dev/null 2>&1 && githippo hook postcompact || npx -y githippo@3 hook postcompact",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v githippo >/dev/null 2>&1 && githippo hook session-start || npx -y githippo@3 hook session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v githippo >/dev/null 2>&1 && githippo hook prompt || npx -y githippo@3 hook prompt",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

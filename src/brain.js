@@ -1,7 +1,7 @@
 // The githippo brain: recall, auto-remember, pinned core memory, temporal
 // supersession, forget, session checkpoints, consolidation, graph, time travel.
 import { MemoryError, MAX_FILE_BYTES, normalizePath } from "./store.js";
-import { factLines, hash, parseFile, plain, stem } from "./parse.js";
+import { factLines, hash, parseFile, plain, stamp, stampOf, stem, stripMemoryTags } from "./parse.js";
 import { scan } from "./guard.js";
 import { cosine } from "./embed.js";
 import { tokenize } from "./search.js";
@@ -126,7 +126,8 @@ export class Brain {
     if (mode === "brief") {
       return {
         mode,
-        hits: hits.map((h) => ({ ref: `${h.path}:${h.line}`, text: plain(h.text.split("\n").find((l) => l.trim()) || "").slice(0, 110), via: h.signals.graph })),
+        // Per-hit cost of expanding it (idea from claude-mem), so the model can choose what is worth reading.
+        hits: hits.map((h) => ({ ref: `${h.path}:${h.line}`, text: plain(h.text.split("\n").find((l) => l.trim()) || "").slice(0, 110), cost: approxTokens(plain(h.text)), via: h.signals.graph })),
       };
     }
     const entityId = this.graph.resolve(query);
@@ -181,8 +182,9 @@ export class Brain {
   }
 
   async remember(fact, opts = {}) {
-    const clean = bare(fact).replace(/\s+/g, " ");
-    if (clean.length < 3) throw new MemoryError("Fact is empty.");
+    const { text: visible, removed } = stripMemoryTags(fact);
+    const clean = bare(visible).replace(/\s+/g, " ");
+    if (clean.length < 3) throw new MemoryError(removed ? "Nothing to save: the fact was entirely inside <private> tags." : "Fact is empty.");
     assertSafe(clean);
     await this.index.sync();
     if (opts.pin) return this.pin(clean);
@@ -209,7 +211,7 @@ export class Brain {
     const related = scored.filter((s) => s.sim >= this.t.related).slice(0, 2);
 
     const { text, linked } = this.graph.autoLink(clean, [stem(target.path)]);
-    const line = `- ${text}`;
+    const line = `- ${text}${stamp()}`;
     let next;
     if (!content) {
       const c = target.create || { title: stem(target.path), kind: "topic" };
@@ -239,12 +241,12 @@ export class Brain {
     const content = existing.content;
     const want = tokenize(plain(bare(oldText))).join(" ");
     const lines = content.split("\n");
-    const historyAt = lines.findIndex((l) => /^#{1,6}\s+history\s*$/i.test(l));
+    const historyAt = lines.findIndex((l) => /^#{1,6}\s+(?:history|archived)\s*$/i.test(l));
     const idx = lines.findIndex((l, i) => (historyAt < 0 || i < historyAt) && /^\s*[-*]\s+/.test(l) && tokenize(plain(bare(l))).join(" ") === want);
     if (idx < 0) throw new MemoryError(`Line to replace not found in ${path}.`);
-    const old = bare(lines[idx]);
+    const old = plain(bare(lines[idx]));
     const { text, linked } = this.graph.autoLink(newFact, [stem(path)]);
-    lines[idx] = `- ${text}`;
+    lines[idx] = `- ${text}${stamp()}`;
     let next = lines.join("\n").replace(/\n*$/, "\n");
     const record = `- ~~${old}~~ (until ${today()})`;
     next = /^#{1,6}\s+history\s*$/im.test(next) ? `${next}${record}\n` : `${next}\n## History\n${record}\n`;
@@ -259,7 +261,7 @@ export class Brain {
     if (factLines(base).some((l) => tokenize(plain(l)).join(" ") === tokenize(fact).join(" "))) {
       return { status: "duplicate", path: "core.md", existing: fact };
     }
-    const next = insertLive(base, `- ${fact}`);
+    const next = insertLive(base, `- ${fact}`); // core is pinned: never stamped, never decays
     const body = parseFile("core.md", next).body;
     if (approxTokens(body) > this.coreBudgetTokens) {
       throw new MemoryError(`Core memory would exceed ${this.coreBudgetTokens} tokens. Unpin something (forget with path core.md) or save it unpinned.`);
@@ -320,7 +322,7 @@ export class Brain {
       files?.length && `## Files\n${files.map((f) => `- ${f}`).join("\n")}`,
       next && `## Next\n- ${next}`,
     ].filter(Boolean);
-    const content = `${lines.join("\n\n")}\n`;
+    const content = `${stripMemoryTags(lines.join("\n\n")).text}\n`;
     assertSafe(content);
     const r = await this.store.write(path, content, existing ? existing.version : "new", "checkpoint");
     await this.index.upsert(path, content, r.version);
@@ -334,10 +336,33 @@ export class Brain {
   }
 
   // ---------- consolidation ----------
-  async maintain({ reindex = false, rewrite = null } = {}) {
+  /**
+   * Activity-aware decay (idea from claude-memory-system): age is counted in days you actually used memory,
+   * not calendar days, so a holiday doesn't erase anything. Only low-value material decays: inbox facts and
+   * session checkpoints. Core, people, projects and topics never do. Archived inbox facts stay in the file
+   * under "## Archived" (out of recall); checkpoints are removed from the tree but stay in git history.
+   */
+  async decayCandidates(activeDaysLimit) {
+    const today = new Date().toISOString().slice(0, 10);
+    const oldest = [];
+    const inbox = this.file("inbox.md");
+    const stale = { inbox: [], sessions: [] };
+    const inboxLines = inbox ? factLines(inbox.body).filter((l) => stampOf(l)) : [];
+    for (const l of inboxLines) oldest.push(stampOf(l));
+    const sessions = [...this.index.files.values()].filter((f) => f.path.startsWith("sessions/"));
+    for (const f of sessions) oldest.push((f.meta.updated || f.meta.created || today).slice(0, 10));
+    if (!oldest.length) return stale;
+    const days = await this.store.activeDays(`${oldest.sort()[0]}T00:00:00Z`);
+    const activeSince = (d) => days.filter((x) => x > d).length;
+    for (const l of inboxLines) if (activeSince(stampOf(l)) >= activeDaysLimit) stale.inbox.push(l);
+    for (const f of sessions) if (activeSince((f.meta.updated || f.meta.created || today).slice(0, 10)) >= activeDaysLimit) stale.sessions.push(f);
+    return stale;
+  }
+
+  async maintain({ reindex = false, rewrite = null, decay = false, active_days = 20 } = {}) {
     await this.index.sync({ maxAgeMs: 0 });
     const files = [...this.index.files.values()].filter((f) => !f.path.startsWith("sessions/"));
-    const all = files.flatMap((f) => factLines(f.body).map((line) => ({ path: f.path, line }))).slice(0, 500);
+    const all = files.flatMap((f) => factLines(f.body).map((line) => ({ path: f.path, line: plain(line) }))).slice(0, 500);
     const duplicates = [];
     const conflicts = [];
     const vecs = await this.lineVectors(all.map((a) => plain(a.line)));
@@ -363,6 +388,28 @@ export class Brain {
       broken_links: health.broken_links,
       actions: [],
     };
+
+    const stale = await this.decayCandidates(active_days).catch(() => ({ inbox: [], sessions: [] }));
+    report.decay = { inbox: stale.inbox.length, sessions: stale.sessions.length, active_days };
+    if (decay && stale.inbox.length) {
+      const f = this.file("inbox.md");
+      let lines = f.content.split("\n");
+      const drop = new Set(stale.inbox.map((l) => l.trim()));
+      lines = lines.filter((l) => !drop.has(l.replace(/^\s*[-*]\s+/, "").trim()));
+      let next = lines.join("\n").replace(/\n*$/, "\n");
+      const archived = stale.inbox.map((l) => `- ${plain(l)} (archived ${new Date().toISOString().slice(0, 10)})`).join("\n");
+      next = /^#{1,6}\s+archived\s*$/im.test(next) ? `${next}${archived}\n` : `${next}\n## Archived\n${archived}\n`;
+      const r = await this.store.write("inbox.md", next, f.version, "decay");
+      await this.index.upsert("inbox.md", next, r.version);
+      report.actions.push(`archived ${stale.inbox.length} inbox facts`);
+    }
+    if (decay) {
+      for (const f of stale.sessions) {
+        await this.store.delete(f.path, f.version);
+        this.index.remove(f.path);
+      }
+      if (stale.sessions.length) report.actions.push(`removed ${stale.sessions.length} old checkpoints (kept in git history)`);
+    }
 
     if (reindex) {
       const groups = new Map();
@@ -421,7 +468,7 @@ export class Brain {
 
 /** Appends a line to the live section, i.e. before any "## History" heading. */
 export function insertLive(content, line) {
-  const m = content.match(/\n#{1,6}\s+history\s*\n/i);
+  const m = content.match(/\n#{1,6}\s+(?:history|archived)\s*\n/i);
   if (!m) return `${content.replace(/\n*$/, "\n")}${line}\n`;
   const head = content.slice(0, m.index).replace(/\n*$/, "\n");
   return `${head}${line}\n${content.slice(m.index)}`;

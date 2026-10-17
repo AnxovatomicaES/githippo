@@ -22,10 +22,12 @@ export function fakeGitHub() {
       return json(200, { tree: [...files].map(([path, f]) => ({ path, type: "blob", size: f.content.length, sha: f.sha })) });
     }
     if (rest === "/commits") {
-      const path = decodeURIComponent(u.searchParams.get("path"));
+      const path = u.searchParams.get("path");
       const until = u.searchParams.get("until");
-      let list = commits.filter((c) => c.path === path);
+      const since = u.searchParams.get("since");
+      let list = path ? commits.filter((c) => c.path === decodeURIComponent(path)) : [...commits];
       if (until) list = list.filter((c) => c.date <= until);
+      if (since) list = list.filter((c) => c.date >= since);
       list = list.slice(0, Number(u.searchParams.get("per_page") || 30));
       return json(200, list.map((c) => ({ sha: c.sha, commit: { message: c.message, committer: { date: c.date } } })));
     }
