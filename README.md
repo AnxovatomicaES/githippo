@@ -16,7 +16,7 @@
   <img src="https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/assets/demo.svg" alt="githippo surviving a context compaction in Claude Code" width="100%">
 </p>
 
-Long-term memory for Claude and any MCP client, stored as plain Markdown in a git repo **you own**. Hybrid semantic search, a knowledge graph, auto-memory and compaction survival, at about 760 tokens of tool overhead per turn. Every memory is a git commit you can read, diff and revert.
+Long-term memory for Claude and any MCP client, stored as plain Markdown in a git repo **you own**. Hybrid semantic search, a knowledge graph, auto-memory and compaction survival, at about 775 tokens of tool overhead per turn. Every memory is a git commit you can read, diff and revert.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/instal
 
 That's the whole install: no account, no token, no questions. It sets up a local memory vault, wires Claude Code (hooks, MCP, status line) and fetches semantic search in the background. Restart Claude Code and just talk; it remembers.
 
-Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.5.0 demo` shows it working in 30 seconds without installing anything.
+Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.6.0 demo` shows it working in 30 seconds without installing anything.
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -53,7 +53,7 @@ Version 3.1 adds the best idea from each of nine other memory tools, read in the
 
 What else it does:
 
-- **Compliance guard.** Blocks API keys, tokens, private keys, IBANs (mod-97 checked), card numbers (Luhn checked), Spanish DNI/NIE (checksum) and US SSNs *before* they become permanent git history.
+- **Compliance guard.** Blocks private keys and API tokens (Anthropic, OpenAI, GitHub, AWS, Slack, Stripe, Google, SendGrid, npm, Hugging Face), IBANs (mod-97 checked), card numbers (Luhn checked), Spanish DNI/NIE, French NIR (checksums), UK National Insurance numbers and US SSNs *before* they become permanent git history.
 - **Compaction-proof by design**, three ways (see below).
 - **Cross-lingual recall.** The default multilingual embedder runs locally; ask in Spanish, find notes written in English.
 - **Updates are never mistaken for duplicates.** "Launch is end of Q1" and "end of Q2" embed almost identically. githippo also compares numbers, dates and names, so the update is saved, the old line is flagged, and `maintain` reports possible contradictions. Measured in [docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md).
@@ -105,6 +105,19 @@ hit@k: the right file is among the first k results. Recall puts several results 
 
 What this does and doesn't tell you: the set is small, hand-written by the author, and in-domain, so treat it as a regression guard and a rough guide, not a leaderboard number. Filing is the weakest area. It's deliberately cautious: when the evidence is a tie it parks the fact in the inbox (visible, one move away) rather than guessing, so a third of held-out facts wait in the inbox but none go to a wrong file. Filing rules were tuned on a separate development set (90% there, 2 of 20 in a wrong file) and the held-out number is reported as measured; it went down from 75% when the rules changed, in exchange for no wrong-file errors. Thresholds were calibrated on separate sentence pairs ([docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md)), not tuned on this set.
 
+### Public benchmark: LongMemEval-S
+
+[LongMemEval](https://arxiv.org/abs/2410.10813) (ICLR 2025) is a public long-term-memory benchmark: 500 questions, each with about 48 past chat sessions to search. githippo runs it with the same retrieval protocol [agentmemory publishes](https://github.com/rohitg00/agentmemory/blob/main/benchmark/LONGMEMEVAL.md) (fresh index per question, recall_any@K over sessions, retrieval only, no LLM), on a pinned dataset revision, weekly in CI ([`eval/longmemeval.js`](https://github.com/AnxovatomicaES/githippo/blob/main/eval/longmemeval.js), results in [#3](https://github.com/AnxovatomicaES/githippo/issues/3)).
+
+| LongMemEval-S, 500 questions | R@5 | R@10 | R@20 | MRR |
+|---|---|---|---|---|
+| githippo, keyword + graph (no model) | **96.0%** | 98.0% | 99.2% | 90.4 |
+| same, sessions shuffled (sanity check) | 96.0% | 98.0% | 99.2% | 90.4 |
+| same, whole-session documents instead of chunks | 97.4% | 98.2% | 99.6% | 91.1 |
+| *for reference: agentmemory BM25 / BM25 + vectors (their published numbers)* | *86.2% / 95.2%* | *94.6% / 98.6%* | | |
+
+Read it carefully: this is retrieval recall, not the official LongMemEval QA score (which needs an LLM to answer and a judge). Shuffling the sessions changes nothing, so the score isn't an ordering artifact. githippo's keyword search scores well above agentmemory's published keyword number under the same protocol; the difference is in tokenization and ranking details we haven't isolated, so treat cross-project comparisons as indicative and reproduce them yourself. On this benchmark, whole sessions beat ~700-character chunks; githippo keeps chunks because they give precise line references and smaller recall packs.
+
 **Resources** (measured in CI, Linux): githippo itself uses about 50 MB. The local model runs in a separate process that uses about 520 MB while you're using it and exits after 10 idle minutes (`EMBED_IDLE_MS`), so an idle githippo is back to about 50 MB. Without the model (`EMBEDDINGS=none`) it never goes above about 100 MB.
 
 **Scale:** a 5,000-file local vault re-syncs in about 0.3 s and answers a query in about 13 ms. In GitHub mode (the remote server), a 2,000-file vault cold-starts with 2 API calls (one tarball), an unchanged sync is a free `304 Not Modified`, and each write is 1 call.
@@ -121,7 +134,7 @@ What this does and doesn't tell you: the set is small, hand-written by the autho
 | | githippo v2 (our first version) | **githippo now** |
 |---|---|---|
 | Tools | 12 | **8** |
-| Model-visible schema, every turn | ~1,380 tok | **~760 tok** |
+| Model-visible schema, every turn | ~1,380 tok | **~775 tok** |
 | Instructions | ~340 tok | **~176 tok** + your core |
 | Typical recall response | ~190 tok (JSON) | **~117 tok** pack / **~47 tok** brief |
 
@@ -137,7 +150,7 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 | `graph` | Typed relations around an entity |
 | `history` | Commit timeline, or the file as of a date |
 | `checkpoint` | Save or resume working state |
-| `maintain` | Duplicates, possible contradictions, orphans, broken links, stale inbox; rebuild index; activity-aware decay; LLM merge |
+| `maintain` | Duplicates, possible contradictions, orphans, broken links; suggested homes for inbox facts (`tidy=true` moves them); rebuild index; activity-aware decay; LLM merge |
 | `files` | Raw list/read/write/edit/delete with version checks |
 
 ## Setup
@@ -148,7 +161,9 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
 
-Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.5.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.6.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+
+Coming from the official reference memory server? `githippo import ~/path/to/memory.jsonl` turns its entities, observations and relations into notes and typed links (secrets guard and dedupe apply, so re-running is safe).
 
 Plugin route: run the install above, then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](https://github.com/AnxovatomicaES/githippo/blob/main/INSTALL_FOR_AGENTS.md).
 
@@ -242,7 +257,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 ## Develop
 
 ```bash
-npm ci && npm test      # 80 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 88 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 

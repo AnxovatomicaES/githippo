@@ -28,7 +28,7 @@ def banner():
         f'<circle cx="{x}" cy="560" r="9" fill="{c}"/>' for x, c in
         [(120,"#a78bfa"),(250,"#a78bfa"),(380,"#f472b6"),(510,"#a78bfa"),(640,"#34d399"),(770,"#a78bfa"),(900,"#f472b6"),(1030,"#a78bfa"),(1160,"#34d399")])
     pills = ""
-    for row, labels in enumerate([["semantic recall", "knowledge graph"], ["survives compaction", "~760 tokens / turn"]]):
+    for row, labels in enumerate([["semantic recall", "knowledge graph"], ["survives compaction", "~775 tokens / turn"]]):
         x = 562
         for label in labels:
             w = 28 + len(label) * 9.6

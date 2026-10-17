@@ -9,7 +9,7 @@ import { Brain, assertSafe } from "./brain.js";
 import { fmt, fmtError } from "./format.js";
 import { loadConfig } from "./config.js";
 
-export const VERSION = "3.5.0";
+export const VERSION = "3.6.0";
 
 /** Server instructions live in the system prompt, so they survive context compaction. Core memory rides along. */
 export function instructions(core) {
