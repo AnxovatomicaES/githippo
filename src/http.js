@@ -15,11 +15,14 @@ export function createHttpApp(brain, { secret, maxBodyBytes = 1_000_000, ratePer
   if (!secret || secret.length < 24) throw new Error("MCP_SECRET must be set (24+ chars). Try: openssl rand -hex 32");
   const hits = new Map();
   let coreAt = 0;
+  let sweep = 0;
   const limited = (ip) => {
     const now = Date.now();
     const w = (hits.get(ip) || []).filter((t) => now - t < 60_000);
     w.push(now);
     hits.set(ip, w);
+    // B18: forget idle clients so the map can't grow without bound
+    if (++sweep % 500 === 0) for (const [k, v] of hits) if (!v.length || now - v.at(-1) > 60_000) hits.delete(k);
     return w.length > ratePerMinute;
   };
   const send = (res, status, body) => {
@@ -34,7 +37,8 @@ export function createHttpApp(brain, { secret, maxBodyBytes = 1_000_000, ratePer
     if (!m) return send(res, 404, { error: "not found" });
     const bearer = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     if (!safeEqual(m[1], secret) && !safeEqual(bearer, secret)) return send(res, 401, { error: "unauthorized" });
-    const ip = req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.socket.remoteAddress;
+    // B18: the left-most X-Forwarded-For entry is client-controlled; the right-most was added by our proxy.
+    const ip = String(req.headers["x-forwarded-for"] || "").split(",").map((x) => x.trim()).filter(Boolean).at(-1) || req.socket.remoteAddress;
     if (limited(ip)) return send(res, 429, { error: "rate limited" });
     if (req.method !== "POST") return send(res, 405, { jsonrpc: "2.0", error: { code: -32000, message: "Method not allowed." }, id: null });
 

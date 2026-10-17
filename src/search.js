@@ -88,6 +88,26 @@ export class MemoryIndex {
     this.graph = new KnowledgeGraph();
     this.syncing = null;
     this.lastSync = 0;
+    this.embedPausedUntil = 0;
+    this.embedError = null;
+  }
+
+  /**
+   * B16: embeddings are an enhancement, never a dependency. If the model can't load (offline first run, no RAM)
+   * or the provider errors, githippo keeps working on keyword search and retries embeddings 5 minutes later.
+   */
+  async safeEmbed(texts, kind) {
+    if (!this.embedder || Date.now() < this.embedPausedUntil) return null;
+    try {
+      const v = await this.embedder.embed(texts, kind);
+      this.embedError = null;
+      return v;
+    } catch (e) {
+      this.embedPausedUntil = Date.now() + 5 * 60_000;
+      if (this.embedError !== e.message) console.error(`[githippo] embeddings unavailable, using keyword search for now: ${e.message}`);
+      this.embedError = e.message;
+      return null;
+    }
   }
 
   get cacheFile() {
@@ -102,8 +122,21 @@ export class MemoryIndex {
     } catch {}
   }
 
-  async saveCache() {
+  /** B25: write at most every 3 s, keep only vectors still in use (+ the 2,000 most recent line vectors). */
+  saveCache() {
+    if (!this.cacheFile || this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.flushCache().catch(() => {});
+    }, 3000);
+    this.saveTimer.unref?.();
+  }
+
+  async flushCache() {
     if (!this.cacheFile) return;
+    const live = new Set((this.chunks || []).map((c) => c.hash));
+    const lines = [...this.vectors.keys()].filter((k) => k.startsWith("line:")).slice(-2000);
+    for (const k of [...this.vectors.keys()]) if (!live.has(k) && !lines.includes(k)) this.vectors.delete(k);
     await mkdir(this.cacheDir, { recursive: true });
     const obj = Object.fromEntries([...this.vectors].map(([h, v]) => [h, Array.from(v, (x) => +x.toFixed(5))]));
     await writeFile(this.cacheFile, JSON.stringify(obj));
@@ -149,9 +182,10 @@ export class MemoryIndex {
     const todo = new Map();
     for (const f of this.files.values()) for (const c of f.chunks) if (!this.vectors.has(c.hash)) todo.set(c.hash, c.embedText);
     if (!todo.size) return;
-    const vecs = await this.embedder.embed([...todo.values()], "document");
+    const vecs = await this.safeEmbed([...todo.values()], "document");
+    if (!vecs) return;
     [...todo.keys()].forEach((h, i) => this.vectors.set(h, vecs[i]));
-    await this.saveCache();
+    this.saveCache();
   }
 
   rebuild() {
@@ -178,7 +212,8 @@ export class MemoryIndex {
 
   async dense(query) {
     if (!this.embedder || !this.chunks.length) return [];
-    const [qv] = await this.embedder.embed([query], "query");
+    const [qv] = (await this.safeEmbed([query], "query")) || [];
+    if (!qv) return [];
     return this.chunks
       .filter((c) => this.vectors.has(c.hash))
       .map((c) => ({ c, s: cosine(qv, this.vectors.get(c.hash)) }))
@@ -212,14 +247,14 @@ export class MemoryIndex {
       const have = new Set(ranked.map((r) => r.chunk.path));
       const extra = [];
       for (const r of ranked.slice(0, 3)) {
-        const nb = this.graph.neighbors(stem(r.chunk.path), 1);
+        const nb = this.graph.neighbors(this.graph.idOf(r.chunk.path), 1);
         for (const n of nb?.nodes || []) {
           if (have.has(n.path) || !n.path.startsWith(prefix)) continue;
           const f = this.files.get(n.path);
           const first = f?.chunks.find((c) => inDefaultScope(c, prefix));
           if (!first) continue;
           have.add(n.path);
-          extra.push({ chunk: first, score: r.score * 0.5, signals: { graph: stem(r.chunk.path) } });
+          extra.push({ chunk: first, score: r.score * 0.5, signals: { graph: this.graph.idOf(r.chunk.path) } });
         }
       }
       ranked = [...ranked, ...extra.slice(0, 3)];

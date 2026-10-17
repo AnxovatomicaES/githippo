@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { HOME_DIR, hookEnabled } from "./config.js";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { checkpointFromFile, parseTranscript, renderCheckpoint } from "./transcript.js";
+import { createHash } from "node:crypto";
+import { parseTranscriptFile, renderCheckpoint } from "./transcript.js";
+import { redact } from "./guard.js";
 import { Bm25, tokenize } from "./search.js";
 import { plain, wrapContext } from "./parse.js";
 
@@ -13,6 +15,11 @@ const CK_DIR = join(HOME_DIR, "checkpoints");
 const STATE_DIR = join(HOME_DIR, "state");
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 const safeId = (s) => String(s || "unknown").replace(/[^\w-]/g, "").slice(0, 64);
+/** B22: checkpoints are keyed by project folder name + a hash of the full path, so ~/a/app and ~/b/app never mix. */
+export const projectKey = (cwd) => {
+  const name = safeId(String(cwd || "").split("/").filter(Boolean).pop() || "unknown");
+  return `${name}-${createHash("sha1").update(String(cwd || "")).digest("hex").slice(0, 6)}`;
+};
 
 const git = (cwd, args) => {
   try {
@@ -65,19 +72,35 @@ const emit = (event, additionalContext) =>
  * short priority list that steers the compactor toward what must survive (idea from claude-memory-hub).
  */
 export async function preCompact(input, { brain } = {}) {
-  if (!input.transcript_path) return "";
-  const t = parseTranscript(await readFile(input.transcript_path, "utf8"));
+  const t = await saveCheckpoint(input, { brain, op: "precompact" });
+  return t && hookEnabled("steer") ? steering(t) : "";
+}
+
+/** B21: also checkpoint when a session simply ends, so "last session" works without a compaction. */
+export async function sessionEnd(input, { brain } = {}) {
+  if (!hookEnabled("session-end")) return "";
+  await saveCheckpoint(input, { brain, op: "session-end" });
+  return "";
+}
+
+async function saveCheckpoint(input, { brain, op }) {
+  if (!input.transcript_path) return null;
+  const t = await parseTranscriptFile(input.transcript_path); // B27: streamed, not read whole
+  if (!t.prompts.length && !t.files.size) return null; // nothing worth saving
+  if (!t.cwd) t.cwd = input.cwd || "";
   if (!t.branch && t.cwd) t.branch = branchOf(t.cwd);
-  const { project, text } = renderCheckpoint(t, { sessionId: input.session_id || "" });
+  const rendered = renderCheckpoint(t, { sessionId: input.session_id || "" });
+  const text = redact(rendered.text).text; // B24: secrets never reach disk or repo
+  const key = projectKey(t.cwd);
   await mkdir(CK_DIR, { recursive: true });
   await writeFile(join(CK_DIR, `${safeId(input.session_id)}.md`), text);
-  await writeFile(join(CK_DIR, `latest-${safeId(project)}.md`), text);
-  if (t.branch) await writeFile(join(CK_DIR, `latest-${safeId(project)}--${safeId(t.branch)}.md`), text);
+  await writeFile(join(CK_DIR, `latest-${key}.md`), text);
+  if (t.branch) await writeFile(join(CK_DIR, `latest-${key}--${safeId(t.branch)}.md`), text);
   if (brain) {
-    const path = `sessions/${safeId(project).toLowerCase()}-${safeId(input.session_id).slice(0, 8)}.md`;
-    await withTimeout(brain.saveRawCheckpoint(path, text), 8000).catch((e) => console.error(`[githippo] repo checkpoint skipped: ${e.message}`));
+    const path = `sessions/${key.toLowerCase()}-${safeId(input.session_id).slice(0, 8)}.md`;
+    await withTimeout(brain.saveRawCheckpoint(path, text, op), 8000).catch((e) => console.error(`[githippo] repo checkpoint skipped: ${e.message}`));
   }
-  return hookEnabled("steer") ? steering(t) : "";
+  return t;
 }
 
 /** Plain-text priority list for the compactor. Capped at ~250 tokens. */
@@ -102,11 +125,11 @@ export async function postCompact(input, { brain } = {}) {
   const ck = await readFile(file, "utf8").catch(() => null);
   if (!ck) return "";
   const next = `${ck.split("\n## Compaction summary\n")[0].replace(/\n*$/, "\n")}\n## Compaction summary\n${summary}\n`;
-  await writeFile(file, next);
+  const safe = redact(next).text; // B24
+  await writeFile(file, safe);
   if (brain) {
-    const project = fm(ck, "project");
-    const path = `sessions/${safeId(project).toLowerCase()}-${safeId(input.session_id).slice(0, 8)}.md`;
-    await withTimeout(brain.saveRawCheckpoint(path, next), 8000).catch(() => {});
+    const path = `sessions/${projectKey(fm(ck, "cwd")).toLowerCase()}-${safeId(input.session_id).slice(0, 8)}.md`;
+    await withTimeout(brain.saveRawCheckpoint(path, safe, "postcompact"), 8000).catch(() => {});
   }
   return "";
 }
@@ -118,21 +141,22 @@ const withoutSummary = (md) => md.split("\n## Compaction summary\n")[0];
 /** SessionStart: after compaction/resume, inject the checkpoint itself (not a reminder to read it). */
 export async function sessionStart(input) {
   const project = input.cwd ? input.cwd.split("/").filter(Boolean).pop() : "";
+  const key = input.cwd ? projectKey(input.cwd) : "";
   const branch = branchOf(input.cwd);
   const read = (f) => readFile(join(CK_DIR, f), "utf8").catch(() => null);
   if (["compact", "resume"].includes(input.source)) {
     if (!hookEnabled("restore")) return "";
     const ck =
       (await read(`${safeId(input.session_id)}.md`)) ||
-      (project && branch && (await read(`latest-${safeId(project)}--${safeId(branch)}.md`))) ||
-      (project && (await read(`latest-${safeId(project)}.md`)));
+      (key && branch && (await read(`latest-${key}--${safeId(branch)}.md`))) ||
+      (key && (await read(`latest-${key}.md`)));
     if (!ck) return "";
     const d = input.source === "resume" && hookEnabled("drift") ? drift(ck, input.cwd) : "";
     return emit("SessionStart", `githippo restored your working state from before context compaction. Treat it as ground truth and continue from "Where it stopped":\n${body(withoutSummary(ck))}${d ? `\n${d}` : ""}`);
   }
   // Fresh session in the same project (same branch preferred) within 24h: brief continuity note + drift.
   if (input.source === "startup" && project && hookEnabled("startup-note")) {
-    const candidates = [branch && `latest-${safeId(project)}--${safeId(branch)}.md`, `latest-${safeId(project)}.md`].filter(Boolean);
+    const candidates = [branch && `latest-${key}--${safeId(branch)}.md`, `latest-${key}.md`].filter(Boolean);
     for (const name of candidates) {
       const file = join(CK_DIR, name);
       const st = await stat(file).catch(() => null);
@@ -227,8 +251,8 @@ export async function statusLine(input, { cacheDir } = {}) {
     if (snap) parts.push(`${snap.chunks.reduce((n, c) => n + (c.text.match(/^\s*[-*] /gm) || []).length, 0)} facts`);
     const st = JSON.parse(await readFile(join(STATE_DIR, `${safeId(input.session_id)}.json`), "utf8").catch(() => "{}"));
     if (st.injected) parts.push(`recalled ${st.injected}× (~${st.tokens} tok)`);
-    const project = (input.workspace?.current_dir || input.cwd || "").split("/").filter(Boolean).pop();
-    const ck = project && (await stat(join(CK_DIR, `latest-${safeId(project)}.md`)).catch(() => null));
+    const cwd = input.workspace?.current_dir || input.cwd || "";
+    const ck = cwd && (await stat(join(CK_DIR, `latest-${projectKey(cwd)}.md`)).catch(() => null));
     if (ck) {
       const m = Math.round((Date.now() - ck.mtimeMs) / 60000);
       parts.push(`checkpoint ${m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`} ago`);

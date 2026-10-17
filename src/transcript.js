@@ -1,6 +1,7 @@
 // Turns a Claude Code transcript (JSONL) into a compact session checkpoint,
 // deterministically: no LLM call, so it works inside a PreCompact hook.
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
 import { basename } from "node:path";
 import { stripMemoryTags } from "./parse.js";
 
@@ -25,18 +26,8 @@ function promptText(entry) {
   return text;
 }
 
-export function parseTranscript(jsonl) {
-  const entries = jsonl
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => {
-      try {
-        return JSON.parse(l);
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
+/** Incremental parser: feed entries one at a time, so a 250 MB transcript never sits in memory (B27). */
+export function transcriptParser() {
 
   const prompts = [];
   const files = new Map();
@@ -52,7 +43,7 @@ export function parseTranscript(jsonl) {
   let priorSummary = "";
   let cwd = "";
 
-  for (const e of entries) {
+  const add = (e) => {
     cwd ||= e.cwd || "";
     if (e.gitBranch) branch = e.gitBranch;
     if (e.type === "summary" && e.summary) priorSummary = e.summary;
@@ -64,7 +55,8 @@ export function parseTranscript(jsonl) {
         if (b.type !== "tool_result" || !b.is_error) continue;
         const text = typeof b.content === "string" ? b.content : (Array.isArray(b.content) ? b.content.map((x) => x.text || "").join(" ") : "");
         const msg = oneLine(stripMemoryTags(text).text);
-        if (msg) errors.push(`${toolNames.get(b.tool_use_id) || "tool"}: ${msg}`);
+        if (msg) errors.push(`${toolNames.get(b.tool_use_id) || "tool"}: ${msg.slice(0, 300)}`);
+        if (errors.length > 100) errors.splice(0, 50);
       }
       // TaskCreate results say "Task #N created…": use the real id if it differs from our provisional one.
       for (const b of blocks(e.message)) {
@@ -78,7 +70,7 @@ export function parseTranscript(jsonl) {
         }
       }
     }
-    if (e.type !== "assistant") continue;
+    if (e.type !== "assistant") return;
     for (const b of blocks(e.message)) {
       if (b.type === "text" && b.text.trim()) lastAssistant = stripMemoryTags(b.text).text;
       if (b.type !== "tool_use") continue;
@@ -99,11 +91,38 @@ export function parseTranscript(jsonl) {
         if (t && input.status === "deleted") tasks.delete(String(input.taskId));
         else if (t && input.status) t.status = input.status;
       }
-      if (b.name === "Bash" && input.command) commands.push(oneLine(input.command));
+      if (b.name === "Bash" && input.command) {
+        commands.push(oneLine(input.command).slice(0, 300));
+        if (commands.length > 200) commands.splice(0, 100);
+      }
     }
-  }
-  if (tasks.size) todos = [...tasks.values()];
-  return { prompts, files, commands, todos, lastAssistant, priorSummary, cwd, branch, errors };
+  };
+  const result = () => {
+    return { prompts, files, commands: commands.slice(-50), todos: tasks.size ? [...tasks.values()] : todos, lastAssistant, priorSummary, cwd, branch, errors: errors.slice(-20) };
+  };
+  return {
+    add,
+    result,
+    line(l) {
+      if (!l) return;
+      try {
+        add(JSON.parse(l));
+      } catch {}
+    },
+  };
+}
+
+export function parseTranscript(jsonl) {
+  const p = transcriptParser();
+  for (const l of jsonl.split("\n")) p.line(l);
+  return p.result();
+}
+
+export async function parseTranscriptFile(path) {
+  const p = transcriptParser();
+  const rl = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
+  for await (const l of rl) p.line(l);
+  return p.result();
 }
 
 /** Renders a checkpoint that fits a token budget (~4 chars per token). */
@@ -148,5 +167,5 @@ export function renderCheckpoint(t, { sessionId = "", budgetTokens = 900 } = {})
 }
 
 export async function checkpointFromFile(path, opts) {
-  return renderCheckpoint(parseTranscript(await readFile(path, "utf8")), opts);
+  return renderCheckpoint(await parseTranscriptFile(path), opts);
 }

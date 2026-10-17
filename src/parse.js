@@ -33,6 +33,7 @@ export const folder = (path) => (path.includes("/") ? path.split("/")[0] : "");
 
 /** Parses a file into entity metadata plus retrievable chunks. */
 export function parseFile(path, content, { maxChars = 700 } = {}) {
+  content = content.replace(/\r\n?/g, "\n"); // B2: files edited on Windows
   const { meta, body, bodyOffset } = parseFrontmatter(content);
   const name = meta.name || stem(path);
   const title = meta.title || name;
@@ -68,7 +69,10 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
       heading = h[1].trim();
       return;
     }
-    if (!buf.length) startLine = bodyOffset + i + 1;
+    if (!buf.length) {
+      if (!line.trim()) return; // B1: a chunk's ref must point at content, not a blank line
+      startLine = bodyOffset + i + 1;
+    }
     const len = buf.reduce((n, l) => n + l.length + 1, 0);
     if (len + line.length > maxChars && buf.length) {
       flush();

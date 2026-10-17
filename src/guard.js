@@ -59,3 +59,20 @@ export function scan(text) {
   }
   return findings;
 }
+
+/**
+ * B24: automatic captures (checkpoints from hooks) redact instead of refusing, so one pasted key doesn't
+ * cost the whole checkpoint. Explicit saves (remember) still refuse, so nothing is silently altered.
+ */
+export function redact(text) {
+  let out = text;
+  let count = 0;
+  for (const { kind, re, check } of RULES) {
+    out = out.replace(re, (m) => {
+      if (check && !check(m)) return m;
+      count++;
+      return `[redacted:${kind}]`;
+    });
+  }
+  return { text: out, count };
+}

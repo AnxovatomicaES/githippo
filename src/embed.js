@@ -8,8 +8,9 @@
 //   dup: same fact reworded · related: same subject, maybe updated · strong: confident routing · floor: weakest useful hit
 export const PROFILES = {
   "Xenova/paraphrase-multilingual-MiniLM-L12-v2": { dup: 0.92, related: 0.55, conflict: 0.8, strong: 0.4, floor: 0.25, calibrated: true },
-  "Xenova/multilingual-e5-small": { dup: 0.96, related: 0.86, conflict: 0.9, strong: 0.8, floor: 0.76, calibrated: true },
-  "Xenova/multilingual-e5-base": { dup: 0.96, related: 0.86, conflict: 0.9, strong: 0.8, floor: 0.75, calibrated: true },
+  // e5: only score ranges were measured (docs/calibration.md), not pair thresholds, and they barely separate. Not recommended.
+  "Xenova/multilingual-e5-small": { dup: 0.96, related: 0.86, conflict: 0.9, strong: 0.8, floor: 0.76, calibrated: false },
+  "Xenova/multilingual-e5-base": { dup: 0.96, related: 0.86, conflict: 0.9, strong: 0.8, floor: 0.75, calibrated: false },
   hash: { dup: 0.93, related: 0.7, conflict: 0.7, strong: 0.45, floor: 0.3, calibrated: false }, // offline/test stand-in
   default: { dup: 0.92, related: 0.6, conflict: 0.82, strong: 0.45, floor: 0.3, calibrated: false },
 };
@@ -23,14 +24,15 @@ const normalize = (v) => {
 };
 
 export function localEmbedder(model = DEFAULT_LOCAL_MODEL) {
-  let extractor;
-  const load = async () => {
-    if (!extractor) {
-      const { pipeline } = await import("@huggingface/transformers");
-      extractor = await pipeline("feature-extraction", model, { dtype: "q8" });
-    }
-    return extractor;
-  };
+  // B17: cache the loading promise, so concurrent first calls share one model load. A failed load can be retried.
+  let loading;
+  const load = () =>
+    (loading ??= import("@huggingface/transformers")
+      .then(({ pipeline }) => pipeline("feature-extraction", model, { dtype: "q8" }))
+      .catch((e) => {
+        loading = undefined;
+        throw e;
+      }));
   // e5 models expect role prefixes.
   const prefix = (kind) => (/e5/i.test(model) ? (kind === "query" ? "query: " : "passage: ") : "");
   return {

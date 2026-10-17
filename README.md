@@ -19,11 +19,11 @@
 Long-term memory for Claude and any MCP client, stored as plain Markdown in **your own private GitHub repo**. Hybrid semantic search, a knowledge graph, auto-memory, compaction survival, and about 46% less per-turn overhead than a naive memory server. Every memory is a git commit you can read, diff and revert.
 
 ```bash
-npx -y github:AnxovatomicaES/githippo#v3.1.2 demo     # try it in 30 seconds, no repo or token
-npm i -g github:AnxovatomicaES/githippo#v3.1.2 && githippo install
+npx -y github:AnxovatomicaES/githippo#v3.1.3 demo     # try it in 30 seconds, no repo or token
+npm i -g github:AnxovatomicaES/githippo#v3.1.3 && githippo install
 ```
 
-Or as a Claude Code plugin: `/plugin marketplace add AnxovatomicaES/githippo` then `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md).
+Or as a Claude Code plugin: install githippo globally first (the plugin's hooks call the `githippo` command and stay silent if it's missing, so they never slow a prompt), then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md).
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -117,7 +117,7 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 <details><summary><b>Claude Code</b> (full experience: hooks + MCP)</summary>
 
 ```bash
-npm i -g github:AnxovatomicaES/githippo#v3.1.2
+npm i -g github:AnxovatomicaES/githippo#v3.1.3
 githippo install        # asks for repo + token, writes ~/.githippo/config.json (600), adds hooks
 claude mcp add githippo --scope user -- githippo serve
 githippo init           # seeds core.md, index.md, inbox.md
@@ -134,7 +134,7 @@ githippo doctor         # verifies everything, including that your repo is priva
   "mcpServers": {
     "githippo": {
       "command": "npx",
-      "args": ["-y", "github:AnxovatomicaES/githippo#v3.1.2", "serve"],
+      "args": ["-y", "github:AnxovatomicaES/githippo#v3.1.3", "serve"],
       "env": { "GITHUB_TOKEN": "github_pat_...", "MEMORY_REPO": "you/my-memory" }
     }
   }
@@ -204,7 +204,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 ## Develop
 
 ```bash
-npm ci && npm test      # 42 tests: unit, hooks, adopted features, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 62 tests: unit, hooks, adopted features, bug regressions, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 

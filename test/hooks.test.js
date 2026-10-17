@@ -69,7 +69,7 @@ test("PreCompact saves locally + to repo; SessionStart(compact) injects the stat
   await writeFile(tp, transcript);
   const { brain, gh } = setup();
   await preCompact({ session_id: "sess-1", transcript_path: tp, cwd: "/Users/m/code/johnny" }, { brain });
-  assert.ok([...gh.files.keys()].some((k) => k.startsWith("memory/sessions/johnny-sess-1")));
+  assert.ok([...gh.files.keys()].some((k) => /^memory\/sessions\/johnny-[0-9a-f]{6}-sess-1/.test(k)));
 
   const out = JSON.parse(await sessionStart({ session_id: "sess-1", source: "compact", cwd: "/Users/m/code/johnny" }));
   const ctx = out.hookSpecificOutput.additionalContext;

@@ -2,11 +2,10 @@
   "mcpServers": {
     "githippo": {
       "type": "stdio",
-      "command": "npx",
+      "command": "sh",
       "args": [
-        "-y",
-        "github:AnxovatomicaES/githippo#v3.1.2",
-        "serve"
+        "-c",
+        "command -v githippo >/dev/null 2>&1 && exec githippo serve || exec npx -y github:AnxovatomicaES/githippo#v3.1.3 serve"
       ]
     }
   }

@@ -2,7 +2,7 @@
 // supersession, forget, session checkpoints, consolidation, graph, time travel.
 import { MemoryError, MAX_FILE_BYTES, normalizePath } from "./store.js";
 import { factLines, hash, parseFile, plain, stamp, stampOf, stem, stripMemoryTags } from "./parse.js";
-import { scan } from "./guard.js";
+import { redact, scan } from "./guard.js";
 import { cosine } from "./embed.js";
 import { tokenize } from "./search.js";
 
@@ -33,8 +33,13 @@ export function salientDiffers(a, b) {
 }
 
 export const approxTokens = (s) => Math.ceil(s.length / 4);
+// B3: names with no Latin letters ("王伟") still get a stable, valid file name.
 const slugify = (s) =>
-  s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+  s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) ||
+  `entity-${hash(s).slice(0, 8)}`;
+// B4: anything user-supplied that lands in frontmatter is one line and can't open a new key.
+const oneLine = (s) => String(s).replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+const yamlValue = (s) => (/[:#\[\]{}"']|^[-?&*!|>%@`]/.test(s) ? `"${s.replace(/"/g, "'")}"` : s);
 const today = () => new Date().toISOString().slice(0, 10);
 const bare = (l) => l.replace(/^\s*[-*]\s+/, "").trim();
 
@@ -62,11 +67,11 @@ function frontmatter({ name, title, kind, description, aliases = [] }) {
   return [
     "---",
     `name: ${name}`,
-    `title: ${title}`,
+    `title: ${yamlValue(oneLine(title))}`,
     `type: ${kind}`,
-    `description: ${description}`,
+    `description: ${yamlValue(oneLine(description))}`,
     `created: ${today()}`,
-    `aliases: [${aliases.join(", ")}]`,
+    `aliases: [${aliases.map((a) => oneLine(a).replace(/[,\[\]]/g, " ")).join(", ")}]`,
     "---",
     "",
     "",
@@ -74,8 +79,8 @@ function frontmatter({ name, title, kind, description, aliases = [] }) {
 }
 
 export class Brain {
-  constructor({ store, index, llm = null, coreBudgetTokens = 400 }) {
-    Object.assign(this, { store, index, llm, coreBudgetTokens });
+  constructor({ store, index, llm = null, coreBudgetTokens = 400, decayActiveDays = 20 }) {
+    Object.assign(this, { store, index, llm, coreBudgetTokens, decayActiveDays });
     this.core = "";
   }
 
@@ -105,7 +110,8 @@ export class Brain {
     const keys = lines.map((l) => `line:${hash(l)}`);
     const missing = [...new Set(keys.filter((k) => !this.index.vectors.has(k)))];
     if (missing.length) {
-      const vecs = await emb.embed(missing.map((k) => lines[keys.indexOf(k)]), "document");
+      const vecs = await this.index.safeEmbed(missing.map((k) => lines[keys.indexOf(k)]), "document");
+      if (!vecs) return null; // B16: fall back to token overlap
       missing.forEach((k, i) => this.index.vectors.set(k, vecs[i]));
     }
     return keys.map((k) => this.index.vectors.get(k));
@@ -122,6 +128,7 @@ export class Brain {
 
   // ---------- recall ----------
   async recall(query, { budget = 1000, scope = "", mode = "auto" } = {}) {
+    budget = Math.min(8000, Math.max(100, Number.isFinite(+budget) ? +budget : 1000)); // B14
     const hits = await this.index.search(query, { k: mode === "brief" ? 12 : 8, prefix: scope });
     if (mode === "brief") {
       return {
@@ -172,8 +179,8 @@ export class Brain {
     const mentioned = this.graph.mentions(fact).map((m) => m.id);
     const hits = await this.index.search(fact, { k: 5, expand: false });
     if (mentioned.length) {
-      const best = hits.find((h) => mentioned.includes(stem(h.path)));
-      const id = best ? stem(best.path) : mentioned[0];
+      const best = hits.find((h) => mentioned.includes(this.graph.idOf(h.path)));
+      const id = best ? this.graph.idOf(best.path) : mentioned[0];
       return { path: this.graph.nodes.get(id).path, reason: `mentions:${id}` };
     }
     const strong = hits.find((h) => ((h.signals.cosine ?? 0) >= this.t.strong || (h.signals.bm25 ?? 0) >= 3) && !SYSTEM_FILES.has(h.path));
@@ -181,7 +188,22 @@ export class Brain {
     return { path: "inbox.md", reason: "inbox", create: { title: "Inbox", kind: "inbox" } };
   }
 
+  /** B15: if another session/surface changed the file between our read and write, re-sync once and redo. */
+  async retrying(fn) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!(e instanceof MemoryError) || !/Version conflict|already exists|sha|409/.test(e.message)) throw e;
+      await this.index.sync({ maxAgeMs: 0 });
+      return fn();
+    }
+  }
+
   async remember(fact, opts = {}) {
+    return this.retrying(() => this._remember(fact, opts));
+  }
+
+  async _remember(fact, opts = {}) {
     const { text: visible, removed } = stripMemoryTags(fact);
     const clean = bare(visible).replace(/\s+/g, " ");
     if (clean.length < 3) throw new MemoryError(removed ? "Nothing to save: the fact was entirely inside <private> tags." : "Fact is empty.");
@@ -210,7 +232,7 @@ export class Brain {
     if (dup) return { status: "duplicate", path: dup.path, existing: plain(dup.line) };
     const related = scored.filter((s) => s.sim >= this.t.related).slice(0, 2);
 
-    const { text, linked } = this.graph.autoLink(clean, [stem(target.path)]);
+    const { text, linked } = this.graph.autoLink(clean, [this.graph.idOf(target.path)]);
     const line = `- ${text}${stamp()}`;
     let next;
     if (!content) {
@@ -245,7 +267,7 @@ export class Brain {
     const idx = lines.findIndex((l, i) => (historyAt < 0 || i < historyAt) && /^\s*[-*]\s+/.test(l) && tokenize(plain(bare(l))).join(" ") === want);
     if (idx < 0) throw new MemoryError(`Line to replace not found in ${path}.`);
     const old = plain(bare(lines[idx]));
-    const { text, linked } = this.graph.autoLink(newFact, [stem(path)]);
+    const { text, linked } = this.graph.autoLink(newFact, [this.graph.idOf(path)]);
     lines[idx] = `- ${text}${stamp()}`;
     let next = lines.join("\n").replace(/\n*$/, "\n");
     const record = `- ~~${old}~~ (until ${today()})`;
@@ -272,7 +294,11 @@ export class Brain {
     return { status: "pinned", path: "core.md", core_tokens: approxTokens(this.core) };
   }
 
-  async forget(text, { path } = {}) {
+  async forget(text, opts = {}) {
+    return this.retrying(() => this._forget(text, opts));
+  }
+
+  async _forget(text, { path } = {}) {
     await this.index.sync();
     const want = tokenize(plain(bare(text))).join(" ");
     let candidates = path ? [normalizePath(path)] : [];
@@ -298,6 +324,7 @@ export class Brain {
   }
 
   async addToIndex(path, description) {
+    if (SYSTEM_FILES.has(path)) return; // B13
     const idx = this.file("index.md");
     if (!idx || idx.content.includes(`[[${stem(path)}`)) return;
     const next = `${idx.content.replace(/\n*$/, "\n")}- [[${stem(path)}]] — ${description}\n`;
@@ -329,10 +356,10 @@ export class Brain {
     return { status: "checkpointed", path, tokens: approxTokens(content) };
   }
 
-  async saveRawCheckpoint(path, content) {
-    assertSafe(content);
+  async saveRawCheckpoint(path, content, op = "precompact") {
+    const { text } = redact(content); // B24
     const existing = await this.store.read(path);
-    return this.store.write(path, content, existing ? existing.version : "new", "precompact");
+    return this.store.write(path, text, existing ? existing.version : "new", op);
   }
 
   // ---------- consolidation ----------
@@ -359,7 +386,7 @@ export class Brain {
     return stale;
   }
 
-  async maintain({ reindex = false, rewrite = null, decay = false, active_days = 20 } = {}) {
+  async maintain({ reindex = false, rewrite = null, decay = false, active_days = this.decayActiveDays } = {}) {
     await this.index.sync({ maxAgeMs: 0 });
     const files = [...this.index.files.values()].filter((f) => !f.path.startsWith("sessions/"));
     const all = files.flatMap((f) => factLines(f.body).map((line) => ({ path: f.path, line: plain(line) }))).slice(0, 500);

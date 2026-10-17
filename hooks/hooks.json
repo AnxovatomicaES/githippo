@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v githippo >/dev/null 2>&1 && githippo hook precompact || npx -y github:AnxovatomicaES/githippo#v3.1.2 hook precompact",
+            "command": "command -v githippo >/dev/null 2>&1 && githippo hook precompact || true",
             "timeout": 20
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v githippo >/dev/null 2>&1 && githippo hook postcompact || npx -y github:AnxovatomicaES/githippo#v3.1.2 hook postcompact",
+            "command": "command -v githippo >/dev/null 2>&1 && githippo hook postcompact || true",
             "timeout": 15
           }
         ]
@@ -28,8 +28,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v githippo >/dev/null 2>&1 && githippo hook session-start || npx -y github:AnxovatomicaES/githippo#v3.1.2 hook session-start",
+            "command": "command -v githippo >/dev/null 2>&1 && githippo hook session-start || true",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v githippo >/dev/null 2>&1 && githippo hook session-end || true",
+            "timeout": 20
           }
         ]
       }
@@ -39,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v githippo >/dev/null 2>&1 && githippo hook prompt || npx -y github:AnxovatomicaES/githippo#v3.1.2 hook prompt",
+            "command": "command -v githippo >/dev/null 2>&1 && githippo hook prompt || true",
             "timeout": 5
           }
         ]

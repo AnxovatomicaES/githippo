@@ -8,7 +8,7 @@ import { Brain, assertSafe } from "./brain.js";
 import { fmt, fmtError } from "./format.js";
 import { loadConfig } from "./config.js";
 
-export const VERSION = "3.1.2";
+export const VERSION = "3.1.3";
 
 /** Server instructions live in the system prompt, so they survive context compaction. Core memory rides along. */
 export function instructions(core) {
@@ -42,7 +42,7 @@ export function createBrain(env = process.env, { source = "githippo" } = {}) {
     source,
   });
   const index = new MemoryIndex(store, createEmbedder(cfg), { cacheDir: cfg.CACHE_DIR });
-  return new Brain({ store, index, llm: createLLM(cfg), coreBudgetTokens: cfg.CORE_BUDGET_TOKENS });
+  return new Brain({ store, index, llm: createLLM(cfg), coreBudgetTokens: cfg.CORE_BUDGET_TOKENS, decayActiveDays: cfg.DECAY_ACTIVE_DAYS });
 }
 
 const tool = (render) => async (fnResult) => {

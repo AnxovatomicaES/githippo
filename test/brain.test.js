@@ -9,8 +9,10 @@ test("recall: entity pack, plain links, budget, brief mode", async () => {
   const r = await brain.recall("John");
   assert.match(r.context, /^§ people\/john-grecu\.md — Chief Operating Officer/);
   assert.doesNotMatch(r.context, /\[\[/);
-  const tiny = await brain.recall("wake word", { budget: 30 });
-  assert.ok(tiny.tokens <= 32, `tokens ${tiny.tokens}`);
+  const tiny = await brain.recall("wake word", { budget: 100 });
+  assert.ok(tiny.tokens <= 102, `tokens ${tiny.tokens}`);
+  const clamped = await brain.recall("wake word", { budget: 0 });
+  assert.ok(clamped.tokens > 0, "budget 0 is clamped up, not silently empty");
   const brief = await brain.recall("wake word", { mode: "brief" });
   assert.match(brief.hits[0].ref, /^projects\/johnny\.md:\d+$/);
 });

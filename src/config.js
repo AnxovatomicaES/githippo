@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const HOME_DIR = process.env.GITHIPPO_HOME || join(homedir(), ".githippo");
+// B11: "~/…" in env or config means the home directory, not a folder literally named "~".
+export const expandHome = (p) => (typeof p === "string" && /^~(?=$|\/)/.test(p) ? join(homedir(), p.slice(1)) : p);
+export const HOME_DIR = expandHome(process.env.GITHIPPO_HOME) || join(homedir(), ".githippo");
 export const CONFIG_FILE = join(HOME_DIR, "config.json");
 
 const KEYS = [
@@ -20,8 +22,10 @@ export function loadConfig(env = process.env) {
   } catch {}
   const cfg = {};
   for (const k of KEYS) if (env[k] ?? file[k]) cfg[k] = env[k] ?? file[k];
-  cfg.CACHE_DIR ??= join(HOME_DIR, "cache");
-  cfg.CORE_BUDGET_TOKENS = Number(cfg.CORE_BUDGET_TOKENS || 400);
+  cfg.CACHE_DIR = expandHome(cfg.CACHE_DIR) || join(HOME_DIR, "cache");
+  const num = (v, d, lo, hi) => (Number.isFinite(+v) && v !== "" && v != null ? Math.min(hi, Math.max(lo, +v)) : d);
+  cfg.CORE_BUDGET_TOKENS = num(cfg.CORE_BUDGET_TOKENS, 400, 50, 4000);
+  cfg.DECAY_ACTIVE_DAYS = num(cfg.DECAY_ACTIVE_DAYS, 20, 1, 3650);
   return cfg;
 }
 

@@ -8,14 +8,24 @@ import { createInterface } from "node:readline/promises";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildServer, createBrain, instructions, VERSION } from "./server.js";
 import { loadConfig, CONFIG_FILE, HOME_DIR } from "./config.js";
-import { preCompact, postCompact, sessionStart, promptRecall, readStdin, cleanupOld, statusLine } from "./hooks.js";
+import { preCompact, postCompact, sessionEnd, sessionStart, promptRecall, readStdin, cleanupOld, statusLine } from "./hooks.js";
 import { createHttpApp } from "./http.js";
 
 const [cmd = "serve", ...rest] = process.argv.slice(2);
 const timeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
 
+/** B26: a missing or bad config is a one-line instruction, not a stack trace. */
+function brainOrExit(source) {
+  try {
+    return createBrain(process.env, { source });
+  } catch (e) {
+    console.error(`githippo is not configured: ${e.message}\nRun \`githippo install\` (or set GITHUB_TOKEN and MEMORY_REPO).`);
+    process.exit(1);
+  }
+}
+
 async function serve() {
-  const brain = createBrain(process.env, { source: "local" });
+  const brain = brainOrExit("local");
   await timeout(brain.loadCore().catch(() => {}), 4000); // core goes into the instructions
   await buildServer(brain).connect(new StdioServerTransport());
   brain.index.sync().catch((e) => console.error("[githippo] index:", e.message));
@@ -23,7 +33,7 @@ async function serve() {
 
 async function http() {
   const cfg = loadConfig();
-  const brain = createBrain(process.env, { source: "remote" });
+  const brain = brainOrExit("remote");
   await timeout(brain.loadCore().catch(() => {}), 5000);
   const port = Number(process.env.PORT || 8787);
   createHttpApp(brain, { secret: cfg.MCP_SECRET }).listen(port, () => {
@@ -44,6 +54,8 @@ async function hook(event) {
       await cleanupOld();
     } else if (event === "postcompact") {
       out = await postCompact(input, { brain: repoBrain() });
+    } else if (event === "session-end") {
+      out = await sessionEnd(input, { brain: repoBrain() });
     } else if (event === "session-start") {
       out = await sessionStart(input);
     } else if (event === "prompt") {
@@ -67,6 +79,7 @@ async function statusline() {
 const HOOKS = {
   PreCompact: "githippo hook precompact",
   PostCompact: "githippo hook postcompact",
+  SessionEnd: "githippo hook session-end",
   SessionStart: "githippo hook session-start",
   UserPromptSubmit: "githippo hook prompt",
 };
@@ -97,16 +110,40 @@ function registerMcp() {
 
 async function install() {
   const configOnly = rest.includes("--config-only");
+  const flag = (name) => {
+    const i = rest.indexOf(`--${name}`);
+    return i >= 0 ? rest[i + 1] : undefined;
+  };
   const cfg = loadConfig();
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const ask = async (q, def) => (await rl.question(`${q}${def ? ` [${def}]` : ""}: `)).trim() || def;
   const file = { ...JSON.parse(await readFile(CONFIG_FILE, "utf8").catch(() => "{}")) };
-  file.MEMORY_REPO = await ask("Memory repo (owner/name, private!)", cfg.MEMORY_REPO);
-  file.GITHUB_TOKEN = (await ask("GitHub fine-grained token (Contents: read/write, this repo only)", cfg.GITHUB_TOKEN ? "keep existing" : "")) === "keep existing" ? cfg.GITHUB_TOKEN : file.GITHUB_TOKEN || (await ask("Token", ""));
-  file.EMBEDDINGS = await ask("Embeddings: local | voyage | none", cfg.EMBEDDINGS || "local");
-  rl.close();
+  const interactive = process.stdin.isTTY;
+  const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
+  const ask = async (q, def, { secret = false } = {}) => {
+    if (!rl) return def;
+    if (secret) {
+      // B19: don't echo the token to the terminal (or into scrollback)
+      const write = rl._writeToOutput?.bind(rl);
+      rl._writeToOutput = (str) => (/\n|\r|:\s*$/.test(str) ? write?.(str) : write?.("*".repeat(str.length)));
+      const a = (await rl.question(`${q}: `)).trim();
+      rl._writeToOutput = write;
+      process.stdout.write("\n");
+      return a || def;
+    }
+    return (await rl.question(`${q}${def ? ` [${def}]` : ""}: `)).trim() || def;
+  };
+  file.MEMORY_REPO = flag("repo") || (await ask("Memory repo (owner/name, private!)", cfg.MEMORY_REPO));
+  // B19: whatever is typed becomes the token; Enter keeps the existing one. Non-interactive: --token-env NAME.
+  const fromEnv = flag("token-env") && process.env[flag("token-env")];
+  const keep = cfg.GITHUB_TOKEN ? ` (Enter keeps the current one, …${cfg.GITHUB_TOKEN.slice(-4)})` : "";
+  file.GITHUB_TOKEN = fromEnv || (await ask(`GitHub fine-grained token${keep}`, cfg.GITHUB_TOKEN, { secret: true }));
+  file.EMBEDDINGS = flag("embeddings") || (await ask("Embeddings: local | voyage | none", cfg.EMBEDDINGS || "local"));
+  rl?.close();
+  if (!/^[\w.-]+\/[\w.-]+$/.test(file.MEMORY_REPO || "") || !file.GITHUB_TOKEN) {
+    console.error(`Missing ${!file.GITHUB_TOKEN ? "token" : "repo"}. Non-interactive use: githippo install --repo owner/name --token-env GITHUB_TOKEN`);
+    process.exit(1);
+  }
   await mkdir(HOME_DIR, { recursive: true });
-  await writeFile(CONFIG_FILE, JSON.stringify(file, null, 2));
+  await writeFile(CONFIG_FILE, JSON.stringify(file, null, 2), { mode: 0o600 });
   await chmod(CONFIG_FILE, 0o600);
 
   if (configOnly) {
@@ -114,13 +151,19 @@ async function install() {
     return;
   }
   const settingsPath = join(homedir(), ".claude", "settings.json");
-  const settings = JSON.parse(await readFile(settingsPath, "utf8").catch(() => "{}"));
+  let settings;
+  try {
+    settings = JSON.parse(await readFile(settingsPath, "utf8").catch(() => "{}"));
+  } catch {
+    console.error(`✗ ${settingsPath} isn't valid JSON, so hooks weren't added. Fix it and run githippo install again.`);
+    process.exit(1);
+  }
   await copyFile(settingsPath, `${settingsPath}.githippo-backup`).catch(() => {});
   settings.hooks ??= {};
   for (const [event, command] of Object.entries(HOOKS)) {
     settings.hooks[event] ??= [];
     const has = settings.hooks[event].some((g) => g.hooks?.some((h) => h.command?.startsWith("githippo hook")));
-    if (!has) settings.hooks[event].push({ hooks: [{ type: "command", command, timeout: event === "PreCompact" ? 15 : 5 }] });
+    if (!has) settings.hooks[event].push({ hooks: [{ type: "command", command, timeout: ["PreCompact", "SessionEnd"].includes(event) ? 20 : 10 }] });
   }
   let status = "kept your existing status line";
   if (!settings.statusLine) {
@@ -167,7 +210,8 @@ async function doctor() {
   await brain.loadCore();
   ok(true, `core memory ~${Math.ceil(brain.core.length / 4)}/${cfg.CORE_BUDGET_TOKENS} tokens`);
   const settings = await readFile(join(homedir(), ".claude", "settings.json"), "utf8").catch(() => "");
-  ok(settings.includes("githippo hook precompact"), "Claude Code compaction hooks installed");
+  const plugin = await readFile(join(homedir(), ".claude", "plugins", "installed_plugins.json"), "utf8").catch(() => "");
+  ok(settings.includes("githippo hook precompact") || plugin.includes("githippo"), "Claude Code hooks installed (settings or plugin)");
 }
 
 /** Try githippo in 30 seconds: no repo, no token (idea from agentmemory's demo). */
@@ -217,6 +261,6 @@ async function bench() {
 const commands = { serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
 if (cmd === "--version" || cmd === "-v") console.log(VERSION);
 else if (!commands[cmd]) {
-  console.log(`githippo ${VERSION}\nusage: githippo [serve|http|hook <precompact|postcompact|session-start|prompt>|statusline|install [--config-only]|init|doctor|demo|bench]`);
+  console.log(`githippo ${VERSION}\nusage: githippo [serve|http|hook <precompact|postcompact|session-start|session-end|prompt>|statusline|install [--config-only] [--repo o/n --token-env VAR]|init|doctor|demo|bench]`);
   process.exit(1);
 } else await commands[cmd]();

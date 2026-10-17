@@ -59,8 +59,14 @@ export class GitHubMemoryStore {
       },
       body: body ? JSON.stringify(body) : undefined,
     });
+    // B8: a 404 on a write means a wrong MEMORY_REPO or a token without access, not "missing file".
+    if (res.status === 404 && method !== "GET") {
+      throw new MemoryError(`GitHub says ${this.repo} doesn't exist or this token can't write to it. Check MEMORY_REPO and the token's repository access.`, { status: 404 });
+    }
     if (res.status === 404) return null;
     const data = await res.json().catch(() => ({}));
+    // B9: a brand-new repo with no commits answers 409 "Git Repository is empty" to tree/commit reads.
+    if (res.status === 409 && method === "GET" && /empty/i.test(data.message || "")) return null;
     if (!res.ok) {
       throw new MemoryError(`GitHub ${method} ${url} failed (${res.status}): ${data.message || "unknown"}`, {
         status: res.status,
