@@ -29,6 +29,33 @@ export const sameVersion = (full, given) =>
   typeof given === "string" && given.length >= 7 && full.startsWith(given);
 export const short = (v) => (v ? v.slice(0, 8) : v);
 
+import { gunzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
+
+const blobSha = (buf) => createHash("sha1").update(`blob ${buf.length}\0`).update(buf).digest("hex");
+
+/** Minimal tar reader (ustar + pax long names), enough for GitHub's repository tarballs. */
+export function* untar(buf) {
+  let off = 0;
+  let longName = null;
+  while (off + 512 <= buf.length) {
+    const h = buf.subarray(off, off + 512);
+    if (h.every((b) => b === 0)) break;
+    const str = (a, b) => h.subarray(a, b).toString("utf8").replace(/\0.*$/s, "");
+    const size = parseInt(str(124, 136).trim() || "0", 8);
+    const type = String.fromCharCode(h[156] || 48);
+    const prefix = str(345, 500);
+    const name = longName || (prefix ? `${prefix}/${str(0, 100)}` : str(0, 100));
+    const body = buf.subarray(off + 512, off + 512 + size);
+    longName = null;
+    if (type === "x") {
+      const m = body.toString("utf8").match(/\d+ path=([^\n]*)\n/);
+      if (m) longName = m[1];
+    } else if (type === "0" || type === "\0") yield { name, body };
+    off += 512 + Math.ceil(size / 512) * 512;
+  }
+}
+
 const b64encode = (s) => Buffer.from(s, "utf8").toString("base64");
 const b64decode = (s) => Buffer.from(s, "base64").toString("utf8");
 
@@ -48,7 +75,10 @@ export class GitHubMemoryStore {
     return encodeURIComponent(this.repoPath(p)).replace(/%2F/g, "/");
   }
 
-  async api(method, url, body) {
+  async api(method, url, body, { conditional = false } = {}) {
+    // Conditional GETs: an unchanged tree answers 304, which is fast and free under GitHub's rate limit.
+    this.etags ??= new Map();
+    const cached = conditional ? this.etags.get(url) : null;
     const res = await this.fetch(`https://api.github.com/repos/${this.repo}${url}`, {
       method,
       headers: {
@@ -56,9 +86,15 @@ export class GitHubMemoryStore {
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(cached ? { "If-None-Match": cached.etag } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });
+    if (res.status === 304 && cached) return cached.data;
+    if ((res.status === 403 || res.status === 429) && res.headers?.get?.("x-ratelimit-remaining") === "0") {
+      const reset = Number(res.headers.get("x-ratelimit-reset")) * 1000;
+      throw new MemoryError(`GitHub rate limit reached; resets at ${new Date(reset).toISOString().slice(11, 16)} UTC.`, { status: res.status });
+    }
     // B8: a 404 on a write means a wrong MEMORY_REPO or a token without access, not "missing file".
     if (res.status === 404 && method !== "GET") {
       throw new MemoryError(`GitHub says ${this.repo} doesn't exist or this token can't write to it. Check MEMORY_REPO and the token's repository access.`, { status: 404 });
@@ -67,12 +103,42 @@ export class GitHubMemoryStore {
     const data = await res.json().catch(() => ({}));
     // B9: a brand-new repo with no commits answers 409 "Git Repository is empty" to tree/commit reads.
     if (res.status === 409 && method === "GET" && /empty/i.test(data.message || "")) return null;
+    if (conditional && res.ok && res.headers?.get?.("etag")) this.etags.set(url, { etag: res.headers.get("etag"), data });
     if (!res.ok) {
       throw new MemoryError(`GitHub ${method} ${url} failed (${res.status}): ${data.message || "unknown"}`, {
         status: res.status,
       });
     }
     return data;
+  }
+
+  /**
+   * Cold start for big vaults: one tarball download instead of one API call per file. Contents are kept by
+   * blob SHA, so readVersion() can serve any file whose version matches without another request.
+   */
+  async prefetch() {
+    const res = await this.fetch(`https://api.github.com/repos/${this.repo}/tarball/${encodeURIComponent(this.branch)}`, {
+      headers: { Authorization: `Bearer ${this.token}`, "X-GitHub-Api-Version": "2022-11-28" },
+    });
+    if (!res.ok) return 0;
+    this.blobs ??= new Map();
+    let n = 0;
+    for (const { name, body } of untar(gunzipSync(Buffer.from(await res.arrayBuffer())))) {
+      if (!name.endsWith(".md")) continue;
+      this.blobs.set(blobSha(body), body.toString("utf8"));
+      n++;
+    }
+    return n;
+  }
+
+  /** read() when the caller already knows the version it wants (index sync): served from the prefetch if possible. */
+  async readVersion(path, version) {
+    const hit = this.blobs?.get(version);
+    if (hit !== undefined) {
+      this.blobs.delete(version);
+      return { path: normalizePath(path), content: hit, version };
+    }
+    return this.read(path);
   }
 
   async read(path, ref = this.branch) {
@@ -85,7 +151,7 @@ export class GitHubMemoryStore {
 
   /** Lists memory files with their blob SHA (used for incremental indexing). */
   async list(prefix = "") {
-    const tree = await this.api("GET", `/git/trees/${encodeURIComponent(this.branch)}?recursive=1`);
+    const tree = await this.api("GET", `/git/trees/${encodeURIComponent(this.branch)}?recursive=1`, null, { conditional: true });
     if (!tree) return [];
     const base = this.root ? `${this.root}/` : "";
     const want = prefix.replace(/^\/+/, "");
@@ -105,23 +171,29 @@ export class GitHubMemoryStore {
     if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) {
       throw new MemoryError(`${p} would exceed ${MAX_FILE_BYTES} bytes. Run memory_consolidate or split it.`);
     }
-    const current = await this.read(p);
-    if (ifVersion === "new" && current) {
-      throw new MemoryError(`${p} already exists. Read it and pass its version.`, { current });
-    }
-    if (ifVersion !== "new") {
+    // Fast path (one API call): with a full version or "new", let GitHub enforce it; it answers 409/422 if
+    // the file changed or already exists, and only then do we read to report the conflict.
+    const full = ifVersion === "new" || /^[0-9a-f]{40}$/.test(ifVersion || "");
+    let current = full ? undefined : await this.read(p);
+    if (!full) {
       if (!current) throw new MemoryError(`${p} does not exist. Use if_version "new".`);
-      if (!sameVersion(current.version, ifVersion)) {
-        throw new MemoryError(`Version conflict on ${p}: file changed since you read it.`, { current });
-      }
+      if (!sameVersion(current.version, ifVersion)) throw new MemoryError(`Version conflict on ${p}: file changed since you read it.`, { current });
     }
-    const res = await this.api("PUT", `/contents/${this.enc(p)}`, {
-      message: this.commitMessage(`memory: ${op} ${p}`, op),
-      content: b64encode(content),
-      branch: this.branch,
-      ...(current ? { sha: current.version } : {}),
-    });
-    return { path: p, version: res.content.sha, bytes: Buffer.byteLength(content, "utf8") };
+    try {
+      const res = await this.api("PUT", `/contents/${this.enc(p)}`, {
+        message: this.commitMessage(`memory: ${op} ${p}`, op),
+        content: b64encode(content),
+        branch: this.branch,
+        ...(ifVersion === "new" ? {} : { sha: current ? current.version : ifVersion }),
+      });
+      return { path: p, version: res.content.sha, bytes: Buffer.byteLength(content, "utf8") };
+    } catch (e) {
+      if (!(e instanceof MemoryError) || ![409, 422].includes(e.status)) throw e;
+      current = await this.read(p);
+      if (ifVersion === "new" && current) throw new MemoryError(`${p} already exists. Read it and pass its version.`, { current });
+      if (!current) throw new MemoryError(`${p} does not exist. Use if_version "new".`);
+      throw new MemoryError(`Version conflict on ${p}: file changed since you read it.`, { current });
+    }
   }
 
   async append(path, text, ifVersion, op = "append") {

@@ -66,6 +66,13 @@ export const QUERIES = [
   ["who is in charge of social media", "people/lucia-ferrer.md", "en→es"],
   ["do we work from home on Fridays", "topics/oficina.md", "en→es"],
   ["when should drafts reach the marketing director", "people/lucia-ferrer.md", "en→es"],
+  // other languages → English notes (added in v3.4 to measure multilingual support; no thresholds tuned on them)
+  ["Quelle est la couleur principale de la marque ?", "topics/brand.md", "fr/de/pt/it→en"],
+  ["Combien de temps gardons-nous les factures ?", "projects/billing-v2.md", "fr/de/pt/it→en"],
+  ["Wo läuft die Produktionsumgebung?", "topics/infrastructure.md", "fr/de/pt/it→en"],
+  ["Wer genehmigt Nachrichten an Kunden?", "people/diego-alvarez.md", "fr/de/pt/it→en"],
+  ["Qual é a versão mínima do iOS suportada?", "projects/mobile-app.md", "fr/de/pt/it→en"],
+  ["Possiamo usare i dati dei clienti negli strumenti di IA?", "decisions/2026-ai-policy.md", "fr/de/pt/it→en"],
   // identifiers and code
   ["handleRefundWebhook", "projects/billing-v2.md", "code"],
   ["refund webhook stub", "projects/billing-v2.md", "code"],

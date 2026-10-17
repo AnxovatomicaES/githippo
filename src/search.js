@@ -8,8 +8,16 @@ import { KnowledgeGraph } from "./graph.js";
 import { cosine } from "./embed.js";
 import { Usage } from "./usage.js";
 
+// Function words for EN, ES, FR, DE, PT, IT. They carry no topic, so they shouldn't drive keyword ranking.
 const STOP = new Set(
-  "the a an and or of to in on for with is are was were be by at as it this that from de la el los las y o en un una por con para que del al se es su lo".split(" "),
+  [
+    "the a an and or of to in on for with is are was were be by at as it this that from do does what who when where how which",
+    "de la el los las y o en un una por con para que del al se es su lo qué cuál cuándo dónde quién cómo",
+    "le les des et ou du au aux dans sur pour avec est sont ce cette qui quoi quand où comment quel quelle",
+    "der die das den dem und oder von zu im in auf für mit ist sind ein eine was wer wann wo wie welche",
+    "o os as um uma e ou do da dos das no na em para com é são que quem quando onde como qual",
+    "il lo gli i e o di da in su per con è sono che chi quando dove come quale",
+  ].join(" ").split(" "),
 );
 
 /**
@@ -157,9 +165,12 @@ export class MemoryIndex {
       const live = new Set(listing.map((f) => f.path));
       for (const p of this.files.keys()) if (!live.has(p)) this.files.delete(p);
       const changed = listing.filter((f) => this.files.get(f.path)?.version !== f.version);
+      // Many changes (cold start): one tarball instead of one request per file, when the store supports it.
+      if (changed.length > 20 && this.store.prefetch) await this.store.prefetch().catch(() => 0);
+      const read = (f) => (this.store.readVersion ? this.store.readVersion(f.path, f.version) : this.store.read(f.path));
       await Promise.all(
         changed.map(async (f) => {
-          const file = await this.store.read(f.path);
+          const file = await read(f);
           if (file) this.files.set(f.path, { ...parseFile(f.path, file.content), version: file.version, content: file.content });
         }),
       );

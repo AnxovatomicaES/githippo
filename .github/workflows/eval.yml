@@ -34,6 +34,8 @@ jobs:
             GITHIPPO_HOME="$RUNNER_TEMP/gh" node src/cli.js eval --embeddings local --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);console.log(JSON.stringify({misses:r.misses,routeMisses:r.routeMisses,dedupeMisses:r.dedupeMisses},null,1))})'
             echo '```'
             echo '</details>'
+            echo
+            echo "**Memory:** $(GITHIPPO_HOME="$RUNNER_TEMP/gh" EMBED_IDLE_MS=3000 node --expose-gc eval/memory.js)"
           } > eval.md
           cat eval.md
       - name: Post results to issue #3

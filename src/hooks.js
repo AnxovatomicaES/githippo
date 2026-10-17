@@ -177,7 +177,7 @@ export async function sessionStart(input) {
 export function isTrivialPrompt(p = "") {
   const t = p.trim();
   if (t.length < 12 || t.startsWith("/")) return true;
-  return /^(y(es)?|no|ok(ay)?|sure|continue|go( on| ahead)?|next|thanks?|thank you|lgtm|do it|proceed|retry|again|s[ií]|vale|dale|gracias|sigue|contin[uú]a|adelante)[.!\s]*$/i.test(t);
+  return /^(y(es)?|no|ok(ay)?|sure|continue|go( on| ahead)?|next|thanks?|thank you|lgtm|do it|proceed|retry|again|s[ií]|vale|dale|gracias|sigue|contin[uú]a|adelante|oui|merci|d'accord|vas-y|continue[sz]|ja|nein|danke|weiter|genau|sim|não|obrigad[oa]|continua|grazie|va bene|avanti)[.!\s]*$/i.test(t);
 }
 
 export async function promptRecall(input, { cacheDir, maxTokens = 300 } = {}) {

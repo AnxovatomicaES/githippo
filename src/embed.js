@@ -68,18 +68,41 @@ const normalize = (v) => {
 
 export function localEmbedder(model = DEFAULT_LOCAL_MODEL) {
   // B17: cache the loading promise, so concurrent first calls share one model load. A failed load can be retried.
+  // Idle unload: after EMBED_IDLE_MS (default 10 min) without use the model is released, so a memory
+  // server that sits idle all day doesn't hold ~500 MB; the next query reloads it from disk in ~1 s.
   let loading;
-  const load = () =>
-    (loading ??= importTransformers()
+  let idleTimer;
+  const idleMs = Number(process.env.EMBED_IDLE_MS || 600_000);
+  const touch = () => {
+    clearTimeout(idleTimer);
+    if (idleMs > 0) {
+      idleTimer = setTimeout(async () => {
+        const p = loading;
+        loading = undefined;
+        try {
+          await (await p)?.dispose?.();
+        } catch {}
+        globalThis.gc?.();
+      }, idleMs);
+      idleTimer.unref?.();
+    }
+  };
+  const load = () => {
+    touch();
+    return (loading ??= importTransformers()
       .then(({ pipeline }) => pipeline("feature-extraction", model, { dtype: "q8" }))
       .catch((e) => {
         loading = undefined;
         throw e;
       }));
+  };
   // e5 models expect role prefixes.
   const prefix = (kind) => (/e5/i.test(model) ? (kind === "query" ? "query: " : "passage: ") : "");
   return {
     id: `local:${model}`,
+    get loaded() {
+      return !!loading;
+    },
     profile: PROFILES[model] || PROFILES.default,
     async embed(texts, kind = "document") {
       const ex = await load();
