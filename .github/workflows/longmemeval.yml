@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: ${{ fromJSON(inputs.variants || '["--embeddings none", "--embeddings local", "--embeddings none --shuffle 7", "--embeddings none --whole-session"]') }}
+        variant: ${{ fromJSON(inputs.variants || '["--embeddings none", "--embeddings local --sample 100", "--embeddings none --sample 100", "--embeddings none --shuffle 7"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
