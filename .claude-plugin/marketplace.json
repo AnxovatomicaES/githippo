@@ -1,9 +1,10 @@
 {
   "name": "githippo",
-  "owner": { "name": "AnxovatomicaES" },
+  "owner": {
+    "name": "AnxovatomicaES"
+  },
   "metadata": {
-    "description": "githippo: a hippocampus for Claude Code",
-    "homepage": "https://github.com/AnxovatomicaES/githippo"
+    "description": "githippo: a hippocampus for Claude Code"
   },
   "plugins": [
     {
