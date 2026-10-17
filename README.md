@@ -111,12 +111,13 @@ What this does and doesn't tell you: the set is small, hand-written by the autho
 
 | LongMemEval-S, 500 questions | R@5 | R@10 | R@20 | MRR |
 |---|---|---|---|---|
-| githippo, keyword + graph (no model) | **96.0%** | 98.0% | 99.2% | 90.4 |
-| same, sessions shuffled (sanity check) | 96.0% | 98.0% | 99.2% | 90.4 |
-| same, whole-session documents instead of chunks | 97.4% | 98.2% | 99.6% | 91.1 |
+| githippo, keyword + graph (no model) | **96.2%** | 98.4% | 99.2% | 91.5 |
+| same, sessions shuffled (sanity check) | 96.2% | 98.4% | 99.2% | 91.5 |
+| ablation: chunks only, no document-level evidence | 96.0% | 98.0% | 99.2% | 90.4 |
+| ablation: whole-session documents instead of chunks | 97.4% | 98.2% | 99.6% | 91.1 |
 | *for reference: agentmemory BM25 / BM25 + vectors (their published numbers)* | *86.2% / 95.2%* | *94.6% / 98.6%* | | |
 
-Read it carefully: this is retrieval recall, not the official LongMemEval QA score (which needs an LLM to answer and a judge). Shuffling the sessions changes nothing, so the score isn't an ordering artifact. githippo's keyword search scores well above agentmemory's published keyword number under the same protocol; the difference is in tokenization and ranking details we haven't isolated, so treat cross-project comparisons as indicative and reproduce them yourself. On this benchmark, whole sessions beat ~700-character chunks; githippo keeps chunks because they give precise line references and smaller recall packs.
+Read it carefully: this is retrieval recall, not the official LongMemEval QA score (which needs an LLM to answer and a judge). Shuffling the sessions changes nothing, so the score isn't an ordering artifact. githippo's keyword search scores well above agentmemory's published keyword number under the same protocol; the difference is in tokenization and ranking details we haven't isolated, so treat cross-project comparisons as indicative and reproduce them yourself. Whole sessions beat ~700-character chunks on R@5 here, which led to one design change: githippo now also ranks whole notes and fuses that with chunk evidence (best MRR of the variants, chunk-level references kept). That change was evaluated on this benchmark, so LongMemEval is no longer fully held out for it; the in-repo eval didn't change.
 
 **Resources** (measured in CI, Linux): githippo itself uses about 50 MB. The local model runs in a separate process that uses about 520 MB while you're using it and exits after 10 idle minutes (`EMBED_IDLE_MS`), so an idle githippo is back to about 50 MB. Without the model (`EMBEDDINGS=none`) it never goes above about 100 MB.
 
