@@ -36,3 +36,11 @@ test("LongMemEval harness: shuffling sessions doesn't change the result on the s
   assert.equal(c.all.n, 1);
   assert.match(b.embeddings, /shuffled/);
 });
+
+test("LongMemEval --sample spreads across the whole set", async () => {
+  const types = ["a", "a", "a", "b", "b", "b", "c", "c", "c"];
+  const data = types.map((t, i) => entry(`q${i} sister city Lisbon`, t, ["My sister moved to Lisbon", "pasta recipe"], ["sess_0"]));
+  const r = await runLongMemEval(data, { embeddings: "none", sample: 3 });
+  assert.deepEqual(Object.keys(r.byType).sort(), ["a", "b", "c"]);
+  assert.match(r.embeddings, /evenly spaced sample of 3/);
+});

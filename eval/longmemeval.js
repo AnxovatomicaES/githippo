@@ -26,14 +26,16 @@ function shuffled(n, seed) {
   return idx;
 }
 
-export async function runLongMemEval(entries, { embeddings = "none", limit = Infinity, shuffle = 0, wholeSession = false, log = () => {} } = {}) {
+export async function runLongMemEval(entries, { embeddings = "none", limit = Infinity, sample = 0, shuffle = 0, wholeSession = false, log = () => {} } = {}) {
   const embedder = createEmbedder({ EMBEDDINGS: embeddings });
   const vectors = new Map(); // shared across questions: haystacks overlap heavily
   const K = [5, 10, 20];
   const byType = {};
   const all = { n: 0, r5: 0, r10: 0, r20: 0, mrr: 0, ndcg: 0 };
   const t0 = Date.now();
-  const list = entries.slice(0, limit);
+  // --sample N: N evenly spaced questions across the whole set (the file is grouped by question type,
+  // so the first N would cover only one or two types)
+  const list = sample ? [...Array(Math.min(sample, entries.length)).keys()].map((i) => entries[Math.floor((i * entries.length) / Math.min(sample, entries.length))]) : entries.slice(0, limit);
   for (const [qi, e] of list.entries()) {
     const store = new InMemoryStore();
     const idOf = new Map();
@@ -65,7 +67,7 @@ export async function runLongMemEval(entries, { embeddings = "none", limit = Inf
   embedder?.stop?.();
   const pct = (a, n) => Math.round((1000 * a) / n) / 10;
   const sum = (m) => ({ n: m.n, r5: pct(m.r5, m.n), r10: pct(m.r10, m.n), r20: pct(m.r20, m.n), mrr: pct(m.mrr, m.n), ndcg10: pct(m.ndcg, m.n) });
-  return { embeddings: (embedder?.id || "none (BM25 + graph)") + (shuffle ? ` · sessions shuffled (seed ${shuffle})` : "") + (wholeSession ? " · whole-session documents" : ""), all: sum(all), byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, sum(v)])), seconds: Math.round((Date.now() - t0) / 1000) };
+  return { embeddings: (embedder?.id || "none (BM25 + graph)") + (sample ? ` · evenly spaced sample of ${list.length}` : "") + (shuffle ? ` · sessions shuffled (seed ${shuffle})` : "") + (wholeSession ? " · whole-session documents" : ""), all: sum(all), byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, sum(v)])), seconds: Math.round((Date.now() - t0) / 1000) };
 }
 
 export function formatLongMemEval(r) {
@@ -82,6 +84,6 @@ export function formatLongMemEval(r) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const arg = (n, d) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1] : d);
   const data = JSON.parse(readFileSync(arg("data", "longmemeval_s_cleaned.json"), "utf8"));
-  const r = await runLongMemEval(data, { embeddings: arg("embeddings", "none"), limit: Number(arg("limit", Infinity)), shuffle: Number(arg("shuffle", 0)), wholeSession: process.argv.includes("--whole-session"), log: (m) => console.error(m) });
+  const r = await runLongMemEval(data, { embeddings: arg("embeddings", "none"), limit: Number(arg("limit", Infinity)), sample: Number(arg("sample", 0)), shuffle: Number(arg("shuffle", 0)), wholeSession: process.argv.includes("--whole-session"), log: (m) => console.error(m) });
   console.log(process.argv.includes("--json") ? JSON.stringify(r) : formatLongMemEval(r));
 }
