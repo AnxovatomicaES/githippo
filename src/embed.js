@@ -16,6 +16,49 @@ export const PROFILES = {
 };
 export const DEFAULT_LOCAL_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
 
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { HOME_DIR } from "./config.js";
+
+// The local embedding runtime is ~500 MB, so it is NOT part of the install. It's fetched once, in the
+// background, into ~/.githippo/runtime; until it's there, recall quietly runs on keyword search.
+export const RUNTIME_DIR = join(HOME_DIR, "runtime");
+export const RUNTIME_PKG = "@huggingface/transformers@4.3.1";
+
+export async function importTransformers() {
+  try {
+    return await import("@huggingface/transformers"); // dev checkout / user installed it themselves
+  } catch {}
+  try {
+    const req = createRequire(join(RUNTIME_DIR, "package.json"));
+    return await import(pathToFileURL(req.resolve("@huggingface/transformers")).href);
+  } catch {}
+  ensureRuntime();
+  throw new Error("local embeddings are being set up in the background (one time); keyword search until then");
+}
+
+/** Starts a detached one-time install of the embedding runtime. Never blocks, never runs twice at once. */
+export function ensureRuntime({ wait = false } = {}) {
+  mkdirSync(RUNTIME_DIR, { recursive: true });
+  const lock = join(RUNTIME_DIR, ".installing");
+  const started = existsSync(lock) ? Number(readFileSync(lock, "utf8")) || 0 : 0;
+  if (!wait && Date.now() - started < 10 * 60_000) return null;
+  writeFileSync(lock, String(Date.now()));
+  if (!existsSync(join(RUNTIME_DIR, "package.json"))) writeFileSync(join(RUNTIME_DIR, "package.json"), '{"private":true}\n');
+  const log = openSync(join(RUNTIME_DIR, "install.log"), "a");
+  const child = spawn("npm", ["i", "--no-audit", "--no-fund", "--loglevel=error", "--prefix", RUNTIME_DIR, RUNTIME_PKG], {
+    detached: !wait,
+    stdio: ["ignore", log, log],
+    shell: process.platform === "win32",
+  });
+  if (wait) return new Promise((r) => child.on("exit", (code) => { writeFileSync(lock, "0"); r(code === 0); }));
+  child.unref();
+  return null;
+}
+
 const normalize = (v) => {
   let n = 0;
   for (const x of v) n += x * x;
@@ -27,7 +70,7 @@ export function localEmbedder(model = DEFAULT_LOCAL_MODEL) {
   // B17: cache the loading promise, so concurrent first calls share one model load. A failed load can be retried.
   let loading;
   const load = () =>
-    (loading ??= import("@huggingface/transformers")
+    (loading ??= importTransformers()
       .then(({ pipeline }) => pipeline("feature-extraction", model, { dtype: "q8" }))
       .catch((e) => {
         loading = undefined;

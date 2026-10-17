@@ -16,14 +16,15 @@
   <img src="assets/demo.svg" alt="githippo surviving a context compaction in Claude Code" width="100%">
 </p>
 
-Long-term memory for Claude and any MCP client, stored as plain Markdown in **your own private GitHub repo**. Hybrid semantic search, a knowledge graph, auto-memory, compaction survival, and about 46% less per-turn overhead than a naive memory server. Every memory is a git commit you can read, diff and revert.
+Long-term memory for Claude and any MCP client, stored as plain Markdown in a git repo **you own**. Hybrid semantic search, a knowledge graph, auto-memory, compaction survival, and about 46% less per-turn overhead than a naive memory server. Every memory is a git commit you can read, diff and revert.
 
 ```bash
-npx -y github:AnxovatomicaES/githippo#v3.1.4 demo     # try it in 30 seconds, no repo or token
-npm i -g github:AnxovatomicaES/githippo#v3.1.4 && githippo install
+curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
 
-Or as a Claude Code plugin: install githippo globally first (the plugin's hooks call the `githippo` command and stay silent if it's missing, so they never slow a prompt), then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md).
+That's the whole install: no account, no token, no questions. It sets up a local memory vault, wires Claude Code (hooks, MCP, status line) and fetches semantic search in the background. Restart Claude Code and just talk; it remembers.
+
+Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.2.0 demo` shows it working in 30 seconds without installing anything.
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -110,52 +111,48 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 
 ## Setup
 
-**1. Create a private repo** for your memory, e.g. `you/my-memory`, with one initial commit.
-
-**2. Create a fine-grained token**: GitHub → Settings → Developer settings → Fine-grained tokens. Scope it to **only that repo**, permission **Contents: Read and write**.
-
-**3. Pick your client:**
-
-<details><summary><b>Claude Code</b> (full experience: hooks + MCP)</summary>
+**Claude Code** (full experience: hooks + MCP)
 
 ```bash
-npm i -g github:AnxovatomicaES/githippo#v3.1.4
-githippo install        # asks for repo + token, writes ~/.githippo/config.json (600), adds hooks
-claude mcp add githippo --scope user -- githippo serve
-githippo init           # seeds core.md, index.md, inbox.md
-githippo doctor         # verifies everything, including that your repo is private
+curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
-</details>
+
+Prefer to see what runs? It's [a short shell script](install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.2.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+
+Plugin route: run the install above, then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md).
 
 <details><summary><b>Claude Desktop</b></summary>
 
-`~/Library/Application Support/Claude/claude_desktop_config.json`:
+Install as above, then add to `~/Library/Application Support/Claude/claude_desktop_config.json` and restart:
 
 ```json
-{
-  "mcpServers": {
-    "githippo": {
-      "command": "npx",
-      "args": ["-y", "github:AnxovatomicaES/githippo#v3.1.4", "serve"],
-      "env": { "GITHUB_TOKEN": "github_pat_...", "MEMORY_REPO": "you/my-memory" }
-    }
-  }
-}
+{ "mcpServers": { "githippo": { "command": "githippo", "args": ["serve"] } } }
 ```
+
+No environment variables needed: it uses the same local vault as Claude Code.
+</details>
+
+<details><summary><b>Backup and sync across machines</b></summary>
+
+```bash
+githippo sync --github            # creates a private repo "githippo-memory" with your gh login
+```
+
+Every change is pushed in the background; the server pulls other machines' changes every 5 minutes. On a second machine: `git clone` the repo to `~/.githippo/vault`, then run the installer. No token is stored anywhere: git uses your existing GitHub CLI, SSH or keychain login.
 </details>
 
 <details><summary><b>claude.ai, iOS and Android</b> (remote)</summary>
 
-1. Click **Deploy to Render** above (or run `githippo http` anywhere with Node 20+).
-2. Set `GITHUB_TOKEN` and `MEMORY_REPO`. `MCP_SECRET` is generated for you.
-3. In claude.ai: Settings → Connectors → Add custom connector → `https://<your-app>.onrender.com/mcp/<MCP_SECRET>`.
+The phone and web apps can't reach your laptop, so this mode reads the vault from GitHub:
 
-Connectors you add on the web are available in the mobile apps too.
+1. `githippo sync --github` (above).
+2. Click **Deploy to Render** at the top and set `MEMORY_REPO` (e.g. `you/githippo-memory`) and `GITHUB_TOKEN`: a fine-grained token limited to that one repo with *Contents: Read and write*. `MCP_SECRET` is generated for you.
+3. In claude.ai: Settings → Connectors → Add custom connector → `https://<your-app>.onrender.com/mcp/<MCP_SECRET>`.
 </details>
 
 <details><summary><b>Cursor, Windsurf, VS Code, any MCP client</b></summary>
 
-Local: command `githippo serve` with the two env vars. Remote: URL `https://host/mcp` with header `Authorization: Bearer <MCP_SECRET>`.
+Local: command `githippo serve`. Remote: URL `https://host/mcp` with header `Authorization: Bearer <MCP_SECRET>`.
 </details>
 
 ## Memory format
@@ -186,7 +183,9 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 
 | Variable | Default | |
 |---|---|---|
-| `GITHUB_TOKEN`, `MEMORY_REPO` | | required |
+| `VAULT_DIR` | `~/.githippo/vault` | local memory vault (a git repo) |
+| `STORE` | `local` | `github` reads/writes via the GitHub API instead (used by the remote server) |
+| `GITHUB_TOKEN`, `MEMORY_REPO` | | only for `STORE=github` / remote mode |
 | `MCP_SECRET` | | remote mode, 24+ chars |
 | `EMBEDDINGS` | `local` | `local` (paraphrase-multilingual-MiniLM-L12-v2, CPU, one-time model download, ~860 MB RAM), `voyage`, or `none` (keyword only). Choice and thresholds are measured in [docs/calibration.md](docs/calibration.md) |
 | `MEMORY_ROOT` / `MEMORY_BRANCH` | `memory` / `main` | |
@@ -197,8 +196,8 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 
 ## Security model, honestly
 
-- **Your repo, your data.** githippo has no backend. Keep the memory repo **private**; `doctor` warns if it isn't.
-- **Least privilege.** Use a fine-grained token limited to one repo with Contents read/write only.
+- **Your files, your data.** githippo has no backend. Memory lives in a folder on your machine; backup goes to a **private** repo you own (`doctor` warns if it isn't private).
+- **No stored token for local use.** Sync uses git's existing login (GitHub CLI, SSH or keychain). Only the remote server needs a token: make it fine-grained, one repo, Contents read/write only.
 - **Remote auth** is a high-entropy secret in the URL or a Bearer header, compared in constant time and rate limited. Treat the connector URL like a password. OAuth 2.1 is on the roadmap.
 - **The guard is a backstop, not DLP.** It catches common secret and ID formats. `forget` removes a line from the current file, but git history keeps it; purging needs a history rewrite.
 - **Hooks never break your session.** Every failure path exits 0 with a short timeout.
@@ -206,7 +205,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 ## Develop
 
 ```bash
-npm ci && npm test      # 64 tests: unit, hooks, adopted features, bug regressions, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 70 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 

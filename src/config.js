@@ -13,6 +13,7 @@ const KEYS = [
   "GITHUB_TOKEN", "MEMORY_REPO", "MEMORY_BRANCH", "MEMORY_ROOT", "EMBEDDINGS", "LOCAL_EMBED_MODEL",
   "VOYAGE_API_KEY", "VOYAGE_MODEL", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "MCP_SECRET", "CACHE_DIR",
   "CORE_BUDGET_TOKENS", "PROMPT_RECALL", "GITHIPPO_HOOK_PROFILE", "GITHIPPO_DISABLED_HOOKS", "DECAY_ACTIVE_DAYS",
+  "STORE", "VAULT_DIR",
 ];
 
 export function loadConfig(env = process.env) {
@@ -23,6 +24,9 @@ export function loadConfig(env = process.env) {
   const cfg = {};
   for (const k of KEYS) if (env[k] ?? file[k]) cfg[k] = env[k] ?? file[k];
   cfg.CACHE_DIR = expandHome(cfg.CACHE_DIR) || join(HOME_DIR, "cache");
+  cfg.VAULT_DIR = expandHome(cfg.VAULT_DIR) || join(HOME_DIR, "vault");
+  // Local vault unless GitHub API mode is asked for (or implied by a repo + token, e.g. the remote server).
+  cfg.STORE = cfg.STORE || (cfg.MEMORY_REPO && cfg.GITHUB_TOKEN ? "github" : "local");
   const num = (v, d, lo, hi) => (Number.isFinite(+v) && v !== "" && v != null ? Math.min(hi, Math.max(lo, +v)) : d);
   cfg.CORE_BUDGET_TOKENS = num(cfg.CORE_BUDGET_TOKENS, 400, 50, 4000);
   cfg.DECAY_ACTIVE_DAYS = num(cfg.DECAY_ACTIVE_DAYS, 20, 1, 3650);

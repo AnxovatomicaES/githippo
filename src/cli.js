@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// githippo CLI: serve | http | hook <event> | statusline | install | init | doctor | demo | bench
+// githippo CLI: setup | sync | serve | http | hook <event> | statusline | install | init | doctor | demo | warm | bench
 import { mkdir, readFile, writeFile, copyFile, chmod } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +28,11 @@ function brainOrExit(source) {
 
 async function serve() {
   const brain = brainOrExit("local");
+  if (brain.store.ensure) await brain.store.ensure();
+  if (brain.store.pull) {
+    await timeout(brain.store.pull().catch(() => {}), 5000); // other devices' changes
+    setInterval(() => brain.store.pull().catch(() => {}), 5 * 60_000).unref();
+  }
   await timeout(brain.loadCore().catch(() => {}), 4000); // core goes into the instructions
   await buildServer(brain).connect(new StdioServerTransport());
   brain.index.sync().catch((e) => console.error("[githippo] index:", e.message));
@@ -48,7 +55,13 @@ async function hook(event) {
     const input = await readStdin();
     const cfg = loadConfig();
     let out = "";
-    const repoBrain = () => (cfg.GITHUB_TOKEN && cfg.MEMORY_REPO ? createBrain(process.env, { source: event }) : null);
+    const repoBrain = () => {
+      try {
+        return createBrain(process.env, { source: event });
+      } catch {
+        return null;
+      }
+    };
     if (event === "precompact") {
       out = await preCompact(input, { brain: repoBrain() });
       await cleanupOld();
@@ -108,6 +121,7 @@ function registerMcp() {
   }
 }
 
+// Kept for scripted/advanced use (explicit GitHub API mode with a token). Most people want `setup`.
 async function install() {
   const configOnly = rest.includes("--config-only");
   const flag = (name) => {
@@ -175,25 +189,172 @@ async function install() {
   console.log(`\n✓ config → ${CONFIG_FILE} (chmod 600)\n✓ hooks → ${settingsPath} (backup saved)\n✓ status line: ${status}\n✓ MCP: ${registerMcp()}\n\nNext:\n  githippo init     # seed the repo\n  githippo doctor   # verify\n`);
 }
 
-async function init() {
-  const brain = createBrain(process.env);
-  const seeds = {
-    "core.md": "---\nname: core\ntitle: Core memory\ntype: core\ndescription: Pinned facts injected into every session. Keep it short.\n---\n\n",
-    "index.md": "---\nname: index\ndescription: Table of contents. Rebuild with maintain reindex=true.\n---\n\n",
-    "inbox.md": "---\nname: inbox\ntitle: Inbox\ntype: inbox\ndescription: Facts that didn't match an entity yet\n---\n\n",
-  };
-  for (const [p, c] of Object.entries(seeds)) {
-    const r = await brain.store.write(p, c, "new", "init").catch((e) => ({ skipped: e.message }));
-    console.log(r.skipped ? `· ${p} exists` : `✓ ${p}`);
+const SEEDS = {
+  "core.md": "---\nname: core\ntitle: Core memory\ntype: core\ndescription: Pinned facts injected into every session. Keep it short.\n---\n\n",
+  "index.md": "---\nname: index\ndescription: Table of contents. Rebuild with maintain reindex=true.\n---\n\n",
+  "inbox.md": "---\nname: inbox\ntitle: Inbox\ntype: inbox\ndescription: Facts that didn't match an entity yet\n---\n\n",
+};
+
+async function seed(store, log = console.log) {
+  for (const [p, c] of Object.entries(SEEDS)) {
+    if (await store.read(p)) continue;
+    await store.write(p, c, "new", "init");
+    log(`✓ ${p}`);
   }
+}
+
+async function init() {
+  const brain = brainOrExit("init");
+  if (brain.store.ensure) await brain.store.ensure();
+  await seed(brain.store);
+}
+
+/**
+ * One command, zero questions: local vault + hooks + MCP + status line + background model download.
+ *   githippo setup                 local vault in ~/.githippo/vault (no GitHub needed)
+ *   githippo setup --github [name] also back it up to a private GitHub repo via your gh login
+ */
+async function setup() {
+  const t0 = Date.now();
+  const say = (m) => console.log(m);
+  const cfg = loadConfig();
+  const file = { ...JSON.parse(await readFile(CONFIG_FILE, "utf8").catch(() => "{}")) };
+  if (!file.STORE) file.STORE = cfg.STORE;
+  file.EMBEDDINGS ??= "local";
+  await mkdir(HOME_DIR, { recursive: true });
+  await writeFile(CONFIG_FILE, JSON.stringify(file, null, 2), { mode: 0o600 });
+  await chmod(CONFIG_FILE, 0o600);
+
+  const brain = createBrain(process.env, { source: "setup" });
+  if (brain.store.ensure) await brain.store.ensure();
+  await seed(brain.store, () => {});
+  say(`✓ memory vault   ${file.STORE === "github" ? `github.com/${cfg.MEMORY_REPO}` : loadConfig().VAULT_DIR}`);
+
+  const settingsPath = join(homedir(), ".claude", "settings.json");
+  if (existsSync(join(homedir(), ".claude")) || commandExists("claude")) {
+    const r = await wireClaudeCode(settingsPath);
+    say(`✓ Claude Code    hooks${r.statusLine ? " + status line" : ""} · MCP ${r.mcp}`);
+  } else {
+    say("· Claude Code    not found (add the MCP server to your client: command `githippo serve`)");
+  }
+
+  if (rest.includes("--github")) {
+    const name = rest[rest.indexOf("--github") + 1];
+    say(await syncToGitHub(name && !name.startsWith("--") ? name : "githippo-memory"));
+  }
+
+  if ((loadConfig().EMBEDDINGS || "local") === "local") {
+    const log = join(HOME_DIR, "warm.log");
+    const child = spawn(process.execPath, [new URL(import.meta.url).pathname, "warm"], { detached: true, stdio: ["ignore", "ignore", "ignore"] });
+    child.unref();
+    say(`✓ semantic search downloading in the background (keyword search works now) · log: ${log}`);
+  }
+  say(`\nDone in ${((Date.now() - t0) / 1000).toFixed(1)} s. Restart Claude Code, then just talk: it remembers.`);
+  say("Try it without Claude: githippo demo");
+}
+
+function commandExists(cmd) {
+  try {
+    execFileSync(process.platform === "win32" ? "where" : "which", [cmd], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function wireClaudeCode(settingsPath) {
+  let settings;
+  try {
+    settings = JSON.parse(await readFile(settingsPath, "utf8").catch(() => "{}"));
+  } catch {
+    return { mcp: "skipped", statusLine: false, error: `${settingsPath} isn't valid JSON` };
+  }
+  await copyFile(settingsPath, `${settingsPath}.githippo-backup`).catch(() => {});
+  settings.hooks ??= {};
+  for (const [event, command] of Object.entries(HOOKS)) {
+    settings.hooks[event] ??= [];
+    const has = settings.hooks[event].some((g) => g.hooks?.some((h) => h.command?.startsWith("githippo hook")));
+    if (!has) settings.hooks[event].push({ ...(event === "SessionStart" ? { matcher: "startup|resume|compact|fork" } : {}), hooks: [{ type: "command", command, timeout: ["PreCompact", "SessionEnd"].includes(event) ? 20 : 10 }] });
+  }
+  let statusLine = false;
+  if (!settings.statusLine) {
+    settings.statusLine = { type: "command", command: "githippo statusline" };
+    statusLine = true;
+  }
+  await mkdir(join(homedir(), ".claude"), { recursive: true });
+  await writeFile(settingsPath, JSON.stringify(settings, null, 2));
+  return { mcp: commandExists("claude") ? registerMcp() : "not registered (claude CLI not found)", statusLine };
+}
+
+/** Backs the local vault up to a private GitHub repo using the user's own gh login. No token is stored. */
+async function syncToGitHub(name) {
+  const cfg = loadConfig();
+  const dir = cfg.VAULT_DIR;
+  const git = (...a) => execFileSync("git", ["-C", dir, ...a], { stdio: "pipe" }).toString().trim();
+  try {
+    if (git("remote")) {
+      git("push", "-q", "-u", "origin", "HEAD");
+      return `✓ backup         already linked: ${git("remote", "get-url", "origin")}`;
+    }
+  } catch {}
+  if (!commandExists("gh")) {
+    return "· backup         install GitHub CLI (`brew install gh`, then `gh auth login`) and run `githippo sync --github`";
+  }
+  try {
+    execFileSync("gh", ["repo", "create", name, "--private", "--source", dir, "--remote", "origin", "--push", "--description", "githippo memory vault (private)"], { stdio: "pipe" });
+    return `✓ backup         private repo ${git("remote", "get-url", "origin")} (pushes after each change)`;
+  } catch (e) {
+    const msg = String(e.stderr || e.message).split("\n")[0];
+    return `✗ backup         ${msg}`;
+  }
+}
+
+async function sync() {
+  if (rest.includes("--github")) {
+    const name = rest[rest.indexOf("--github") + 1];
+    console.log(await syncToGitHub(name && !name.startsWith("--") ? name : "githippo-memory"));
+    return;
+  }
+  const brain = brainOrExit("sync");
+  const pulled = brain.store.pull ? await brain.store.pull() : false;
+  if (brain.store.git) await brain.store.git(["push", "-q", "origin", "HEAD"], 30_000);
+  console.log(pulled ? "✓ synced with remote" : "· no remote; run githippo sync --github to back up to a private repo");
+}
+
+/** Downloads the embedding runtime + model once, so semantic recall is instant afterwards. */
+async function warm() {
+  const { importTransformers, ensureRuntime, createEmbedder } = await import("./embed.js");
+  try {
+    await importTransformers();
+  } catch {
+    const ok = await ensureRuntime({ wait: true });
+    if (!ok) {
+      console.error("✗ couldn't install the embedding runtime; keyword search still works. See ~/.githippo/runtime/install.log");
+      process.exit(1);
+    }
+  }
+  const emb = createEmbedder(loadConfig());
+  if (emb) await emb.embed(["warm up"], "document");
+  console.log(`✓ semantic search ready (${emb?.id})`);
 }
 
 async function doctor() {
   const cfg = loadConfig();
   const ok = (b, m) => console.log(`${b ? "✓" : "✗"} ${m}`);
-  ok(!!cfg.GITHUB_TOKEN, "GITHUB_TOKEN set");
-  ok(/^[\w.-]+\/[\w.-]+$/.test(cfg.MEMORY_REPO || ""), `MEMORY_REPO ${cfg.MEMORY_REPO || "(missing)"}`);
-  if (!cfg.GITHUB_TOKEN || !cfg.MEMORY_REPO) return;
+  if (cfg.STORE === "local") {
+    const b = brainOrExit("doctor");
+    ok(existsSync(cfg.VAULT_DIR), `local vault ${cfg.VAULT_DIR}`);
+    ok(await b.store.hasGit(), "vault is a git repo (history + time travel)");
+    const remote = (await b.store.git(["remote", "get-url", "origin"])).out;
+    ok(true, remote ? `backup → ${remote}` : "no backup yet (optional: githippo sync --github)");
+  } else {
+    ok(!!cfg.GITHUB_TOKEN, "GITHUB_TOKEN set");
+    ok(/^[\w.-]+\/[\w.-]+$/.test(cfg.MEMORY_REPO || ""), `MEMORY_REPO ${cfg.MEMORY_REPO || "(missing)"}`);
+  }
+  const { importTransformers } = await import("./embed.js");
+  const sem = cfg.EMBEDDINGS === "none" ? "off" : await importTransformers().then(() => "ready", () => "downloading (keyword search meanwhile)");
+  ok(sem !== "off", `semantic search ${sem}`);
+  if (cfg.STORE === "github") {
   const res = await fetch(`https://api.github.com/repos/${cfg.MEMORY_REPO}`, { headers: { Authorization: `Bearer ${cfg.GITHUB_TOKEN}` } });
   const repo = await res.json().catch(() => ({}));
   ok(res.ok, `repo reachable (${res.status})`);
@@ -201,7 +362,8 @@ async function doctor() {
     ok(repo.private, repo.private ? "repo is private" : "repo is PUBLIC — make it private before storing memory");
     ok(repo.permissions?.push !== false, "token can write");
   }
-  const brain = createBrain(process.env);
+  }
+  const brain = brainOrExit("doctor");
   const t0 = Date.now();
   await brain.index.sync({ maxAgeMs: 0 }).then(
     () => ok(true, `indexed ${brain.index.files.size} files, ${brain.index.chunks?.length || 0} chunks in ${Date.now() - t0} ms (${brain.index.embedder?.id || "keyword only"})`),
@@ -258,9 +420,12 @@ async function bench() {
   await client.close();
 }
 
-const commands = { serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
+const commands = { setup, sync, warm, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
 if (cmd === "--version" || cmd === "-v") console.log(VERSION);
 else if (!commands[cmd]) {
-  console.log(`githippo ${VERSION}\nusage: githippo [serve|http|hook <precompact|postcompact|session-start|session-end|prompt>|statusline|install [--config-only] [--repo o/n --token-env VAR]|init|doctor|demo|bench]`);
+  console.log(`githippo ${VERSION}\nusage: githippo setup [--github [repo-name]]   one command, everything
+       githippo sync [--github [repo-name]]    back up / sync the vault
+       githippo demo | doctor | warm | bench
+       githippo serve | http | statusline | hook <event> | install | init`);
   process.exit(1);
 } else await commands[cmd]();

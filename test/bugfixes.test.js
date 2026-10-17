@@ -163,9 +163,9 @@ test("B24 a secret in a session is redacted, and the checkpoint still syncs", as
   assert.doesNotMatch(local, /ghp_b/);
 });
 
-test("B26 unconfigured serve prints an instruction, not a stack trace", () => {
+test("B26 GitHub mode without a token prints an instruction, not a stack trace", () => {
   try {
-    execFileSync("node", [CLI, "serve"], { env: { PATH: process.env.PATH, GITHIPPO_HOME: join(home, "none") }, stdio: "pipe", input: "" });
+    execFileSync("node", [CLI, "serve"], { env: { PATH: process.env.PATH, GITHIPPO_HOME: join(home, "none"), STORE: "github" }, stdio: "pipe", input: "" });
     assert.fail("should exit 1");
   } catch (e) {
     const err = String(e.stderr);

@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { GitHubMemoryStore, MemoryError } from "./store.js";
+import { FileStore } from "./filestore.js";
 import { MemoryIndex } from "./search.js";
 import { createEmbedder } from "./embed.js";
 import { createLLM } from "./llm.js";
@@ -8,7 +9,7 @@ import { Brain, assertSafe } from "./brain.js";
 import { fmt, fmtError } from "./format.js";
 import { loadConfig } from "./config.js";
 
-export const VERSION = "3.1.4";
+export const VERSION = "3.2.0";
 
 /** Server instructions live in the system prompt, so they survive context compaction. Core memory rides along. */
 export function instructions(core) {
@@ -34,13 +35,10 @@ function leanToolList(server) {
 /** Long-lived brain shared across connections. */
 export function createBrain(env = process.env, { source = "githippo" } = {}) {
   const cfg = loadConfig(env);
-  const store = new GitHubMemoryStore({
-    token: cfg.GITHUB_TOKEN,
-    repo: cfg.MEMORY_REPO,
-    branch: cfg.MEMORY_BRANCH || "main",
-    root: cfg.MEMORY_ROOT ?? "memory",
-    source,
-  });
+  const store =
+    cfg.STORE === "github"
+      ? new GitHubMemoryStore({ token: cfg.GITHUB_TOKEN, repo: cfg.MEMORY_REPO, branch: cfg.MEMORY_BRANCH || "main", root: cfg.MEMORY_ROOT ?? "memory", source })
+      : new FileStore({ dir: cfg.VAULT_DIR, root: cfg.MEMORY_ROOT ?? "memory", source });
   const index = new MemoryIndex(store, createEmbedder(cfg), { cacheDir: cfg.CACHE_DIR });
   return new Brain({ store, index, llm: createLLM(cfg), coreBudgetTokens: cfg.CORE_BUDGET_TOKENS, decayActiveDays: cfg.DECAY_ACTIVE_DAYS });
 }
