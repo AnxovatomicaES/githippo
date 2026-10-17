@@ -42,7 +42,12 @@ test("local vault, 5,000 files: cold index and re-sync times", async () => {
   t = Date.now();
   const hits = await index.search("topic 42 note");
   const q = Date.now() - t;
-  console.log(`# local 5k: cold ${cold} ms, re-sync ${warm} ms, query ${q} ms`);
+  const brain = new Brain({ store, index });
+  t = Date.now();
+  await brain.remember("alpha7 has a new owner named Ada", { path: "notes/n7.md" });
+  const write = Date.now() - t;
+  console.log(`# local 5k: cold ${cold} ms, re-sync ${warm} ms, query ${q} ms, remember ${write} ms`);
+  assert.ok(write < 3000, `remember took ${write} ms (entity mentions must not scale with vault size)`);
   assert.equal(index.files.size, 5000);
   assert.ok(hits.length > 0);
   assert.ok(warm < 2000, `re-sync took ${warm} ms`);

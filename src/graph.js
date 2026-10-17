@@ -111,26 +111,58 @@ export class KnowledgeGraph {
    * B7: URLs, inline code and existing [[links]] are masked so nothing inside them is ever linked.
    */
   mentions(text, exclude = []) {
+    const idx = (this.nameIndex ??= this.buildNameIndex());
     const masked = maskSpans(text);
+    // words (letters/digits) with positions; phrases of up to idx.maxWords consecutive words, joined only by
+    // spaces, hyphens or underscores in the original text ("John Grecu", "john-grecu"; not "Mark. Lee")
+    const words = [...masked.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({ start: m.index, end: m.index + m[0].length }));
     const found = new Map();
-    for (const node of this.nodes.values()) {
-      if (exclude.includes(node.id) || ["index", "core", "inbox"].includes(node.id) || node.path.startsWith("sessions/")) continue;
-      for (const name of node.names) {
-        if (name.length < 3 || name.includes("/")) continue;
-        const proper = /\p{Lu}/u.test(name);
-        const re = new RegExp(`(^|[^\\p{L}\\p{N}])(${escapeRe(name)})(?=$|[^\\p{L}\\p{N}])`, proper ? "gu" : "giu");
-        for (const m of masked.matchAll(re)) {
-          const pos = m.index + m[1].length;
-          const word = text.slice(pos, pos + m[2].length);
-          const atSentenceStart = /(^|[.!?]\s+)$/.test(text.slice(0, pos));
-          if (proper && !name.includes(" ") && COMMON_WORDS.has(name.toLowerCase()) && atSentenceStart) continue;
-          const prev = found.get(node.id);
-          if (!prev || word.length > prev.match.length) found.set(node.id, { id: node.id, match: word, pos });
-          break;
+    for (let i = 0; i < words.length; i++) {
+      let key = "";
+      for (let n = 0; n < idx.maxWords && i + n < words.length; n++) {
+        if (n > 0 && !/^[\s_-]+$/.test(text.slice(words[i + n - 1].end, words[i + n].start))) break;
+        const w = text.slice(words[i + n].start, words[i + n].end);
+        key = n ? `${key} ${w}` : w;
+        const span = text.slice(words[i].start, words[i + n].end);
+        const pos = words[i].start;
+        const hits = [...(idx.exact.get(key) || []), ...(idx.lower.get(key.toLowerCase()) || [])];
+        for (const { id, proper, oneWordCommon } of hits) {
+          if (exclude.includes(id)) continue;
+          if (proper && oneWordCommon && /(^|[.!?]\s+)$/.test(text.slice(0, pos))) continue; // B6
+          const prev = found.get(id);
+          if (!prev || span.length > prev.match.length) found.set(id, { id, match: span, pos });
         }
       }
     }
     return [...found.values()].sort((a, b) => a.pos - b.pos);
+  }
+
+  /**
+   * One hash lookup per phrase instead of one regex per name per call (was ~9 s per remember on a 5,000-note
+   * vault). Capitalised names match case-sensitively (B6); lowercase names (file stems) match any case.
+   */
+  buildNameIndex() {
+    const exact = new Map();
+    const lower = new Map();
+    let maxWords = 1;
+    const norm = (n) => n.replace(/[\s_-]+/g, " ").trim();
+    const push = (map, key, v) => {
+      if (!map.has(key)) map.set(key, []);
+      if (!map.get(key).some((x) => x.id === v.id)) map.get(key).push(v);
+    };
+    for (const node of this.nodes.values()) {
+      if (["index", "core", "inbox"].includes(node.id) || node.path.startsWith("sessions/")) continue;
+      for (const raw of node.names) {
+        if (raw.length < 3 || raw.includes("/")) continue;
+        const name = norm(raw);
+        maxWords = Math.max(maxWords, name.split(" ").length);
+        const proper = /\p{Lu}/u.test(name);
+        const v = { id: node.id, proper, oneWordCommon: !name.includes(" ") && COMMON_WORDS.has(name.toLowerCase()) };
+        if (proper) push(exact, name, v);
+        else push(lower, name.toLowerCase(), v);
+      }
+    }
+    return { exact, lower, maxWords: Math.min(maxWords, 6) };
   }
 
   /** Rewrites the first mention of each entity as a [[link]], by position (never inside URLs, code or links). */
