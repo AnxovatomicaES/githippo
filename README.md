@@ -1,14 +1,31 @@
-# 🦛 githippo
+<p align="center">
+  <img src="assets/banner.svg" alt="githippo, a hippocampus for your AI" width="100%">
+</p>
 
-**A hippocampus for your AI.** Long-term memory for Claude and any MCP client, stored as plain Markdown in *your own* private GitHub repo.
+<p align="center">
+  <a href="https://github.com/AnxovatomicaES/githippo/actions/workflows/ci.yml"><img src="https://github.com/AnxovatomicaES/githippo/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/MCP-server-8b5cf6" alt="MCP server">
+  <img src="https://img.shields.io/badge/license-MIT-a78bfa" alt="MIT">
+  <img src="https://img.shields.io/badge/node-%E2%89%A520-34d399" alt="Node 20+">
+  <img src="https://img.shields.io/badge/backend-your%20own%20repo-f472b6" alt="Your own repo">
+</p>
 
-Hybrid semantic search · knowledge graph · auto-memory · survives context compaction · ~46% leaner per turn · every memory is a git commit you can read, diff and revert.
+<h3 align="center">Claude forgets everything when the context compacts.<br>githippo doesn't.</h3>
+
+<p align="center">
+  <img src="assets/demo.svg" alt="githippo surviving a context compaction in Claude Code" width="100%">
+</p>
+
+Long-term memory for Claude and any MCP client, stored as plain Markdown in **your own private GitHub repo**. Hybrid semantic search, a knowledge graph, auto-memory, compaction survival, and about 46% less per-turn overhead than a naive memory server. Every memory is a git commit you can read, diff and revert.
 
 ```bash
 npm i -g githippo && githippo install && claude mcp add githippo --scope user -- githippo serve
 ```
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo) ← use it from claude.ai and your phone
+<p align="center">
+  <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
+  <sub>one click → use it from claude.ai and your phone</sub>
+</p>
 
 ---
 
