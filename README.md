@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/instal
 
 That's the whole install: no account, no token, no questions. It sets up a local memory vault, wires Claude Code (hooks, MCP, status line) and fetches semantic search in the background. Restart Claude Code and just talk; it remembers.
 
-Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.2.0 demo` shows it working in 30 seconds without installing anything.
+Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.3.0 demo` shows it working in 30 seconds without installing anything.
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -83,6 +83,8 @@ Bonus: a fresh session in the same project and branch within 24h gets a brief "l
 
 How we know the hooks do what we say: the contracts were read from Claude Code's own code (2.1.258). PreCompact passes each successful hook's stdout to the compactor as custom instructions (Claude Code also shows that text in the transcript as "PreCompact … completed successfully"); PostCompact receives `compact_summary`; every hook receives `session_id`, `transcript_path` and `cwd`; SessionStart sources are `startup`, `resume`, `clear`, `compact` and `fork`.
 
+Recall also learns what you actually use: memory that keeps being handed to Claude gets a small boost (at most +40%) that halves every 30 days without use. The counts stay on your machine, are kept per user, and with no usage data ranking is exactly the same as without it.
+
 Wrap anything in `<private>…</private>` and it never reaches memory. Turn hooks off without editing files: `GITHIPPO_HOOK_PROFILE=minimal` or `GITHIPPO_DISABLED_HOOKS=prompt,steer`.
 
 ## Token budget (measured, `githippo bench`)
@@ -117,19 +119,13 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
 
-Prefer to see what runs? It's [a short shell script](install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.2.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+Prefer to see what runs? It's [a short shell script](install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.3.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
 
 Plugin route: run the install above, then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md).
 
-<details><summary><b>Claude Desktop</b></summary>
+<details><summary><b>Claude Desktop</b> (one-click extension)</summary>
 
-Install as above, then add to `~/Library/Application Support/Claude/claude_desktop_config.json` and restart:
-
-```json
-{ "mcpServers": { "githippo": { "command": "githippo", "args": ["serve"] } } }
-```
-
-No environment variables needed: it uses the same local vault as Claude Code.
+Download `githippo-<version>.mcpb` from the [latest release](https://github.com/AnxovatomicaES/githippo/releases/latest) and double-click it (or drag it into Settings → Extensions). It runs on Claude Desktop's built-in Node, so nothing else needs installing, and it uses the same vault as the CLI and Claude Code. Also listed in the [official MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.AnxovatomicaES/githippo`.
 </details>
 
 <details><summary><b>Backup and sync across machines</b></summary>
@@ -141,18 +137,27 @@ githippo sync --github            # creates a private repo "githippo-memory" wit
 Every change is pushed in the background; the server pulls other machines' changes every 5 minutes. On a second machine: `git clone` the repo to `~/.githippo/vault`, then run the installer. No token is stored anywhere: git uses your existing GitHub CLI, SSH or keychain login.
 </details>
 
-<details><summary><b>claude.ai, iOS and Android</b> (remote)</summary>
+<details><summary><b>claude.ai, iOS and Android</b> (remote, OAuth 2.1, multi-user)</summary>
 
 The phone and web apps can't reach your laptop, so this mode reads the vault from GitHub:
 
 1. `githippo sync --github` (above).
-2. Click **Deploy to Render** at the top and set `MEMORY_REPO` (e.g. `you/githippo-memory`) and `GITHUB_TOKEN`: a fine-grained token limited to that one repo with *Contents: Read and write*. `MCP_SECRET` is generated for you.
-3. In claude.ai: Settings → Connectors → Add custom connector → `https://<your-app>.onrender.com/mcp/<MCP_SECRET>`.
+2. Click **Deploy to Render** at the top. Set `MEMORY_REPO` (e.g. `you/githippo-memory`), `GITHUB_TOKEN` (fine-grained, that one repo, *Contents: Read and write*) and `PUBLIC_URL` (your service's https URL). `MCP_SECRET` is generated for you.
+3. In claude.ai: Settings → Connectors → Add custom connector → `https://<your-app>.onrender.com/mcp`. Claude registers itself and opens a sign-in page; enter `MCP_SECRET` once. That's standard OAuth 2.1 (PKCE, dynamic client registration, audience-bound tokens), so nothing secret ever sits in a URL.
+
+**A shared vault for a team.** Add people with folder-level access; each signs in with their own password:
+
+```bash
+githippo users add john --acl "shared/:write,people/:read"   # prints his password once
+githippo users list
+```
+
+Rules use the longest matching folder (`none`, `read`, `write`). Everyone also gets a private `users/<id>/` folder for their own inbox, sessions and pinned core memory, which a catch-all rule can never open. Facts a user can't write where they'd naturally go land in their own inbox instead. Every commit records who made it. Changing a password or ACL revokes that user's tokens immediately. On hosts without a disk, paste `~/.githippo/users.json` into the `USERS_JSON` variable.
 </details>
 
 <details><summary><b>Cursor, Windsurf, VS Code, any MCP client</b></summary>
 
-Local: command `githippo serve`. Remote: URL `https://host/mcp` with header `Authorization: Bearer <MCP_SECRET>`.
+Local: command `githippo serve`. Remote: URL `https://host/mcp`; clients that support MCP OAuth sign in by themselves, others can send `Authorization: Bearer <MCP_SECRET>` (a header, so it doesn't end up in URL logs).
 </details>
 
 ## Memory format
@@ -186,7 +191,9 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 | `VAULT_DIR` | `~/.githippo/vault` | local memory vault (a git repo) |
 | `STORE` | `local` | `github` reads/writes via the GitHub API instead (used by the remote server) |
 | `GITHUB_TOKEN`, `MEMORY_REPO` | | only for `STORE=github` / remote mode |
-| `MCP_SECRET` | | remote mode, 24+ chars |
+| `MCP_SECRET` | | remote mode, 24+ chars: owner login and OAuth signing key |
+| `PUBLIC_URL` | | remote mode: the server's public https URL (OAuth issuer) |
+| `USERS_JSON` | | remote multi-user: contents of `githippo users` file |
 | `EMBEDDINGS` | `local` | `local` (paraphrase-multilingual-MiniLM-L12-v2, CPU, one-time model download, ~860 MB RAM), `voyage`, or `none` (keyword only). Choice and thresholds are measured in [docs/calibration.md](docs/calibration.md) |
 | `MEMORY_ROOT` / `MEMORY_BRANCH` | `memory` / `main` | |
 | `CORE_BUDGET_TOKENS` | `400` | hard cap for pinned memory |
@@ -198,7 +205,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 
 - **Your files, your data.** githippo has no backend. Memory lives in a folder on your machine; backup goes to a **private** repo you own (`doctor` warns if it isn't private).
 - **No stored token for local use.** Sync uses git's existing login (GitHub CLI, SSH or keychain). Only the remote server needs a token: make it fine-grained, one repo, Contents read/write only.
-- **Remote auth** is a high-entropy secret in the URL or a Bearer header, compared in constant time and rate limited. Treat the connector URL like a password. OAuth 2.1 is on the roadmap.
+- **Remote auth is OAuth 2.1** (PKCE S256 only, dynamic client registration, single-use codes, tokens bound to the `/mcp` resource and to the user's current password and ACL). It's stateless: everything is HMAC-signed, so restarts don't log anyone out. The old secret-in-URL (`/mcp/<secret>`) is off unless `LEGACY_SECRET_URL=1`, because URLs end up in proxy logs. Login attempts are rate limited and every response is constant-time.
 - **The guard is a backstop, not DLP.** It catches common secret and ID formats. `forget` removes a line from the current file, but git history keeps it; purging needs a history rewrite.
 - **Hooks never break your session.** Every failure path exits 0 with a short timeout.
 
@@ -211,6 +218,6 @@ npm run bench           # token cost of the tool surface
 
 ## Roadmap
 
-OAuth 2.1 for remote · MCP Registry listing · Claude Desktop extension bundle · usage-weighted ranking · multi-user vaults with per-folder ACLs
+Signed `.mcpb` releases · usage-aware decay (combine ranking signals with `maintain decay`) · SSO (GitHub/Google) as an OAuth identity provider for team vaults
 
 MIT licensed. PRs welcome.

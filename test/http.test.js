@@ -15,18 +15,22 @@ async function start() {
   return { ...ctx, app, base: `http://127.0.0.1:${app.address().port}` };
 }
 
-test("auth: rejects missing/wrong secret", async () => {
+test("auth: rejects missing/wrong secret; secret in the URL is off by default", async (t) => {
   const { app, base } = await start();
-  assert.equal((await fetch(`${base}/mcp`, { method: "POST", body: "{}" })).status, 401);
+  t.after(() => app.close());
+  const r = await fetch(`${base}/mcp`, { method: "POST", body: "{}" });
+  assert.equal(r.status, 401);
+  assert.match(r.headers.get("www-authenticate"), /resource_metadata="http:\/\/127\.0\.0\.1:\d+\/\.well-known\/oauth-protected-resource\/mcp"/);
   assert.equal((await fetch(`${base}/mcp/${"x".repeat(32)}`, { method: "POST", body: "{}" })).status, 401);
+  assert.equal((await fetch(`${base}/mcp/${SECRET}`, { method: "POST", body: "{}" })).status, 401, "legacy URL secret disabled");
   assert.equal((await fetch(`${base}/health`)).status, 200);
-  app.close();
 });
 
-test("remote round trip: core in instructions, compact tools, guard", async () => {
+test("remote round trip: core in instructions, compact tools, guard", async (t) => {
   const { app, base, gh } = await start();
+  t.after(() => app.close());
   const client = new Client({ name: "t", version: "1" });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp/${SECRET}`)));
+  await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${SECRET}` } } }));
   assert.match(client.getInstructions(), /CORE MEMORY[\s\S]*Marcel, CTO/);
 
   const { tools } = await client.listTools();
@@ -41,5 +45,4 @@ test("remote round trip: core in instructions, compact tools, guard", async () =
   assert.match(await call("remember", { fact: "card 4111 1111 1111 1111" }), /^ERROR: Blocked by compliance guard: payment_card/);
   assert.match(await call("files", { op: "list" }), /core\.md [0-9a-f]{8}/);
   await client.close();
-  app.close();
 });

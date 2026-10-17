@@ -113,8 +113,8 @@ test("B18 rate limit keys on the proxy-added (right-most) client IP", async () =
   const { brain } = setup();
   const app = createHttpApp(brain, { secret: "s".repeat(32), ratePerMinute: 2 });
   await new Promise((r) => app.listen(0, r));
-  const url = `http://127.0.0.1:${app.address().port}/mcp/${"s".repeat(32)}`;
-  const hit = (xff) => fetch(url, { method: "GET", headers: { "x-forwarded-for": xff } }).then((r) => r.status);
+  const url = `http://127.0.0.1:${app.address().port}/mcp`;
+  const hit = (xff) => fetch(url, { method: "GET", headers: { "x-forwarded-for": xff, authorization: `Bearer ${"s".repeat(32)}` } }).then((r) => r.status);
   // attacker rotates the left-most value; the proxy-added right-most value stays the same
   const codes = [await hit("1.1.1.1, 9.9.9.9"), await hit("2.2.2.2, 9.9.9.9"), await hit("3.3.3.3, 9.9.9.9")];
   app.close();

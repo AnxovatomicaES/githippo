@@ -15,6 +15,10 @@ services:
         sync: false
       - key: MCP_SECRET
         generateValue: true
+      - key: PUBLIC_URL          # e.g. https://githippo-xyz.onrender.com (the OAuth issuer)
+        sync: false
+      - key: USERS_JSON          # optional: team vault users from `githippo users`
+        sync: false
       - key: EMBEDDINGS
         value: local
       - key: CACHE_DIR

@@ -1,13 +1,13 @@
 {
   "name": "githippo",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "A hippocampus for your AI. Long-term memory for Claude & any MCP client, stored as Markdown in your own GitHub repo: hybrid semantic search, knowledge graph, auto-memory, compaction-proof, token-lean.",
   "main": "src/server.js",
   "directories": {
     "test": "test"
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --test --test-timeout=60000 test/*.test.js",
     "start": "node src/cli.js http",
     "bench": "node src/cli.js bench"
   },
@@ -56,6 +56,9 @@
     "url": "https://github.com/AnxovatomicaES/githippo/issues"
   },
   "devDependencies": {
-    "@huggingface/transformers": "4.3.1"
+    "@anthropic-ai/mcpb": "^2.1.2",
+    "@huggingface/transformers": "4.3.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
   }
 }

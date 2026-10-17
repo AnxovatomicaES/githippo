@@ -9,7 +9,7 @@ import { Brain, assertSafe } from "./brain.js";
 import { fmt, fmtError } from "./format.js";
 import { loadConfig } from "./config.js";
 
-export const VERSION = "3.2.0";
+export const VERSION = "3.3.0";
 
 /** Server instructions live in the system prompt, so they survive context compaction. Core memory rides along. */
 export function instructions(core) {
@@ -189,8 +189,8 @@ export function buildServer(brain) {
     contents: [{ uri: uri.href, mimeType: "text/markdown", text: (await brain.loadCore()) || "(empty)" }],
   }));
   server.registerResource("index", "memory://index", { description: "Table of contents", mimeType: "text/markdown" }, async (uri) => {
-    const f = await store.read("index.md");
-    return { contents: [{ uri: uri.href, mimeType: "text/markdown", text: f?.content || "(no index.md yet)" }] };
+    const f = await store.read("index.md").catch(() => null);
+    return { contents: [{ uri: uri.href, mimeType: "text/markdown", text: f?.content || "(no index.md yet, or no access)" }] };
   });
   server.registerPrompt(
     "resume",

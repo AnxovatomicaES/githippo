@@ -1,0 +1,43 @@
+name: release
+# On every version tag: test, build the Claude Desktop extension (.mcpb), attach it to a GitHub release,
+# and publish the listing to the official MCP Registry. No stored secrets: the registry login uses
+# GitHub's OIDC identity token (id-token: write), the release uses the job's own token.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+  id-token: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: Check versions match the tag
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          for f in package.json manifest.json .claude-plugin/plugin.json; do
+            test "$(node -p "require('./$f').version")" = "$V" || { echo "$f is not $V"; exit 1; }
+          done
+      - name: Build Claude Desktop extension
+        run: node scripts/build-mcpb.mjs
+      - name: Create GitHub release with the bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.mcpb dist/*.sha256 \
+            --title "githippo $GITHUB_REF_NAME" --generate-notes
+      - name: Write server.json from the uploaded bundle's hash
+        run: node scripts/server-json.mjs
+      - name: Publish to the MCP Registry
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher validate
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

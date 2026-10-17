@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { parseFile, stem } from "./parse.js";
 import { KnowledgeGraph } from "./graph.js";
 import { cosine } from "./embed.js";
+import { Usage } from "./usage.js";
 
 const STOP = new Set(
   "the a an and or of to in on for with is are was were be by at as it this that from de la el los las y o en un una por con para que del al se es su lo".split(" "),
@@ -72,10 +73,13 @@ export class Bm25 {
 }
 
 /** Default scope: live facts only. History, session checkpoints and pinned core (already in the system prompt) are opt-in. */
+const isSessionPath = (p) => p.startsWith("sessions/") || /^users\/[^/]+\/sessions\//.test(p);
+const isCorePath = (p) => p === "core.md" || /^users\/[^/]+\/core\.md$/.test(p);
+
 export function inDefaultScope(c, prefix = "") {
   if (!c.path.startsWith(prefix)) return false;
-  if (prefix) return prefix.startsWith("sessions/") || !c.path.startsWith("sessions/") ? !c.history || /history/i.test(prefix) : false;
-  return !c.history && !c.path.startsWith("sessions/") && c.path !== "core.md" && c.path !== "index.md";
+  if (prefix) return prefix.startsWith("sessions/") || /\/sessions\//.test(prefix) || !isSessionPath(c.path) ? !c.history || /history/i.test(prefix) : false;
+  return !c.history && !isSessionPath(c.path) && !isCorePath(c.path) && c.path !== "index.md";
 }
 
 export class MemoryIndex {
@@ -83,6 +87,7 @@ export class MemoryIndex {
     this.store = store;
     this.embedder = embedder;
     this.cacheDir = cacheDir;
+    this.usage = new Usage(cacheDir ? join(cacheDir, "usage.json") : null);
     this.files = new Map(); // path -> parsed file (+version)
     this.vectors = new Map(); // chunk hash -> Float32Array
     this.graph = new KnowledgeGraph();
@@ -220,10 +225,10 @@ export class MemoryIndex {
       .sort((a, b) => b.s - a.s);
   }
 
-  async search(query, { k = 8, prefix = "", expand = true } = {}) {
+  async search(query, { k = 8, prefix = "", expand = true, canRead = () => true, user = null } = {}) {
     await this.sync();
     if (!this.chunks?.length) return [];
-    const inScope = (c) => inDefaultScope(c, prefix);
+    const inScope = (c) => inDefaultScope(c, prefix) && canRead(c.path);
     const lexical = this.bm25(query).filter((x) => inScope(x.c));
     const semantic = (await this.dense(query)).filter((x) => inScope(x.c));
     const RRF_K = 60;
@@ -237,6 +242,8 @@ export class MemoryIndex {
       });
     add(lexical, "bm25");
     add(semantic, "cosine");
+    // Usage-weighted ranking: a small, fading boost for memory that keeps being used (1.0 with no data).
+    for (const e of fused.values()) e.score *= this.usage.boost(e.chunk, user);
     // Weak semantic matches shouldn't surface on their own.
     let ranked = [...fused.values()]
       .filter((e) => e.signals.bm25 || (e.signals.cosine ?? 0) > (this.embedder?.profile?.floor ?? 0.3))
@@ -251,7 +258,7 @@ export class MemoryIndex {
         for (const n of nb?.nodes || []) {
           if (have.has(n.path) || !n.path.startsWith(prefix)) continue;
           const f = this.files.get(n.path);
-          const first = f?.chunks.find((c) => inDefaultScope(c, prefix));
+          const first = f?.chunks.find((c) => inDefaultScope(c, prefix) && canRead(c.path));
           if (!first) continue;
           have.add(n.path);
           extra.push({ chunk: first, score: r.score * 0.5, signals: { graph: this.graph.idOf(r.chunk.path) } });
@@ -260,6 +267,7 @@ export class MemoryIndex {
       ranked = [...ranked, ...extra.slice(0, 3)];
     }
     return ranked.map((r) => ({
+      chunk: r.chunk,
       path: r.chunk.path,
       line: r.chunk.line,
       heading: r.chunk.heading,

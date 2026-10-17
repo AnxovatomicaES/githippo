@@ -39,13 +39,14 @@ test("local vault: remember, recall, dedupe, supersede, every change is a git co
 test("local vault: history, time travel and active days come from git", async () => {
   const { brain, store } = await vault();
   await store.write("topics/brand.md", "---\nname: brand\n---\n\n- navy\n", "new");
-  const before = new Date(Date.now() + 1500).toISOString();
-  await new Promise((r) => setTimeout(r, 2100));
+  await new Promise((r) => setTimeout(r, 1100)); // git timestamps have 1 s resolution
   const v = (await store.read("topics/brand.md")).version;
   await store.write("topics/brand.md", "---\nname: brand\n---\n\n- teal\n", v);
   const tl = await brain.history("brand");
   assert.equal(tl.commits.length, 2);
-  assert.match((await brain.history("brand", { at: before })).content, /navy/);
+  assert.match((await brain.history("brand", { at: tl.commits[1].date })).content, /navy/);
+  assert.match((await brain.history("brand", { at: tl.commits[0].date })).content, /teal/);
+  assert.equal((await brain.history("brand", { at: "2000-01-01" })).existed, false);
   assert.ok((await store.activeDays("2000-01-01")).length >= 1);
 });
 

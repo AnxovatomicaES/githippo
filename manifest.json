@@ -1,0 +1,106 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/schemas/mcpb-manifest-v0.3.schema.json",
+  "manifest_version": "0.3",
+  "name": "githippo",
+  "display_name": "githippo",
+  "version": "3.3.0",
+  "description": "Long-term memory for Claude, stored as Markdown in a git repo you own.",
+  "long_description": "githippo gives Claude a long-term memory that lives in plain Markdown files in a local git repository you own: semantic and keyword recall in any language, a knowledge graph of people and projects, automatic de-duplication, history and time travel through git, and a guard that keeps secrets and ID numbers out of memory. Uses the same vault as the githippo CLI and Claude Code hooks. No account, no cloud.",
+  "author": {
+    "name": "AnxovatomicaES",
+    "url": "https://github.com/AnxovatomicaES"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AnxovatomicaES/githippo"
+  },
+  "homepage": "https://github.com/AnxovatomicaES/githippo",
+  "documentation": "https://github.com/AnxovatomicaES/githippo#readme",
+  "support": "https://github.com/AnxovatomicaES/githippo/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "src/cli.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/src/cli.js",
+        "serve"
+      ],
+      "env": {
+        "VAULT_DIR": "${user_config.vault_dir}",
+        "EMBEDDINGS": "${user_config.embeddings}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "recall",
+      "description": "Search memory by meaning and keywords, in any language"
+    },
+    {
+      "name": "remember",
+      "description": "Save a durable fact; auto-filed, deduplicated and linked"
+    },
+    {
+      "name": "forget",
+      "description": "Remove one fact"
+    },
+    {
+      "name": "graph",
+      "description": "Relations between people, projects and decisions"
+    },
+    {
+      "name": "history",
+      "description": "How a memory changed, or what it said on a past date"
+    },
+    {
+      "name": "checkpoint",
+      "description": "Save or resume working state across context compaction"
+    },
+    {
+      "name": "maintain",
+      "description": "Find duplicates, contradictions and stale facts"
+    },
+    {
+      "name": "files",
+      "description": "Read and edit the Markdown memory files directly"
+    }
+  ],
+  "tools_generated": false,
+  "keywords": [
+    "memory",
+    "knowledge-graph",
+    "git",
+    "markdown",
+    "obsidian",
+    "semantic-search"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  },
+  "user_config": {
+    "vault_dir": {
+      "type": "directory",
+      "title": "Memory vault folder",
+      "description": "Where your memory lives (a git repo of Markdown files). Shared with the githippo CLI and Claude Code.",
+      "default": "${HOME}/.githippo/vault",
+      "required": false
+    },
+    "embeddings": {
+      "type": "string",
+      "title": "Semantic search",
+      "description": "local (private, downloads a model once), voyage (needs VOYAGE_API_KEY) or none (keyword only).",
+      "default": "local",
+      "required": false
+    }
+  }
+}

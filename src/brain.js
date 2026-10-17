@@ -5,6 +5,7 @@ import { factLines, hash, parseFile, plain, stamp, stampOf, stem, stripMemoryTag
 import { redact, scan } from "./guard.js";
 import { cosine } from "./embed.js";
 import { tokenize } from "./search.js";
+import { ALLOW_ALL, AclStore } from "./accounts.js";
 
 const KIND_FOLDER = { person: "people", project: "projects", topic: "topics", company: "orgs", decision: "decisions" };
 const SYSTEM_FILES = new Set(["index.md", "core.md", "inbox.md"]);
@@ -82,6 +83,28 @@ export class Brain {
   constructor({ store, index, llm = null, coreBudgetTokens = 400, decayActiveDays = 20 }) {
     Object.assign(this, { store, index, llm, coreBudgetTokens, decayActiveDays });
     this.core = "";
+    this.acl = ALLOW_ALL;
+  }
+
+  /**
+   * A view of this brain for one user: same index and models, but every read, write and search goes
+   * through their folder ACL, and commits are attributed to them.
+   */
+  forUser(acl) {
+    if (!acl || acl === ALLOW_ALL) return this;
+    const view = Object.create(this);
+    view.acl = acl;
+    view.store = new AclStore(this.store, acl);
+    view.core = "";
+    return view;
+  }
+
+  get user() {
+    return this.acl.user || null;
+  }
+
+  search(q, opts = {}) {
+    return this.index.search(q, { ...opts, canRead: (p) => this.acl.canRead(p), user: this.user });
   }
 
   get graph() {
@@ -93,13 +116,18 @@ export class Brain {
   }
 
   file(path) {
-    return this.index.files.get(path);
+    return this.acl.canRead(path) ? this.index.files.get(path) : undefined;
   }
 
   // ---------- core memory (pinned, injected into the system prompt) ----------
   async loadCore() {
-    const f = this.file("core.md") || (await this.store.read("core.md"));
-    this.core = f ? plain(parseFile("core.md", f.content).body.trim()) : "";
+    const parts = [];
+    for (const p of [...new Set(["core.md", this.acl.home("core.md")])]) {
+      if (!this.acl.canRead(p)) continue;
+      const f = this.file(p) || (await this.store.read(p).catch(() => null));
+      if (f) parts.push(plain(parseFile(p, f.content).body.trim()));
+    }
+    this.core = parts.filter(Boolean).join("\n");
     return this.core;
   }
 
@@ -129,7 +157,7 @@ export class Brain {
   // ---------- recall ----------
   async recall(query, { budget = 1000, scope = "", mode = "auto" } = {}) {
     budget = Math.min(8000, Math.max(100, Number.isFinite(+budget) ? +budget : 1000)); // B14
-    const hits = await this.index.search(query, { k: mode === "brief" ? 12 : 8, prefix: scope });
+    const hits = await this.search(query, { k: mode === "brief" ? 12 : 8, prefix: scope });
     if (mode === "brief") {
       return {
         mode,
@@ -164,6 +192,8 @@ export class Brain {
       if (f && (!scope || f.path.startsWith(scope))) take(f.path, f.live.trim(), null);
     }
     for (const h of hits) take(h.path, h.text, h.signals.graph);
+    // memory that was actually handed to the model counts as "used" for ranking
+    this.index.usage.record(hits.filter((h) => sections.has(h.path)).map((h) => h.chunk), this.user);
     const context = [...sections.values()].map((s) => `${s.head}\n${s.parts.join("\n")}`).join("\n");
     return { mode: "pack", context, tokens: approxTokens(context), files: sections.size };
   }
@@ -176,8 +206,8 @@ export class Brain {
       if (id) return { path: this.graph.nodes.get(id).path, reason: `entity:${id}` };
       return { path: `${KIND_FOLDER[kind] || "topics"}/${slugify(about)}.md`, reason: "new entity", create: { title: about, kind: kind || "topic" } };
     }
-    const mentioned = this.graph.mentions(fact).map((m) => m.id);
-    const hits = await this.index.search(fact, { k: 5, expand: false });
+    const mentioned = this.graph.mentions(fact).map((m) => m.id).filter((id) => this.acl.canRead(this.graph.nodes.get(id).path));
+    const hits = await this.search(fact, { k: 5, expand: false });
     if (mentioned.length) {
       const best = hits.find((h) => mentioned.includes(this.graph.idOf(h.path)));
       const id = best ? this.graph.idOf(best.path) : mentioned[0];
@@ -185,7 +215,14 @@ export class Brain {
     }
     const strong = hits.find((h) => ((h.signals.cosine ?? 0) >= this.t.strong || (h.signals.bm25 ?? 0) >= 3) && !SYSTEM_FILES.has(h.path));
     if (strong) return { path: strong.path, reason: "semantic" };
-    return { path: "inbox.md", reason: "inbox", create: { title: "Inbox", kind: "inbox" } };
+    return { path: this.acl.home("inbox.md"), reason: "inbox", create: { title: "Inbox", kind: "inbox" } };
+  }
+
+  /** Where a fact may actually be written: its natural home, or the user's own inbox if that's off-limits. */
+  async writableTarget(fact, opts) {
+    const t = await this.chooseTarget(fact, opts);
+    if (this.acl.canWrite(t.path) || opts.path) return t;
+    return { path: this.acl.home("inbox.md"), reason: `${t.reason}, no write access → your inbox`, create: { title: "Inbox", kind: "inbox" } };
   }
 
   /** B15: if another session/surface changed the file between our read and write, re-sync once and redo. */
@@ -211,7 +248,7 @@ export class Brain {
     await this.index.sync();
     if (opts.pin) return this.pin(clean);
 
-    const target = await this.chooseTarget(clean, opts);
+    const target = await this.writableTarget(clean, opts);
     const existing = this.file(target.path) || (await this.store.read(target.path));
     const content = existing?.content ?? null;
 
@@ -219,7 +256,7 @@ export class Brain {
 
     // Duplicate / supersession check against target + nearest files.
     const candidates = new Set([target.path]);
-    for (const h of await this.index.search(clean, { k: 3, expand: false })) candidates.add(h.path);
+    for (const h of await this.search(clean, { k: 3, expand: false })) candidates.add(h.path);
     const lines = [];
     for (const p of candidates) {
       const f = this.file(p);
@@ -278,20 +315,21 @@ export class Brain {
   }
 
   async pin(fact) {
-    const existing = this.file("core.md") || (await this.store.read("core.md"));
+    const corePath = this.acl.canWrite("core.md") ? "core.md" : this.acl.home("core.md");
+    const existing = this.file(corePath) || (await this.store.read(corePath));
     const base = existing?.content ?? frontmatter({ name: "core", title: "Core memory", kind: "core", description: "Pinned facts injected into every session" });
     if (factLines(base).some((l) => tokenize(plain(l)).join(" ") === tokenize(fact).join(" "))) {
       return { status: "duplicate", path: "core.md", existing: fact };
     }
     const next = insertLive(base, `- ${fact}`); // core is pinned: never stamped, never decays
-    const body = parseFile("core.md", next).body;
+    const body = parseFile(corePath, next).body;
     if (approxTokens(body) > this.coreBudgetTokens) {
       throw new MemoryError(`Core memory would exceed ${this.coreBudgetTokens} tokens. Unpin something (forget with path core.md) or save it unpinned.`);
     }
-    const r = await this.store.write("core.md", next, existing ? existing.version : "new", "pin");
-    await this.index.upsert("core.md", next, r.version);
+    const r = await this.store.write(corePath, next, existing ? existing.version : "new", "pin");
+    await this.index.upsert(corePath, next, r.version);
     await this.loadCore();
-    return { status: "pinned", path: "core.md", core_tokens: approxTokens(this.core) };
+    return { status: "pinned", path: corePath, core_tokens: approxTokens(this.core) };
   }
 
   async forget(text, opts = {}) {
@@ -303,8 +341,8 @@ export class Brain {
     const want = tokenize(plain(bare(text))).join(" ");
     let candidates = path ? [normalizePath(path)] : [];
     if (!path) {
-      const hits = await this.index.search(text, { k: 5, expand: false });
-      candidates = [...new Set([...hits.map((h) => h.path), "core.md"])];
+      const hits = await this.search(text, { k: 5, expand: false });
+      candidates = [...new Set([...hits.map((h) => h.path), "core.md", this.acl.home("core.md")])].filter((p) => this.acl.canWrite(p));
     }
     for (const p of candidates) {
       const f = this.file(p);
@@ -317,14 +355,14 @@ export class Brain {
       const next = lines.join("\n");
       const r = await this.store.write(p, next, f.version, "forget");
       await this.index.upsert(p, next, r.version);
-      if (p === "core.md") await this.loadCore();
+      if (/(^|\/)core\.md$/.test(p)) await this.loadCore();
       return { status: "forgotten", path: p, line: plain(removed), note: "Still in git history; rewrite history to purge completely." };
     }
     throw new MemoryError("No exact matching line found. Use recall mode=brief to get the exact text.");
   }
 
   async addToIndex(path, description) {
-    if (SYSTEM_FILES.has(path)) return; // B13
+    if (SYSTEM_FILES.has(path) || /^users\//.test(path) || !this.acl.canWrite("index.md")) return; // B13, ACL
     const idx = this.file("index.md");
     if (!idx || idx.content.includes(`[[${stem(path)}`)) return;
     const next = `${idx.content.replace(/\n*$/, "\n")}- [[${stem(path)}]] — ${description}\n`;
@@ -335,7 +373,7 @@ export class Brain {
   // ---------- session checkpoints (compaction anchor for any client) ----------
   async checkpoint({ session = "default", task, state, next, files } = {}) {
     await this.index.sync();
-    const path = `sessions/${slugify(session) || "default"}.md`;
+    const path = this.acl.user ? this.acl.home(`sessions/${slugify(session) || "default"}.md`) : `sessions/${slugify(session) || "default"}.md`;
     const existing = this.file(path) || (await this.store.read(path));
     if (!task && !state && !next) {
       if (!existing) return { status: "none", path };
@@ -387,6 +425,7 @@ export class Brain {
   }
 
   async maintain({ reindex = false, rewrite = null, decay = false, active_days = this.decayActiveDays } = {}) {
+    if (!this.acl.isAdmin) throw new MemoryError("maintain works on the whole vault, so it needs full write access.");
     await this.index.sync({ maxAgeMs: 0 });
     const files = [...this.index.files.values()].filter((f) => !f.path.startsWith("sessions/"));
     const all = files.flatMap((f) => factLines(f.body).map((line) => ({ path: f.path, line: plain(line) }))).slice(0, 500);
@@ -476,8 +515,9 @@ export class Brain {
   async neighbors(entity, depth = 1) {
     await this.index.sync();
     const r = this.graph.neighbors(entity, Math.min(depth, 3));
-    if (!r) throw new MemoryError(`No entity "${entity}". Try recall.`);
-    return r;
+    if (!r || !this.acl.canRead(r.entity.path)) throw new MemoryError(`No entity "${entity}". Try recall.`);
+    const visible = new Set([r.entity.id, ...r.nodes.filter((n) => this.acl.canRead(n.path)).map((n) => n.id)]);
+    return { ...r, nodes: r.nodes.filter((n) => visible.has(n.id)), relations: r.relations.filter((x) => visible.has(x.from) && visible.has(x.to)) };
   }
 
   resolvePath(entity) {

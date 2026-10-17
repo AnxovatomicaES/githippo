@@ -43,8 +43,13 @@ async function http() {
   const brain = brainOrExit("remote");
   await timeout(brain.loadCore().catch(() => {}), 5000);
   const port = Number(process.env.PORT || 8787);
-  createHttpApp(brain, { secret: cfg.MCP_SECRET }).listen(port, () => {
-    console.log(`[githippo] v${VERSION} on :${port} · embeddings ${brain.index.embedder?.id || "off"}`);
+  const { Accounts } = await import("./accounts.js");
+  const { signingKey } = await import("./oauth.js");
+  const accounts = Accounts.load({ file: join(HOME_DIR, "users.json") });
+  const legacy = process.env.LEGACY_SECRET_URL === "1";
+  if (legacy) console.warn("[githippo] LEGACY_SECRET_URL=1: the secret is accepted in the URL path, where proxies may log it. Prefer OAuth.");
+  createHttpApp(brain, { secret: cfg.MCP_SECRET, key: signingKey(process.env), accounts, publicUrl: process.env.PUBLIC_URL || null, legacySecretUrl: legacy }).listen(port, () => {
+    console.log(`[githippo] v${VERSION} on :${port} · auth: OAuth 2.1${accounts.multiUser ? ` (${accounts.users.size} users)` : " (owner)"} · embeddings ${brain.index.embedder?.id || "off"}`);
     brain.index.sync().catch((e) => console.error("[githippo] index:", e.message));
   });
 }
@@ -321,6 +326,31 @@ async function sync() {
   console.log(pulled ? "✓ synced with remote" : "· no remote; run githippo sync --github to back up to a private repo");
 }
 
+/**
+ * Multi-user vaults: githippo users add <id> --acl "shared/:write,people/:read" | list | remove <id> | reset <id>
+ * Prints a generated password once. Hosts without a disk: paste the users file into USERS_JSON.
+ */
+async function users() {
+  const { Accounts, parseAcl, Acl } = await import("./accounts.js");
+  const file = join(HOME_DIR, "users.json");
+  const acc = Accounts.load({ env: {}, file });
+  const [sub, id] = rest;
+  const flag = (n) => (rest.includes(`--${n}`) ? rest[rest.indexOf(`--${n}`) + 1] : undefined);
+  if (sub === "add" || sub === "reset") {
+    const acl = sub === "reset" ? acc.get(id)?.acl : parseAcl(flag("acl") ?? ":write");
+    if (!acl) return console.error(`No user "${id}".`), process.exit(1);
+    const pw = acc.add(id, acl);
+    acc.save();
+    console.log(`✓ ${id}  password (shown once): ${pw}\n  access: ${acl.map((r) => `${r.path || "(everything)"} ${r.access}`).join(", ")}, plus their own users/${id}/`);
+    console.log(`  users file: ${file}${process.env.RENDER ? "" : "  (on Render: set USERS_JSON to its contents)"}`);
+  } else if (sub === "remove") {
+    console.log(acc.remove(id) ? (acc.save(), `✓ removed ${id} (their tokens stop working immediately)`) : `No user "${id}".`);
+  } else {
+    if (!acc.multiUser) return console.log("No users yet: the remote server has one owner who signs in with MCP_SECRET.\nAdd people: githippo users add <id> --acl \"shared/:write,people/:read\"");
+    for (const u of acc.users.values()) console.log(`${u.id.padEnd(16)} ${new Acl(u).isAdmin ? "admin  " : "       "} ${(u.acl || []).map((r) => `${r.path || "*"}:${r.access}`).join(" ")}`);
+  }
+}
+
 /** Downloads the embedding runtime + model once, so semantic recall is instant afterwards. */
 async function warm() {
   const { importTransformers, ensureRuntime, createEmbedder } = await import("./embed.js");
@@ -420,11 +450,12 @@ async function bench() {
   await client.close();
 }
 
-const commands = { setup, sync, warm, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
+const commands = { setup, sync, warm, users, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
 if (cmd === "--version" || cmd === "-v") console.log(VERSION);
 else if (!commands[cmd]) {
   console.log(`githippo ${VERSION}\nusage: githippo setup [--github [repo-name]]   one command, everything
        githippo sync [--github [repo-name]]    back up / sync the vault
+       githippo users add <id> --acl "shared/:write,people/:read" | list | remove <id> | reset <id>
        githippo demo | doctor | warm | bench
        githippo serve | http | statusline | hook <event> | install | init`);
   process.exit(1);
