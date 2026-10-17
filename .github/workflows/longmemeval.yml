@@ -3,6 +3,10 @@ name: longmemeval
 # numbers. Weekly and on demand; results posted to issue #3.
 on:
   workflow_dispatch:
+    inputs:
+      variants:
+        description: JSON list of argument strings, e.g. ["--embeddings none"]
+        required: false
   schedule:
     - cron: "0 5 * * 1"
 permissions:
@@ -13,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: ["--embeddings none", "--embeddings local", "--embeddings none --shuffle 7", "--embeddings none --whole-session"]
+        variant: ${{ fromJSON(inputs.variants || '["--embeddings none", "--embeddings local", "--embeddings none --shuffle 7", "--embeddings none --whole-session"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -40,7 +44,7 @@ jobs:
         run: |
           node eval/longmemeval.js --data longmemeval_s_cleaned.json ${{ matrix.variant }} > lme.md
           {
-            echo "### LongMemEval-S for ${GITHUB_SHA::7}"
+            echo "### LongMemEval-S for ${GITHUB_SHA::7} (${GITHUB_REF_NAME})"
             echo
             cat lme.md
             echo

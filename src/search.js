@@ -210,6 +210,10 @@ export class MemoryIndex {
     this.graph = new KnowledgeGraph(files);
     this.chunks = files.flatMap((f) => f.chunks);
     this.lexical = new Bm25(this.chunks);
+    // Document-level index (one entry per note, live text only): a question whose words are spread across a
+    // long note matches the note even when no single chunk contains them all. Fused with chunk evidence.
+    this.docs = files.map((f) => ({ id: f.path, path: f.path, history: false, embedText: `${f.title} ${f.description || ""}\n${f.live}` }));
+    this.docLexical = new Bm25(this.docs);
     this.writeSnapshot().catch(() => {});
   }
 
@@ -254,11 +258,26 @@ export class MemoryIndex {
       });
     add(lexical, "bm25");
     add(semantic, "cosine");
+    // Document evidence: each matching note contributes its RRF term to its best chunk (or its first chunk
+    // in scope, if none of its chunks matched on their own).
+    const docHits = this.docLexical.search(query).filter((x) => x.c.path.startsWith(prefix) && canRead(x.c.path)).slice(0, 50);
+    docHits.forEach(({ c, s }, rank) => {
+      let best = null;
+      for (const e of fused.values()) if (e.chunk.path === c.path && (!best || e.score > best.score)) best = e;
+      if (!best) {
+        const chunk = this.files.get(c.path)?.chunks.find((x) => inScope(x));
+        if (!chunk) return;
+        best = { chunk, score: 0, signals: {} };
+        fused.set(chunk.id, best);
+      }
+      best.score += 1 / (RRF_K + rank + 1);
+      best.signals.doc = +s.toFixed(4);
+    });
     // Usage-weighted ranking: a small, fading boost for memory that keeps being used (1.0 with no data).
     for (const e of fused.values()) e.score *= this.usage.boost(e.chunk, user);
     // Weak semantic matches shouldn't surface on their own.
     let ranked = [...fused.values()]
-      .filter((e) => e.signals.bm25 || (e.signals.cosine ?? 0) > (this.embedder?.profile?.floor ?? 0.3))
+      .filter((e) => e.signals.bm25 || e.signals.doc || (e.signals.cosine ?? 0) > (this.embedder?.profile?.floor ?? 0.3))
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
 
