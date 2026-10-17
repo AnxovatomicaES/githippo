@@ -200,9 +200,10 @@ export class MemoryIndex {
         for (const n of nb?.nodes || []) {
           if (have.has(n.path) || !n.path.startsWith(prefix)) continue;
           const f = this.files.get(n.path);
-          if (!f?.chunks.length) continue;
+          const first = f?.chunks.find((c) => inDefaultScope(c, prefix));
+          if (!first) continue;
           have.add(n.path);
-          extra.push({ chunk: f.chunks[0], score: r.score * 0.5, signals: { graph: stem(r.chunk.path) } });
+          extra.push({ chunk: first, score: r.score * 0.5, signals: { graph: stem(r.chunk.path) } });
         }
       }
       ranked = [...ranked, ...extra.slice(0, 3)];

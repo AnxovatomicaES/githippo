@@ -48,6 +48,7 @@ function frontmatter({ name, title, kind, description, aliases = [] }) {
     `aliases: [${aliases.join(", ")}]`,
     "---",
     "",
+    "",
   ].join("\n");
 }
 

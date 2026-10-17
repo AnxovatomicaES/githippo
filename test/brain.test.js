@@ -14,6 +14,18 @@ test("recall: entity pack, plain links, budget, brief mode", async () => {
   assert.match(brief.hits[0].ref, /^projects\/johnny\.md:\d+$/);
 });
 
+test("graph expansion respects scope (index/core never leak into recall)", async () => {
+  const { brain } = setup();
+  const r = await brain.recall("Johnny wake word");
+  assert.doesNotMatch(r.context, /index\.md|core\.md/);
+});
+
+test("new files have a blank line after frontmatter", async () => {
+  const { brain, gh } = setup();
+  await brain.remember("Runs the APAC desk", { about: "Vik Rao", kind: "person" });
+  assert.match(gh.text("memory/people/vik-rao.md"), /\n---\n\n- Runs the APAC desk\n$/);
+});
+
 test("compact output is much smaller than JSON", async () => {
   const { brain } = setup();
   const r = await brain.recall("wake word assistant");
