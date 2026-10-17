@@ -58,6 +58,23 @@ function jaccard(a, b) {
   return inter / (A.size + B.size - inter);
 }
 
+// Words that are never topical enough to decide where a fact belongs, however rare they are in a vault:
+// time words, everyday verbs/adjectives and filler, in the supported languages. Used only for routing.
+const EVERYDAY = new Set(
+  [
+    "january february march april may june july august september october november december monday tuesday wednesday thursday friday saturday sunday",
+    "day week month year today tomorrow yesterday morning afternoon evening night time hour minute second first last next early late soon now ago",
+    "about good great bad new old big small long short high low best better more less most least much many few very really also still only just",
+    "get got make made need want like prefer think know see read say said take give use go come keep let put try call ask tell work feel look find",
+    "thing stuff people person way part lot kind place point case fact idea question problem number",
+    "over under above below before after during between into onto through across around without within than then there here every each all some any other another same such own",
+    "enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre lunes martes miércoles jueves viernes sábado domingo",
+    "día semana mes año hoy mañana ayer tarde noche hora antes después ahora bueno buena malo nuevo nueva más menos muy también solo",
+    "quiere necesita prefiere hacer tener usar ver leer decir cosa gente persona vez parte",
+    "sobre bajo entre durante desde hasta hacia cada todo toda todos otro otra mismo",
+  ].join(" ").split(" ").map((w) => (w.length > 4 && /[^su]s$/.test(w) ? w.slice(0, -1) : w)),
+);
+
 export function assertSafe(text) {
   const findings = scan(text);
   if (findings.length) {
@@ -220,9 +237,42 @@ export class Brain {
       const id = best ? this.graph.idOf(best.path) : mentioned[0];
       return { path: this.graph.nodes.get(id).path, reason: `mentions:${id}` };
     }
-    const strong = hits.find((h) => ((h.signals.cosine ?? 0) >= this.t.strong || (h.signals.bm25 ?? 0) >= 3) && !SYSTEM_FILES.has(h.path));
+    const lexical = this.distinctiveMatch(fact);
+    if (lexical) return { path: lexical, reason: "distinctive words" };
+    const strong = hits.find((h) => (h.signals.cosine ?? 0) >= this.t.strong && !SYSTEM_FILES.has(h.path));
     if (strong) return { path: strong.path, reason: "semantic" };
     return { path: this.acl.home("inbox.md"), reason: "inbox", create: { title: "Inbox", kind: "inbox" } };
+  }
+
+  /**
+   * Keyword routing that doesn't depend on vault size: a note wins if it shares a *distinctive* word with
+   * the fact (one found in at most 2 notes) and clearly beats the runner-up. Common words ("manual",
+   * "prefers") can't route a fact anywhere; with no distinctive match the fact goes to the inbox.
+   */
+  distinctiveMatch(fact) {
+    const lex = this.index.lexical;
+    if (!lex) return null;
+    const fileOf = new Map();
+    for (const c of this.index.chunks || []) {
+      if (SYSTEM_FILES.has(c.path) || c.path.startsWith("sessions/") || c.history || !this.acl.canRead(c.path)) continue;
+      for (const t of lex.tf.get(c.id).counts.keys()) {
+        if (!fileOf.has(t)) fileOf.set(t, new Set());
+        fileOf.get(t).add(c.path);
+      }
+    }
+    const nFiles = new Set([...fileOf.values()].flatMap((s) => [...s])).size || 1;
+    const score = new Map();
+    for (const t of new Set(tokenize(fact))) {
+      if (t.length < 3 || /^\d+$/.test(t) || /\d/.test(t) && t.length < 4 || EVERYDAY.has(t)) continue;
+      const files = fileOf.get(t);
+      if (!files || files.size > 2 || files.size > Math.max(1, nFiles * 0.15)) continue;
+      const idf = Math.log(1 + nFiles / files.size);
+      for (const f of files) score.set(f, (score.get(f) || 0) + idf);
+    }
+    const ranked = [...score].sort((a, b) => b[1] - a[1]);
+    if (!ranked.length) return null;
+    const [top, second] = ranked;
+    return !second || top[1] >= 1.5 * second[1] ? top[0] : null;
   }
 
   /** Where a fact may actually be written: its natural home, or the user's own inbox if that's off-limits. */

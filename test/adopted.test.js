@@ -49,7 +49,7 @@ test("claude-mem: brief recall shows per-hit token cost, never date stamps", asy
 test("claude-memory-hub: code-aware tokenizer finds identifiers by their parts", async () => {
   assert.ok(tokenize("handleRefund").includes("refund"));
   assert.ok(tokenize("batch_insert_personas").includes("insert"));
-  assert.ok(tokenize("src/api/webhooks/stripe.ts").includes("webhooks"));
+  assert.ok(tokenize("src/api/webhooks/stripe.ts").includes("webhook"), "plural folded");
   const { brain, gh } = setup();
   gh.seed("memory/topics/payments.md", "---\nname: payments\n---\n\n- handleRefundWebhook is still a stub\n");
   const r = await brain.recall("refund webhook", { mode: "brief" });

@@ -119,3 +119,28 @@ export const DEDUPE = [
   ["The A/B test needs a holdout group", "A/B test runs for four weeks", "new"],
   ["Deploys are frozen during the last week of December", "Deploys happen through GitHub Actions with manual approval", "new"],
 ];
+
+// Development set for routing: used to diagnose and tune filing. ROUTING above is the held-out test set
+// and is only used to report the final number.
+export const DEV_ROUTING = [
+  ["Refunds older than 90 days need manual approval", "projects/billing-v2.md"],
+  ["Stripe webhooks must be verified with the signing secret", "projects/billing-v2.md"],
+  ["BigQuery costs must stay under 2k EUR a month", "projects/warehouse-migration.md"],
+  ["Redshift will be switched off a month after cutover", "projects/warehouse-migration.md"],
+  ["Push notifications need opt-in on first launch", "projects/mobile-app.md"],
+  ["SwiftUI previews are broken on the CI machines", "people/mei-chen.md"],
+  ["Whisper large is too slow on the Mac mini", "projects/johnny.md"],
+  ["KYC screen should support passport scans", "projects/onboarding-revamp.md"],
+  ["Kubernetes nodes are upgraded on the first Tuesday of each month", "topics/infrastructure.md"],
+  ["Gold accents should never be used on dark backgrounds", "topics/brand.md"],
+  ["Datadog contract ends in January", "decisions/2026-observability.md"],
+  ["Zero data retention is required for any AI vendor", "decisions/2026-ai-policy.md"],
+  ["Take-home tasks are reviewed by two engineers", "topics/hiring.md"],
+  ["Penetration test report is due in March", "people/tom-becker.md"],
+  ["El parking de Serrano cierra a las 21:00", "topics/oficina.md"],
+  ["Remembered to water the plants", "inbox.md"],
+  ["Wants to learn the cello next year", "inbox.md"],
+  ["Prefers tea over coffee in the afternoon", "inbox.md"],
+  ["Thinks the new Pixar film is great", "inbox.md"],
+  ["Read a good article about sleep", "inbox.md"],
+];

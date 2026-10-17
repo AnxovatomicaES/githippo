@@ -38,7 +38,8 @@ export const tokenize = (s) => {
     if (parts.length > 1 && whole) out.push(whole);
     out.push(...parts);
   }
-  return out.filter((t) => t.length > 1 && !STOP.has(t));
+  // light plural folding so "refunds" meets "refund" and "invoices" meets "invoice" (not a full stemmer)
+  return out.filter((t) => t.length > 1 && !STOP.has(t)).map((t) => (t.length > 4 && /[^su]s$/.test(t) ? t.slice(0, -1) : t));
 };
 
 export class Bm25 {

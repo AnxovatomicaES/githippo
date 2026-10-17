@@ -4,7 +4,7 @@ import { InMemoryStore } from "../src/memstore.js";
 import { MemoryIndex } from "../src/search.js";
 import { createEmbedder } from "../src/embed.js";
 import { Brain } from "../src/brain.js";
-import { VAULT, QUERIES, ROUTING, DEDUPE } from "./dataset.js";
+import { VAULT, QUERIES, ROUTING, DEV_ROUTING, DEDUPE } from "./dataset.js";
 
 async function vault(embedder, extra = {}) {
   const store = new InMemoryStore();
@@ -36,14 +36,25 @@ export async function runEval({ embeddings = "none" } = {}) {
     }
     if (rank !== 1) misses.push({ q, want, got: files.slice(0, 3), rank: rank || null });
   }
-  let routed = 0;
-  const routeMisses = [];
-  for (const [fact, want] of ROUTING) {
-    const b = await vault(embedder);
-    const r = await b.remember(fact);
-    if (r.path === want) routed++;
-    else routeMisses.push({ fact, want, got: r.path });
-  }
+  // Filing: wrong-note errors are worse than parking a fact in the inbox, so they're counted separately.
+  const route = async (set) => {
+    let ok = 0, wrong = 0;
+    const missed = [];
+    for (const [fact, want] of set) {
+      const b = await vault(embedder);
+      const r = await b.remember(fact);
+      if (r.path === want) ok++;
+      else {
+        if (r.path !== "inbox.md") wrong++;
+        missed.push({ fact, want, got: r.path });
+      }
+    }
+    return { ok, wrong, missed };
+  };
+  const test = await route(ROUTING);
+  const dev = await route(DEV_ROUTING);
+  const routed = test.ok;
+  const routeMisses = test.missed;
   let classified = 0;
   const dedupeMisses = [];
   for (const [fact, existing, want] of DEDUPE) {
@@ -60,7 +71,7 @@ export async function runEval({ embeddings = "none" } = {}) {
     embeddings: embedder?.id || "none (keyword + graph)",
     retrieval: summary(all),
     byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, summary(v)])),
-    routing: { n: ROUTING.length, accuracy: pct(routed, ROUTING.length) },
+    routing: { n: ROUTING.length, accuracy: pct(routed, ROUTING.length), wrongNote: test.wrong, dev: { n: DEV_ROUTING.length, accuracy: pct(dev.ok, DEV_ROUTING.length), wrongNote: dev.wrong } },
     dedupe: { n: DEDUPE.length, accuracy: pct(classified, DEDUPE.length) },
     ms: Date.now() - t0,
     rssMB: Math.round(process.memoryUsage().rss / 1e6),
@@ -80,7 +91,7 @@ export function formatEval(r) {
     ...rows,
     `| **all** | ${r.retrieval.n} | **${r.retrieval.hit1}%** | **${r.retrieval.hit5}%** | **${r.retrieval.mrr}** |`,
     "",
-    `routing (where remember files a fact): ${r.routing.accuracy}% of ${r.routing.n}`,
+    `filing, held-out test: ${r.routing.accuracy}% of ${r.routing.n} (${r.routing.wrongNote} in a wrong note, rest in the inbox) · dev set: ${r.routing.dev.accuracy}% of ${r.routing.dev.n} (${r.routing.dev.wrongNote} wrong note)`,
     `duplicate / update / new classification: ${r.dedupe.accuracy}% of ${r.dedupe.n}`,
   ].join("\n");
 }
