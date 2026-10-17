@@ -50,6 +50,7 @@ And things nobody else does, as far as we know:
 - **Compliance guard.** Blocks API keys, tokens, private keys, IBANs (mod-97 checked), card numbers (Luhn checked), Spanish DNI/NIE (checksum) and US SSNs *before* they become permanent git history.
 - **Compaction-proof by design**, three ways (see below).
 - **Cross-lingual recall.** The default multilingual embedder runs locally; ask in Spanish, find notes written in English.
+- **Updates are never mistaken for duplicates.** "Launch is end of Q1" and "end of Q2" embed almost identically. githippo also compares numbers, dates and names, so the update is saved, the old line is flagged, and `maintain` reports possible contradictions. Measured in [docs/calibration.md](docs/calibration.md).
 - **Optimistic concurrency.** Two sessions editing the same memory can't clobber each other; the loser gets the current file back and merges.
 
 ## Survives compaction, three layers deep
@@ -178,7 +179,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 |---|---|---|
 | `GITHUB_TOKEN`, `MEMORY_REPO` | | required |
 | `MCP_SECRET` | | remote mode, 24+ chars |
-| `EMBEDDINGS` | `local` | `local` (multilingual-e5-small, runs on CPU, ~120 MB download on first use), `voyage`, or `none` (keyword only) |
+| `EMBEDDINGS` | `local` | `local` (paraphrase-multilingual-MiniLM-L12-v2, CPU, one-time model download, ~860 MB RAM), `voyage`, or `none` (keyword only). Choice and thresholds are measured in [docs/calibration.md](docs/calibration.md) |
 | `MEMORY_ROOT` / `MEMORY_BRANCH` | `memory` / `main` | |
 | `CORE_BUDGET_TOKENS` | `400` | hard cap for pinned memory |
 | `PROMPT_RECALL` | `1` | `0` turns off the per-prompt hook |

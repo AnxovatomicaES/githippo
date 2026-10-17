@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { setup } from "./helpers.js";
 import { fmt } from "../src/format.js";
+import { salient, salientDiffers } from "../src/brain.js";
 
 test("recall: entity pack, plain links, budget, brief mode", async () => {
   const { brain } = setup();
@@ -119,4 +120,36 @@ test("history: timeline and time travel", async () => {
   assert.equal(tl.commits.length, 2);
   assert.match((await brain.history("brand", { at: tl.commits[1].date })).content, /navy/);
   assert.equal((await brain.history("brand", { at: "2025-01-01" })).existed, false);
+});
+
+test("salient tokens: numbers, dates and names count; sentence starters don't", () => {
+  assert.ok(salient("Launch target is end of Q1").has("q1"));
+  assert.ok(salient("Sam owns the billing rewrite").has("sam"));
+  assert.ok(!salient("The newsletter goes out Monday at 8am").has("the"));
+  assert.ok(salient("The newsletter goes out Monday at 8am").has("8am"));
+  assert.equal(salientDiffers("Sam owns the billing rewrite", "The billing rewrite is owned by Sam"), false);
+  assert.equal(salientDiffers("Use a 16 kHz sample rate", "The sample rate is 16 kHz"), false);
+  assert.equal(salientDiffers("Launch target is end of Q1", "Launch target is end of Q2"), true);
+  assert.equal(salientDiffers("Sam owns the billing rewrite", "Priya owns the billing rewrite"), true);
+  assert.equal(salientDiffers("Billing runs on Postgres", "Billing runs on MySQL"), true);
+});
+
+test("REGRESSION: an updated fact is never dropped as a duplicate", async () => {
+  const { brain, gh } = setup();
+  await brain.remember("Launch target for Johnny is end of Q1", { about: "johnny" });
+  const r = await brain.remember("Launch target for Johnny is end of Q2", { about: "johnny" });
+  assert.equal(r.status, "saved");
+  assert.match(gh.text("memory/projects/johnny.md"), /end of Q2/);
+  assert.ok(r.maybe_supersedes.some((m) => /Q1/.test(m.line)), "old fact flagged for supersession");
+  // a true rewording is still deduped
+  assert.equal((await brain.remember("Launch target for Johnny is the end of Q2", { about: "johnny" })).status, "duplicate");
+});
+
+test("maintain reports possible contradictions separately from duplicates", async () => {
+  const { brain, gh } = setup();
+  gh.seed("memory/topics/ops.md", "---\nname: ops\n---\n\n- Newsletter goes out every Monday at 8am\n- Newsletter goes out every Tuesday at 9am\n");
+  const r = await brain.maintain({});
+  assert.equal(r.duplicates.length, 0);
+  assert.equal(r.conflicts.length, 1);
+  assert.match(fmt.maintain(r), /possible contradictions[\s\S]*Monday at 8am[\s\S]*Tuesday at 9am/);
 });

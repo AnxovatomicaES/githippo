@@ -40,6 +40,7 @@ export const fmt = {
   },
   maintain(r) {
     const out = [`${r.files} files, ${r.facts} facts, core ~${r.core_tokens} tok`];
+    if (r.conflicts?.length) out.push(`possible contradictions (same subject, different details):\n${r.conflicts.map((d) => `  ${d.a.path}: ${q(d.a.line)} ↔ ${d.b.path}: ${q(d.b.line)}`).join("\n")}`);
     if (r.duplicates.length) out.push(`dupes:\n${r.duplicates.map((d) => `  ${d.a.path} ≈ ${d.b.path}: ${q(d.a.line)}`).join("\n")}`);
     for (const [k, v] of [["oversized", r.oversized], ["not in index", r.missing_from_index], ["orphans", r.orphans]]) {
       if (v.length) out.push(`${k}: ${v.join(", ")}`);

@@ -188,7 +188,7 @@ export class MemoryIndex {
     add(semantic, "cosine");
     // Weak semantic matches shouldn't surface on their own.
     let ranked = [...fused.values()]
-      .filter((e) => e.signals.bm25 || (e.signals.cosine ?? 0) > 0.3)
+      .filter((e) => e.signals.bm25 || (e.signals.cosine ?? 0) > (this.embedder?.profile?.floor ?? 0.3))
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
 

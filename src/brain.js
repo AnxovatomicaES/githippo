@@ -8,8 +8,29 @@ import { tokenize } from "./search.js";
 
 const KIND_FOLDER = { person: "people", project: "projects", topic: "topics", company: "orgs", decision: "decisions" };
 const SYSTEM_FILES = new Set(["index.md", "core.md", "inbox.md"]);
-const DUP = 0.93;
-const RELATED = 0.75;
+// Words that start sentences without naming anything (EN + ES); any other capitalised word is a name.
+const STARTERS = new Set(
+  "the a an this that these those it its we i our my you your they he she use uses prefers always never all every each no not do does is are was el la los las un una unos unas este esta estos estas se usa usar prefiere siempre nunca todo todos cada no es son hay".split(" "),
+);
+
+/** Tokens that change a fact's meaning even when embeddings barely notice: numbers, dates, names. */
+export function salient(text) {
+  const words = plain(text).match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || [];
+  const out = new Set();
+  words.forEach((w, i) => {
+    const lw = w.toLowerCase();
+    if (/\d/.test(w)) out.add(lw);
+    else if (/^\p{Lu}/u.test(w) && !(i === 0 && STARTERS.has(lw))) out.add(lw);
+  });
+  return out;
+}
+
+/** True if either side has a salient token the other text doesn't contain at all. */
+export function salientDiffers(a, b) {
+  const ta = new Set(plain(a).toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []);
+  const tb = new Set(plain(b).toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []);
+  return [...salient(a)].some((t) => !tb.has(t)) || [...salient(b)].some((t) => !ta.has(t));
+}
 
 export const approxTokens = (s) => Math.ceil(s.length / 4);
 const slugify = (s) =>
@@ -60,6 +81,10 @@ export class Brain {
 
   get graph() {
     return this.index.graph;
+  }
+
+  get t() {
+    return this.index.embedder?.profile || { dup: 0.93, related: 0.75, conflict: 0.85, strong: 0.45, floor: 0.3 };
   }
 
   file(path) {
@@ -150,7 +175,7 @@ export class Brain {
       const id = best ? stem(best.path) : mentioned[0];
       return { path: this.graph.nodes.get(id).path, reason: `mentions:${id}` };
     }
-    const strong = hits.find((h) => ((h.signals.cosine ?? 0) >= 0.45 || (h.signals.bm25 ?? 0) >= 3) && !SYSTEM_FILES.has(h.path));
+    const strong = hits.find((h) => ((h.signals.cosine ?? 0) >= this.t.strong || (h.signals.bm25 ?? 0) >= 3) && !SYSTEM_FILES.has(h.path));
     if (strong) return { path: strong.path, reason: "semantic" };
     return { path: "inbox.md", reason: "inbox", create: { title: "Inbox", kind: "inbox" } };
   }
@@ -178,8 +203,10 @@ export class Brain {
     }
     const sims = await this.similarity(clean, lines.map((l) => l.line));
     const scored = lines.map((l, i) => ({ ...l, sim: sims[i] })).sort((a, b) => b.sim - a.sim);
-    if (scored[0]?.sim >= DUP) return { status: "duplicate", path: scored[0].path, existing: plain(scored[0].line) };
-    const related = scored.filter((s) => s.sim >= RELATED).slice(0, 2);
+    // A duplicate must match in meaning AND in details: "end of Q1" vs "end of Q2" embed almost identically.
+    const dup = scored.find((s) => s.sim >= this.t.dup && !salientDiffers(clean, s.line));
+    if (dup) return { status: "duplicate", path: dup.path, existing: plain(dup.line) };
+    const related = scored.filter((s) => s.sim >= this.t.related).slice(0, 2);
 
     const { text, linked } = this.graph.autoLink(clean, [stem(target.path)]);
     const line = `- ${text}`;
@@ -312,11 +339,14 @@ export class Brain {
     const files = [...this.index.files.values()].filter((f) => !f.path.startsWith("sessions/"));
     const all = files.flatMap((f) => factLines(f.body).map((line) => ({ path: f.path, line }))).slice(0, 500);
     const duplicates = [];
+    const conflicts = [];
     const vecs = await this.lineVectors(all.map((a) => plain(a.line)));
     for (let i = 0; i < all.length; i++) {
       for (let j = i + 1; j < all.length; j++) {
         const sim = vecs ? cosine(vecs[i], vecs[j]) : jaccard(all[i].line, all[j].line);
-        if (sim >= DUP) duplicates.push({ a: all[i], b: all[j], sim: +sim.toFixed(3) });
+        const differs = salientDiffers(all[i].line, all[j].line);
+        if (sim >= this.t.dup && !differs) duplicates.push({ a: all[i], b: all[j], sim: +sim.toFixed(3) });
+        else if (sim >= this.t.conflict && differs) conflicts.push({ a: all[i], b: all[j], sim: +sim.toFixed(3) });
       }
     }
     const indexBody = this.file("index.md")?.body || "";
@@ -326,6 +356,7 @@ export class Brain {
       facts: all.length,
       core_tokens: approxTokens(this.core),
       duplicates: duplicates.slice(0, 20),
+      conflicts: conflicts.slice(0, 20),
       oversized: files.filter((f) => Buffer.byteLength(f.content) > MAX_FILE_BYTES * 0.75).map((f) => f.path),
       missing_from_index: files.filter((f) => !SYSTEM_FILES.has(f.path) && !indexBody.includes(`[[${stem(f.path)}`)).map((f) => f.path),
       orphans: health.orphans.filter((p) => !SYSTEM_FILES.has(p) && !p.startsWith("sessions/")),
