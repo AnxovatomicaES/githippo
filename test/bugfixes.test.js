@@ -185,3 +185,16 @@ test("B27 streamed parse equals in-memory parse", async () => {
   assert.equal(b.lastAssistant, "step 1999");
   assert.equal(b.files.size, 7);
 });
+
+test("B29 a forked session restores working state like resume", async () => {
+  const tp = join(home, "fork.jsonl");
+  await writeFile(tp, L({ type: "user", cwd: "/f/app", message: { content: "Refactor billing" } }));
+  await hooks.sessionEnd({ session_id: "parent1", transcript_path: tp, cwd: "/f/app" });
+  const out = JSON.parse(await hooks.sessionStart({ session_id: "child1", source: "fork", cwd: "/f/app" }));
+  assert.match(out.hookSpecificOutput.additionalContext, /Refactor billing/);
+});
+
+test("B30 status line finds the checkpoint after cd into a subfolder", async () => {
+  const line = await hooks.statusLine({ session_id: "x", workspace: { current_dir: "/f/app/src/deep", project_dir: "/f/app" } }, { cacheDir: join(home, "nocache") });
+  assert.match(line, /checkpoint \d+m ago/);
+});

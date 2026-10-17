@@ -19,8 +19,8 @@
 Long-term memory for Claude and any MCP client, stored as plain Markdown in **your own private GitHub repo**. Hybrid semantic search, a knowledge graph, auto-memory, compaction survival, and about 46% less per-turn overhead than a naive memory server. Every memory is a git commit you can read, diff and revert.
 
 ```bash
-npx -y github:AnxovatomicaES/githippo#v3.1.3 demo     # try it in 30 seconds, no repo or token
-npm i -g github:AnxovatomicaES/githippo#v3.1.3 && githippo install
+npx -y github:AnxovatomicaES/githippo#v3.1.4 demo     # try it in 30 seconds, no repo or token
+npm i -g github:AnxovatomicaES/githippo#v3.1.4 && githippo install
 ```
 
 Or as a Claude Code plugin: install githippo globally first (the plugin's hooks call the `githippo` command and stay silent if it's missing, so they never slow a prompt), then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md).
@@ -80,6 +80,8 @@ flowchart LR
 
 Bonus: a fresh session in the same project and branch within 24h gets a brief "last time you were…" note, including what changed in git since (commits, commits by others, branch switches, deleted files). The **UserPromptSubmit** hook proactively surfaces up to three relevant memories when the match is confident. It's capped at 300 tokens, skips trivial prompts and never repeats within a session. Before compaction, githippo also tells the compactor what must survive, and after compaction it keeps the compactor's summary with the checkpoint.
 
+How we know the hooks do what we say: the contracts were read from Claude Code's own code (2.1.258). PreCompact passes each successful hook's stdout to the compactor as custom instructions (Claude Code also shows that text in the transcript as "PreCompact … completed successfully"); PostCompact receives `compact_summary`; every hook receives `session_id`, `transcript_path` and `cwd`; SessionStart sources are `startup`, `resume`, `clear`, `compact` and `fork`.
+
 Wrap anything in `<private>…</private>` and it never reaches memory. Turn hooks off without editing files: `GITHIPPO_HOOK_PROFILE=minimal` or `GITHIPPO_DISABLED_HOOKS=prompt,steer`.
 
 ## Token budget (measured, `githippo bench`)
@@ -117,7 +119,7 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 <details><summary><b>Claude Code</b> (full experience: hooks + MCP)</summary>
 
 ```bash
-npm i -g github:AnxovatomicaES/githippo#v3.1.3
+npm i -g github:AnxovatomicaES/githippo#v3.1.4
 githippo install        # asks for repo + token, writes ~/.githippo/config.json (600), adds hooks
 claude mcp add githippo --scope user -- githippo serve
 githippo init           # seeds core.md, index.md, inbox.md
@@ -134,7 +136,7 @@ githippo doctor         # verifies everything, including that your repo is priva
   "mcpServers": {
     "githippo": {
       "command": "npx",
-      "args": ["-y", "github:AnxovatomicaES/githippo#v3.1.3", "serve"],
+      "args": ["-y", "github:AnxovatomicaES/githippo#v3.1.4", "serve"],
       "env": { "GITHUB_TOKEN": "github_pat_...", "MEMORY_REPO": "you/my-memory" }
     }
   }
@@ -204,7 +206,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 ## Develop
 
 ```bash
-npm ci && npm test      # 62 tests: unit, hooks, adopted features, bug regressions, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 64 tests: unit, hooks, adopted features, bug regressions, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 

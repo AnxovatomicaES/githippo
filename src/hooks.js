@@ -144,14 +144,15 @@ export async function sessionStart(input) {
   const key = input.cwd ? projectKey(input.cwd) : "";
   const branch = branchOf(input.cwd);
   const read = (f) => readFile(join(CK_DIR, f), "utf8").catch(() => null);
-  if (["compact", "resume"].includes(input.source)) {
+  // B29: "fork" (a forked session) restores working state exactly like "resume".
+  if (["compact", "resume", "fork"].includes(input.source)) {
     if (!hookEnabled("restore")) return "";
     const ck =
       (await read(`${safeId(input.session_id)}.md`)) ||
       (key && branch && (await read(`latest-${key}--${safeId(branch)}.md`))) ||
       (key && (await read(`latest-${key}.md`)));
     if (!ck) return "";
-    const d = input.source === "resume" && hookEnabled("drift") ? drift(ck, input.cwd) : "";
+    const d = input.source !== "compact" && hookEnabled("drift") ? drift(ck, input.cwd) : "";
     return emit("SessionStart", `githippo restored your working state from before context compaction. Treat it as ground truth and continue from "Where it stopped":\n${body(withoutSummary(ck))}${d ? `\n${d}` : ""}`);
   }
   // Fresh session in the same project (same branch preferred) within 24h: brief continuity note + drift.
@@ -251,7 +252,8 @@ export async function statusLine(input, { cacheDir } = {}) {
     if (snap) parts.push(`${snap.chunks.reduce((n, c) => n + (c.text.match(/^\s*[-*] /gm) || []).length, 0)} facts`);
     const st = JSON.parse(await readFile(join(STATE_DIR, `${safeId(input.session_id)}.json`), "utf8").catch(() => "{}"));
     if (st.injected) parts.push(`recalled ${st.injected}× (~${st.tokens} tok)`);
-    const cwd = input.workspace?.current_dir || input.cwd || "";
+    // B30: project_dir is stable; current_dir changes when the user cd's into a subfolder.
+    const cwd = input.workspace?.project_dir || input.workspace?.current_dir || input.cwd || "";
     const ck = cwd && (await stat(join(CK_DIR, `latest-${projectKey(cwd)}.md`)).catch(() => null));
     if (ck) {
       const m = Math.round((Date.now() - ck.mtimeMs) / 60000);
