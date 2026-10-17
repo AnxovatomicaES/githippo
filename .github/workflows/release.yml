@@ -27,17 +27,19 @@ jobs:
           done
       - name: Build Claude Desktop extension
         run: node scripts/build-mcpb.mjs
+      - name: Write server.json from the built bundle's hash
+        run: node scripts/server-json.mjs
+      - name: Install mcp-publisher and validate the listing (before anything is published)
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher validate
       - name: Create GitHub release with the bundle
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/*.mcpb dist/*.sha256 \
             --title "githippo $GITHUB_REF_NAME" --generate-notes
-      - name: Write server.json from the uploaded bundle's hash
-        run: node scripts/server-json.mjs
       - name: Publish to the MCP Registry
         run: |
-          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
-          ./mcp-publisher validate
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
