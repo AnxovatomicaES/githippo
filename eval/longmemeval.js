@@ -32,6 +32,7 @@ export async function runLongMemEval(entries, { embeddings = "none", limit = Inf
   const K = [5, 10, 20];
   const byType = {};
   const all = { n: 0, r5: 0, r10: 0, r20: 0, mrr: 0, ndcg: 0 };
+  let semanticQuestions = 0; // integrity: githippo silently falls back to keywords if embeddings fail
   const t0 = Date.now();
   // --sample N: N evenly spaced questions across the whole set (the file is grouped by question type,
   // so the first N would cover only one or two types)
@@ -50,6 +51,7 @@ export async function runLongMemEval(entries, { embeddings = "none", limit = Inf
     if (wholeSession) index.chunkChars = 1e9;
     index.vectors = vectors;
     const hits = await index.search(e.question, { k: 200, expand: false });
+    if (hits.some((h) => h.signals.cosine !== undefined)) semanticQuestions++;
     const ranked = [...new Set(hits.map((h) => idOf.get(h.path)))];
     const gold = new Set(e.answer_session_ids);
     const first = ranked.findIndex((s) => gold.has(s));
@@ -67,12 +69,13 @@ export async function runLongMemEval(entries, { embeddings = "none", limit = Inf
   embedder?.stop?.();
   const pct = (a, n) => Math.round((1000 * a) / n) / 10;
   const sum = (m) => ({ n: m.n, r5: pct(m.r5, m.n), r10: pct(m.r10, m.n), r20: pct(m.r20, m.n), mrr: pct(m.mrr, m.n), ndcg10: pct(m.ndcg, m.n) });
-  return { embeddings: (embedder?.id || "none (BM25 + graph)") + (sample ? ` · evenly spaced sample of ${list.length}` : "") + (shuffle ? ` · sessions shuffled (seed ${shuffle})` : "") + (wholeSession ? " · whole-session documents" : ""), all: sum(all), byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, sum(v)])), seconds: Math.round((Date.now() - t0) / 1000) };
+  return { semanticQuestions, embeddings: (embedder?.id || "none (BM25 + graph)") + (sample ? ` · evenly spaced sample of ${list.length}` : "") + (shuffle ? ` · sessions shuffled (seed ${shuffle})` : "") + (wholeSession ? " · whole-session documents" : ""), all: sum(all), byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, sum(v)])), seconds: Math.round((Date.now() - t0) / 1000) };
 }
 
 export function formatLongMemEval(r) {
   return [
-    `**LongMemEval-S retrieval** · ${r.embeddings} · ${r.all.n} questions · ${r.seconds} s`,
+    `**LongMemEval-S retrieval** · ${r.embeddings} · ${r.all.n} questions · ${r.seconds} s` +
+      (r.embeddings.startsWith("local") || r.embeddings.startsWith("voyage") ? ` · semantic results in ${r.semanticQuestions}/${r.all.n} questions${r.semanticQuestions < r.all.n ? " ⚠️ embeddings failed for some questions (keyword fallback), so this is not a pure model run" : ""}` : ""),
     "",
     "| question type | n | R@5 | R@10 | R@20 | MRR | NDCG@10 |",
     "|---|---|---|---|---|---|---|",
