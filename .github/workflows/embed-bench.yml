@@ -1,0 +1,25 @@
+name: embed-bench
+on: workflow_dispatch
+permissions:
+  contents: read
+  issues: write
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Measure
+        env:
+          GITHIPPO_HOME: ${{ runner.temp }}/gh
+        run: |
+          { echo "### Embedding throughput for ${GITHUB_SHA::7}"; echo; echo '```'; node eval/embed-bench.js --n 512; echo '```'; } > bench.md
+          cat bench.md
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 3 --body-file bench.md
