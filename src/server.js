@@ -40,7 +40,7 @@ export function createBrain(env = process.env, { source = "githippo" } = {}) {
       ? new GitHubMemoryStore({ token: cfg.GITHUB_TOKEN, repo: cfg.MEMORY_REPO, branch: cfg.MEMORY_BRANCH || "main", root: cfg.MEMORY_ROOT ?? "memory", source })
       : new FileStore({ dir: cfg.VAULT_DIR, root: cfg.MEMORY_ROOT ?? "memory", source });
   const index = new MemoryIndex(store, createEmbedder(cfg), { cacheDir: cfg.CACHE_DIR });
-  return new Brain({ store, index, llm: createLLM(cfg), coreBudgetTokens: cfg.CORE_BUDGET_TOKENS, decayActiveDays: cfg.DECAY_ACTIVE_DAYS });
+  return new Brain({ store, index, llm: createLLM(cfg), coreBudgetTokens: cfg.CORE_BUDGET_TOKENS, decayActiveDays: cfg.DECAY_ACTIVE_DAYS, style: cfg.MEMORY_STYLE === "terse" ? "terse" : "plain" });
 }
 
 const tool = (render) => async (fnResult) => {

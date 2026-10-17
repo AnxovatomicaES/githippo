@@ -6,6 +6,7 @@ import { redact, scan } from "./guard.js";
 import { cosine } from "./embed.js";
 import { tokenize } from "./search.js";
 import { ALLOW_ALL, AclStore } from "./accounts.js";
+import { terse } from "./terse.js";
 
 const KIND_FOLDER = { person: "people", project: "projects", topic: "topics", company: "orgs", decision: "decisions" };
 const SYSTEM_FILES = new Set(["index.md", "core.md", "inbox.md"]);
@@ -102,8 +103,8 @@ function frontmatter({ name, title, kind, description, aliases = [] }) {
 }
 
 export class Brain {
-  constructor({ store, index, llm = null, coreBudgetTokens = 400, decayActiveDays = 20 }) {
-    Object.assign(this, { store, index, llm, coreBudgetTokens, decayActiveDays });
+  constructor({ store, index, llm = null, coreBudgetTokens = 400, decayActiveDays = 20, style = "plain" }) {
+    Object.assign(this, { store, index, llm, coreBudgetTokens, decayActiveDays, style });
     this.core = "";
     this.acl = ALLOW_ALL;
   }
@@ -152,6 +153,7 @@ export class Brain {
       if (f) parts.push(plain(parseFile(p, f.content).body.trim()));
     }
     this.core = parts.filter(Boolean).join("\n");
+    if (this.style === "terse") this.core = terse(this.core);
     return this.core;
   }
 
@@ -218,7 +220,8 @@ export class Brain {
     for (const h of hits) take(h.path, h.text, h.signals.graph);
     // memory that was actually handed to the model counts as "used" for ranking
     this.index.usage.record(hits.filter((h) => sections.has(h.path)).map((h) => h.chunk), this.user);
-    const context = [...sections.values()].map((s) => `${s.head}\n${s.parts.join("\n")}`).join("\n");
+    let context = [...sections.values()].map((s) => `${s.head}\n${s.parts.join("\n")}`).join("\n");
+    if (this.style === "terse") context = terse(context);
     return { mode: "pack", context, tokens: approxTokens(context), files: sections.size };
   }
 
