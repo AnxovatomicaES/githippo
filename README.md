@@ -19,8 +19,8 @@
 Long-term memory for Claude and any MCP client, stored as plain Markdown in **your own private GitHub repo**. Hybrid semantic search, a knowledge graph, auto-memory, compaction survival, and about 46% less per-turn overhead than a naive memory server. Every memory is a git commit you can read, diff and revert.
 
 ```bash
-npx githippo demo          # try it in 30 seconds, no repo or token
-npm i -g githippo && githippo install
+npx -y github:AnxovatomicaES/githippo#v3.1.1 demo     # try it in 30 seconds, no repo or token
+npm i -g github:AnxovatomicaES/githippo#v3.1.1 && githippo install
 ```
 
 Or as a Claude Code plugin: `/plugin marketplace add AnxovatomicaES/githippo` then `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md).
@@ -117,7 +117,7 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 <details><summary><b>Claude Code</b> (full experience: hooks + MCP)</summary>
 
 ```bash
-npm i -g githippo
+npm i -g github:AnxovatomicaES/githippo#v3.1.1
 githippo install        # asks for repo + token, writes ~/.githippo/config.json (600), adds hooks
 claude mcp add githippo --scope user -- githippo serve
 githippo init           # seeds core.md, index.md, inbox.md
@@ -134,7 +134,7 @@ githippo doctor         # verifies everything, including that your repo is priva
   "mcpServers": {
     "githippo": {
       "command": "npx",
-      "args": ["-y", "githippo", "serve"],
+      "args": ["-y", "github:AnxovatomicaES/githippo#v3.1.1", "serve"],
       "env": { "GITHUB_TOKEN": "github_pat_...", "MEMORY_REPO": "you/my-memory" }
     }
   }

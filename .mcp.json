@@ -3,7 +3,11 @@
     "githippo": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "githippo@3", "serve"]
+      "args": [
+        "-y",
+        "github:AnxovatomicaES/githippo#v3.1.1",
+        "serve"
+      ]
     }
   }
 }
