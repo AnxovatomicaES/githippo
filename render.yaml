@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: githippo
+    runtime: node
+    plan: starter            # local embeddings need ~600 MB RAM; on free/small plans set EMBEDDINGS=voyage or none
+    buildCommand: npm ci
+    startCommand: node src/cli.js http
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: MEMORY_REPO
+        sync: false
+      - key: MCP_SECRET
+        generateValue: true
+      - key: EMBEDDINGS
+        value: local
+      - key: CACHE_DIR
+        value: /tmp/githippo
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

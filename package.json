@@ -1,0 +1,56 @@
+{
+  "name": "githippo",
+  "version": "3.0.0",
+  "description": "A hippocampus for your AI. Long-term memory for Claude & any MCP client, stored as Markdown in your own GitHub repo: hybrid semantic search, knowledge graph, auto-memory, compaction-proof, token-lean.",
+  "main": "src/server.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node src/cli.js http",
+    "bench": "node src/cli.js bench"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "memory",
+    "model-context-protocol",
+    "claude-code",
+    "knowledge-graph",
+    "embeddings",
+    "rag",
+    "github",
+    "obsidian",
+    "agent-memory"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.7"
+  },
+  "type": "module",
+  "bin": {
+    "githippo": "src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "optionalDependencies": {
+    "@huggingface/transformers": "^4.3.1"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AnxovatomicaES/githippo.git"
+  },
+  "homepage": "https://github.com/AnxovatomicaES/githippo#readme",
+  "bugs": {
+    "url": "https://github.com/AnxovatomicaES/githippo/issues"
+  }
+}
