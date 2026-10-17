@@ -8,7 +8,7 @@ import { Brain, assertSafe } from "./brain.js";
 import { fmt, fmtError } from "./format.js";
 import { loadConfig } from "./config.js";
 
-export const VERSION = "3.1.1";
+export const VERSION = "3.1.2";
 
 /** Server instructions live in the system prompt, so they survive context compaction. Core memory rides along. */
 export function instructions(core) {
@@ -135,7 +135,7 @@ export function buildServer(brain) {
 
   reg(
     "maintain",
-    "Health report: dupes, contradictions, orphans, broken links, stale inbox. reindex rebuilds index.md; decay archives stale inbox/checkpoints; rewrite=path merges dupes via LLM.",
+    "Health report. reindex rebuilds index.md; decay archives stale inbox; rewrite=path merges dupes (LLM).",
     { reindex: z.boolean().optional(), decay: z.boolean().optional(), rewrite: z.string().optional() },
     RW,
     fmt.maintain,

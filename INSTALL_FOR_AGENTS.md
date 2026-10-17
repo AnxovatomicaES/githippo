@@ -3,7 +3,7 @@
 You are installing githippo, a long-term memory MCP server for Claude Code. Follow these steps in order and stop to ask the user whenever a step needs something only they can provide.
 
 1. Check prerequisites: `node -v` must be 20 or newer; `claude --version` must work.
-2. Install: `npm i -g github:AnxovatomicaES/githippo#v3.1.1`
+2. Install: `npm i -g github:AnxovatomicaES/githippo#v3.1.2`
 3. Ask the user for two things. Do not invent them and do not read them from any file:
    - the name of a **private** GitHub repo for memory (owner/name), and
    - a **fine-grained** GitHub token limited to that repo with *Contents: Read and write* only.
