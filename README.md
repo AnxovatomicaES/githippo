@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="githippo, a hippocampus for your AI" width="100%">
+  <img src="https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/assets/banner.svg" alt="githippo, a hippocampus for your AI" width="100%">
 </p>
 
 <p align="center">
@@ -13,10 +13,10 @@
 <h3 align="center">Claude forgets everything when the context compacts.<br>githippo doesn't.</h3>
 
 <p align="center">
-  <img src="assets/demo.svg" alt="githippo surviving a context compaction in Claude Code" width="100%">
+  <img src="https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/assets/demo.svg" alt="githippo surviving a context compaction in Claude Code" width="100%">
 </p>
 
-Long-term memory for Claude and any MCP client, stored as plain Markdown in a git repo **you own**. Hybrid semantic search, a knowledge graph, auto-memory, compaction survival, and about 46% less per-turn overhead than a naive memory server. Every memory is a git commit you can read, diff and revert.
+Long-term memory for Claude and any MCP client, stored as plain Markdown in a git repo **you own**. Hybrid semantic search, a knowledge graph, auto-memory and compaction survival, at about 760 tokens of tool overhead per turn. Every memory is a git commit you can read, diff and revert.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/instal
 
 That's the whole install: no account, no token, no questions. It sets up a local memory vault, wires Claude Code (hooks, MCP, status line) and fetches semantic search in the background. Restart Claude Code and just talk; it remembers.
 
-Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.3.0 demo` shows it working in 30 seconds without installing anything.
+Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.4.0 demo` shows it working in 30 seconds without installing anything.
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -49,14 +49,14 @@ Because each good idea out there lives in a different tool. githippo takes the b
 | Consolidation / dedupe | mcp-memory-service, Mem0 | Embedding-based duplicate detection on every write, plus `maintain` health reports; optional LLM merge that **refuses lossy rewrites** (dropped links or frontmatter) |
 | Remote MCP for claude.ai | Supermemory, Mem0 | Self-hosted Streamable HTTP; your data never leaves your repo and your server |
 
-Version 3.1 adds the best idea from each of nine other memory tools, read in their source and credited in [docs/prior-art.md](docs/prior-art.md): `<private>` tags, compaction steering and summary capture, session diffing, activity-aware decay, a code-aware tokenizer, errors in checkpoints, an honest status line, plugin packaging and `alwaysLoad` registration.
+Version 3.1 adds the best idea from each of nine other memory tools, read in their source and credited in [docs/prior-art.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/prior-art.md): `<private>` tags, compaction steering and summary capture, session diffing, activity-aware decay, a code-aware tokenizer, errors in checkpoints, an honest status line, plugin packaging and `alwaysLoad` registration.
 
-And things we haven't seen elsewhere, as far as we know:
+What else it does:
 
 - **Compliance guard.** Blocks API keys, tokens, private keys, IBANs (mod-97 checked), card numbers (Luhn checked), Spanish DNI/NIE (checksum) and US SSNs *before* they become permanent git history.
 - **Compaction-proof by design**, three ways (see below).
 - **Cross-lingual recall.** The default multilingual embedder runs locally; ask in Spanish, find notes written in English.
-- **Updates are never mistaken for duplicates.** "Launch is end of Q1" and "end of Q2" embed almost identically. githippo also compares numbers, dates and names, so the update is saved, the old line is flagged, and `maintain` reports possible contradictions. Measured in [docs/calibration.md](docs/calibration.md).
+- **Updates are never mistaken for duplicates.** "Launch is end of Q1" and "end of Q2" embed almost identically. githippo also compares numbers, dates and names, so the update is saved, the old line is flagged, and `maintain` reports possible contradictions. Measured in [docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md).
 - **Optimistic concurrency.** Two sessions editing the same memory can't clobber each other; the loser gets the current file back and merges.
 
 ## Survives compaction, three layers deep
@@ -87,9 +87,38 @@ Recall also learns what you actually use: memory that keeps being handed to Clau
 
 Wrap anything in `<private>…</private>` and it never reaches memory. Turn hooks off without editing files: `GITHIPPO_HOOK_PROFILE=minimal` or `GITHIPPO_DISABLED_HOOKS=prompt,steer`.
 
+## Quality, measured
+
+A labelled benchmark ships in [`eval/`](https://github.com/AnxovatomicaES/githippo/tree/main/eval): a 19-file working memory (people, projects, decisions; some notes in Spanish) and 52 queries labelled with the file that should come back, plus filing and duplicate/update cases. CI runs it on every change to the code and posts the results to [issue #3](https://github.com/AnxovatomicaES/githippo/issues/3); a quality floor fails the build if keyword retrieval regresses. Reproduce it with `githippo eval`.
+
+| Queries (52) | Keyword + graph | + local model |
+|---|---|---|
+| Exact terms, code identifiers, names, graph hops (21) | 100% hit@1 | 100% hit@1 |
+| Paraphrases (12) | 42% hit@1 · 67% hit@5 | 58% hit@1 · 100% hit@5 |
+| Spanish ↔ English (13) | 15% hit@1 · 23% hit@5 | 54% hit@1 · 100% hit@5 |
+| French, German, Portuguese, Italian → English (6) | 17% hit@5 | 100% hit@1 |
+| **All** | **56% hit@1 · 64% hit@5 · MRR 0.59** | **79% hit@1 · 100% hit@5 · MRR 0.89** |
+| Filing a new fact in the right file (12) | 75% | 75% |
+| Duplicate vs update vs new fact (11) | 91% | 82% |
+
+hit@k: the right file is among the first k results. Recall puts several results in context, so with the model the right memory reached Claude in all 52 cases; every miss at rank 1 was at rank 2.
+
+What this does and doesn't tell you: the set is small, hand-written by the author, and in-domain, so treat it as a regression guard and a rough guide, not a leaderboard number. Filing is the weakest area: a quarter of facts land in the inbox or the wrong file, and the model doesn't help. Thresholds were calibrated on separate sentence pairs ([docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md)), not tuned on this set.
+
+**Resources** (measured in CI, Linux): githippo itself uses about 50 MB. The local model runs in a separate process that uses about 520 MB while you're using it and exits after 10 idle minutes (`EMBED_IDLE_MS`), so an idle githippo is back to about 50 MB. Without the model (`EMBEDDINGS=none`) it never goes above about 100 MB.
+
+**Scale:** a 5,000-file local vault re-syncs in about 0.3 s and answers a query in about 13 ms. In GitHub mode (the remote server), a 2,000-file vault cold-starts with 2 API calls (one tarball), an unchanged sync is a free `304 Not Modified`, and each write is 1 call.
+
+## Should you use githippo?
+
+- **Claude's built-in memory** is the zero-setup choice. Use githippo if you want the memory as files you can read, diff, edit in Obsidian and back up yourself, the same memory across Claude Code, Claude Desktop, claude.ai and other MCP clients, or memory that survives Claude Code's context compaction.
+- **[basic-memory](https://github.com/basicmachines-co/basic-memory)** is the closest alternative: also Markdown and Obsidian-friendly, more mature, Python, AGPL. githippo differs in git history and time travel, the compaction hooks, OAuth team vaults with folder permissions, and a secrets guard.
+- **[mem0](https://github.com/mem0ai/mem0)** and other hosted services extract facts with an LLM and store them in their cloud, with nothing to run. githippo never calls an LLM to save a fact and keeps everything in a repo you own.
+- **It's young.** githippo is a single-maintainer project with a few weeks of history. The benchmark, 80+ tests and the bug log in the commit history are there so you can judge it, but expect rough edges.
+
 ## Token budget (measured, `githippo bench`)
 
-| | v2 (naive) | **githippo** |
+| | githippo v2 (our first version) | **githippo now** |
 |---|---|---|
 | Tools | 12 | **8** |
 | Model-visible schema, every turn | ~1,380 tok | **~760 tok** |
@@ -119,9 +148,9 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
 
-Prefer to see what runs? It's [a short shell script](install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.3.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.4.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
 
-Plugin route: run the install above, then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md).
+Plugin route: run the install above, then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](https://github.com/AnxovatomicaES/githippo/blob/main/INSTALL_FOR_AGENTS.md).
 
 <details><summary><b>Claude Desktop</b> (one-click extension)</summary>
 
@@ -182,7 +211,7 @@ aliases: [billing rewrite]
 - ~~Launch target is end of Q4~~ (until 2026-09-30)
 ```
 
-Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted facts), `people/`, `projects/`, `topics/`, `decisions/`, `sessions/` (checkpoints). See [`examples/memory`](examples/memory).
+Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted facts), `people/`, `projects/`, `topics/`, `decisions/`, `sessions/` (checkpoints). See [`examples/memory`](https://github.com/AnxovatomicaES/githippo/tree/main/examples/memory).
 
 ## Configuration
 
@@ -194,7 +223,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 | `MCP_SECRET` | | remote mode, 24+ chars: owner login and OAuth signing key |
 | `PUBLIC_URL` | | remote mode: the server's public https URL (OAuth issuer) |
 | `USERS_JSON` | | remote multi-user: contents of `githippo users` file |
-| `EMBEDDINGS` | `local` | `local` (paraphrase-multilingual-MiniLM-L12-v2, CPU, one-time model download, ~860 MB RAM), `voyage`, or `none` (keyword only). Choice and thresholds are measured in [docs/calibration.md](docs/calibration.md) |
+| `EMBEDDINGS` | `local` | `local` (paraphrase-multilingual-MiniLM-L12-v2 in a separate process: ~520 MB while in use, exits after `EMBED_IDLE_MS`, default 10 min), `voyage`, or `none` (keyword only). Choice and thresholds are measured in [docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md) |
 | `MEMORY_ROOT` / `MEMORY_BRANCH` | `memory` / `main` | |
 | `CORE_BUDGET_TOKENS` | `400` | hard cap for pinned memory |
 | `PROMPT_RECALL` | `1` | `0` turns off the per-prompt hook |
@@ -212,7 +241,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 ## Develop
 
 ```bash
-npm ci && npm test      # 70 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 80 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 

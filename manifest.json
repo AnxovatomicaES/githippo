@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "githippo",
   "display_name": "githippo",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "Long-term memory for Claude, stored as Markdown in a git repo you own.",
   "long_description": "githippo gives Claude a long-term memory that lives in plain Markdown files in a local git repository you own: semantic and keyword recall in any language, a knowledge graph of people and projects, automatic de-duplication, history and time travel through git, and a guard that keeps secrets and ID numbers out of memory. Uses the same vault as the githippo CLI and Claude Code hooks. No account, no cloud.",
   "author": {

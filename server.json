@@ -3,7 +3,7 @@
   "name": "io.github.AnxovatomicaES/githippo",
   "title": "githippo",
   "description": "Long-term memory for Claude: Markdown in a git repo you own. Survives context compaction.",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "websiteUrl": "https://github.com/AnxovatomicaES/githippo",
   "repository": {
     "url": "https://github.com/AnxovatomicaES/githippo",
@@ -22,9 +22,9 @@
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/AnxovatomicaES/githippo/releases/download/v3.3.0/githippo-3.3.0.mcpb",
-      "version": "3.3.0",
-      "fileSha256": "aa7a99f83f13db751ca59d3546f715d91cb1736df4c58bb543660266e9ed9a28",
+      "identifier": "https://github.com/AnxovatomicaES/githippo/releases/download/v3.4.0/githippo-3.4.0.mcpb",
+      "version": "3.4.0",
+      "fileSha256": "48d8aff400414428b63b6a5f2c37560510a95585460f29aa1263ca02a77a3fba",
       "transport": {
         "type": "stdio"
       },
