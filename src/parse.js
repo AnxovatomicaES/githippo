@@ -44,7 +44,10 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
   let startLine = 0;
 
   const flush = () => {
-    const text = buf.join("\n").replace(/\s*<!--[\s\S]*?-->/g, "").trim();
+    const raw = buf.join("\n");
+    // dates the chunk's facts were written (hidden stamps) or stopped being true (History "until")
+    const dates = [...raw.matchAll(/<!--\+(\d{4}-\d{2}-\d{2})-->|\(until (\d{4}-\d{2}-\d{2})\)/g)].map((m) => m[1] || m[2]);
+    const text = raw.replace(/\s*<!--[\s\S]*?-->/g, "").trim();
     if (text) {
       // The description is the file's best semantic summary ("Johnny" means nothing to a model; "Voice assistant for the Mac" does).
       const embedText = `${title}${meta.description && meta.description !== title ? ` — ${meta.description}` : ""}${heading ? ` › ${heading}` : ""}\n${text}`;
@@ -53,6 +56,7 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
         path,
         heading,
         history: /^(history|archived)$/i.test(heading),
+        dates,
         line: startLine,
         text,
         embedText,

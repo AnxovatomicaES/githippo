@@ -7,6 +7,7 @@ import { parseFile, stem } from "./parse.js";
 import { KnowledgeGraph } from "./graph.js";
 import { cosine } from "./embed.js";
 import { Usage } from "./usage.js";
+import { timeWindow, inWindow } from "./when.js";
 
 // Function words for EN, ES, FR, DE, PT, IT. They carry no topic, so they shouldn't drive keyword ranking.
 const STOP = new Set(
@@ -241,10 +242,13 @@ export class MemoryIndex {
       .sort((a, b) => b.s - a.s);
   }
 
-  async search(query, { k = 8, prefix = "", expand = true, canRead = () => true, user = null } = {}) {
+  async search(query, { k = 8, prefix = "", expand = true, canRead = () => true, user = null, now = Date.now() } = {}) {
     await this.sync();
     if (!this.chunks?.length) return [];
-    const inScope = (c) => inDefaultScope(c, prefix) && canRead(c.path);
+    // Time-aware recall: "last spring", "in March", "3 days ago", "Q1"… → a window. Facts from that period
+    // rank higher, and questions about the past may also see superseded (History) facts that were true then.
+    const when = timeWindow(query, now);
+    const inScope = (c) => (inDefaultScope(c, prefix) || (when?.past && c.history && inDefaultScope({ ...c, history: false }, prefix))) && canRead(c.path);
     const lexical = this.bm25(query).filter((x) => inScope(x.c));
     const semantic = (await this.dense(query)).filter((x) => inScope(x.c));
     const RRF_K = 60;
@@ -275,6 +279,14 @@ export class MemoryIndex {
     });
     // Usage-weighted ranking: a small, fading boost for memory that keeps being used (1.0 with no data).
     for (const e of fused.values()) e.score *= this.usage.boost(e.chunk, user);
+    if (when) {
+      for (const e of fused.values()) {
+        if (inWindow(e.chunk.dates, when)) {
+          e.score *= 1.5;
+          e.signals.when = true;
+        } else if (e.chunk.history && !(e.chunk.dates || []).some((d) => d >= when.from)) e.score *= 0.5; // stopped being true before the window
+      }
+    }
     // Weak semantic matches shouldn't surface on their own.
     let ranked = [...fused.values()]
       .filter((e) => e.signals.bm25 || e.signals.doc || (e.signals.cosine ?? 0) > (this.embedder?.profile?.floor ?? 0.3))
