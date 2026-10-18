@@ -3,7 +3,7 @@
 // uses, so a vault can move between local and remote without any conversion. If a git remote is set,
 // commits are pushed in the background with the user's existing git credentials (gh, SSH, keychain).
 import { mkdir, open as openFile, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { KeyedMutex, withFileLock } from "./lock.js";
@@ -75,6 +75,20 @@ export class FileStore {
     return this;
   }
 
+  /** Changes whenever any process commits to the vault: lets every server notice other writers at once. */
+  stateToken() {
+    try {
+      const head = readFileSync(join(this.dir, ".git", "HEAD"), "utf8").trim();
+      const ref = head.startsWith("ref: ") ? head.slice(5) : null;
+      if (!ref) return head;
+      const refFile = join(this.dir, ".git", ref);
+      if (existsSync(refFile)) return readFileSync(refFile, "utf8").trim();
+      return `${statSync(join(this.dir, ".git", "packed-refs")).mtimeMs}`;
+    } catch {
+      return null;
+    }
+  }
+
   async read(path, ref) {
     const p = normalizePath(path);
     if (ref && ref !== "HEAD") {
@@ -131,7 +145,15 @@ export class FileStore {
     const scope = this.root || ".";
     this.queue = this.queue.then(async () => {
       const locked = (r) => /index\.lock|Unable to create|cannot lock ref|another git process/i.test(r.err);
+      const started = Date.now();
       for (let attempt = 0; attempt < 25; attempt++) {
+        // checked first, so every retry path passes through it: never hold the caller more than ~3 s; the file
+        // is already safely on disk, and a background timer commits it as soon as git is free
+        if (attempt > 0 && Date.now() - started > 3000) {
+          this.pendingCommit = true;
+          this.scheduleCommitRetry(summary, op);
+          break;
+        }
         const add = await this.git(["add", "-A", "--", scope]);
         if (!add.ok && locked(add)) {
           await new Promise((res) => setTimeout(res, 40 + Math.random() * 120 * (1 + attempt / 4)));
@@ -140,9 +162,19 @@ export class FileStore {
         // GIT_SIGN=1: sign with the user's own git identity and signing key (GPG or SSH), so tampering is detectable
         const sign = process.env.GIT_SIGN === "1" ? ["commit", "-q", "-S"] : ["-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "commit", "-q"];
         const c = await this.git([...sign, "-m", `${summary}\n\nMemory-Op: ${op}\nMemory-Source: ${this.source}`, "--", scope]);
-        if (c.ok || /nothing to commit|no changes added/i.test(c.out + c.err)) break; // done, or another process committed it for us
+        if (c.ok || /nothing to commit|no changes added/i.test(c.out + c.err)) {
+          this.pendingCommit = false;
+          break; // done, or another process committed it for us
+        }
         if (!locked(c)) {
           console.error(`[githippo] git commit failed: ${c.err.split("\n")[0]}`);
+          break;
+        }
+        if (attempt === 24) {
+          // git is busy for a long time (e.g. the user is running git): the file is safely on disk; keep
+          // trying to commit in the background instead of waiting for the next write
+          this.pendingCommit = true;
+          this.scheduleCommitRetry(summary, op);
           break;
         }
         await new Promise((res) => setTimeout(res, 40 + Math.random() * 120 * (1 + attempt / 4)));
@@ -150,6 +182,18 @@ export class FileStore {
       if (this.autoPush) this.schedulePush();
     });
     return this.queue;
+  }
+
+  scheduleCommitRetry(summary, op, tries = 0) {
+    clearTimeout(this.commitRetry);
+    if (tries > 60) return;
+    this.commitRetry = setTimeout(async () => {
+      const add = await this.git(["add", "-A", "--", this.root || "."]);
+      const c = add.ok ? await this.git(["-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "commit", "-q", "-m", `${summary}\n\nMemory-Op: ${op}\nMemory-Source: ${this.source}`, "--", this.root || "."]) : add;
+      if (c.ok || /nothing to commit/i.test(c.out + c.err)) this.pendingCommit = false;
+      else this.scheduleCommitRetry(summary, op, tries + 1);
+    }, 2000);
+    this.commitRetry.unref?.();
   }
 
   schedulePush() {
@@ -189,7 +233,7 @@ export class FileStore {
     }
     await rename(tmp, f);
     await this.commit([p], `memory: ${op} ${p}`, op);
-    return { path: p, version: blobSha(content), bytes: Buffer.byteLength(content, "utf8") };
+    return { path: p, version: blobSha(content), bytes: Buffer.byteLength(content, "utf8"), ...(this.pendingCommit ? { committed: false } : {}) };
   }
 
   async append(path, text, ifVersion, op = "append") {

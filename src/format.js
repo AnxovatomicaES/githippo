@@ -24,7 +24,7 @@ export const fmt = {
   graph(r) {
     const e = r.entity;
     const lines = [`${e.id} [${e.type}]${e.description ? ` — ${e.description}` : ""}`];
-    for (const rel of r.relations.slice(0, 25)) lines.push(`${rel.from} -${rel.type}→ ${rel.to}: ${rel.context.replace(/\[\[([^\]|]+)\|?([^\]]*)\]\]/g, (_, a, b) => b || a)}`);
+    for (const rel of r.relations.slice(0, 25)) lines.push(`${rel.from} -${rel.type}→ ${rel.to}: ${rel.context.replace(/\[\[([^\[\]|]+)\|?([^\[\]]*)\]\]/g, (_, a, b) => b || a)}`);
     return lines.join("\n");
   },
   history(r) {
@@ -56,7 +56,7 @@ export const fmt = {
   },
   list: (files) => files.map((f) => `${f.path} ${short(f.version)} ${f.size}b`).join("\n") || "∅ empty",
   read: (files) => files.map((f) => (f.missing ? `${f.path}: missing` : `=== ${f.path} v:${short(f.version)}\n${f.content}`)).join("\n"),
-  write: (r) => `✓ ${r.path} v:${short(r.version)} ${r.bytes}b`,
+  write: (r) => `✓ ${r.path} v:${short(r.version)} ${r.bytes}b${r.committed === false ? " (saved; git is busy, commit follows shortly)" : ""}`,
   delete: (r) => `✗ deleted ${r.path}`,
 };
 

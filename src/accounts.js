@@ -9,7 +9,7 @@
 // Every user can always read and write their own users/<id>/ folder (personal inbox, sessions, core).
 // With no users configured, a single "owner" with full access logs in with MCP_SECRET.
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { MemoryError } from "./store.js";
 
@@ -86,7 +86,30 @@ export class Accounts {
     try {
       users = JSON.parse(env.USERS_JSON || readFileSync(file, "utf8")).users || [];
     } catch {}
-    return new Accounts({ users, ownerSecret: env.MCP_SECRET, file });
+    const a = new Accounts({ users: users.filter((u) => u && typeof u.id === "string" && ID_RE.test(u.id)), ownerSecret: env.MCP_SECRET, file });
+    a.fromEnv = !!env.USERS_JSON;
+    a.mtime = a.fileMtime();
+    return a;
+  }
+
+  fileMtime() {
+    try {
+      return this.file ? statSync(this.file).mtimeMs : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Re-read the users file if it changed, so removing or resetting a user takes effect on the next request. */
+  refresh() {
+    if (this.fromEnv || !this.file) return;
+    const m = this.fileMtime();
+    if (m === this.mtime) return;
+    this.mtime = m;
+    try {
+      const users = JSON.parse(readFileSync(this.file, "utf8")).users || [];
+      this.users = new Map(users.filter((u) => u && typeof u.id === "string" && ID_RE.test(u.id)).map((u) => [u.id, u]));
+    } catch {}
   }
 
   get multiUser() {
@@ -112,7 +135,7 @@ export class Accounts {
   }
 
   add(id, acl) {
-    if (!ID_RE.test(id)) throw new MemoryError("User ids are lowercase letters, digits, '.', '_' or '-' (max 40).");
+    if (typeof id !== "string" || !ID_RE.test(id)) throw new MemoryError("User ids are lowercase letters, digits, '.', '_' or '-' (max 40).");
     for (const r of acl) if (!(r.access in LEVEL)) throw new MemoryError(`Unknown access "${r.access}" (use none, read or write).`);
     const password = randomBytes(18).toString("base64url");
     this.users.set(id, { id, hash: hashPassword(password), acl });

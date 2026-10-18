@@ -160,7 +160,10 @@ export class MemoryIndex {
 
   /** Incremental sync: only files whose blob SHA changed are re-read and re-embedded. */
   async sync({ maxAgeMs = 5000 } = {}) {
-    if (Date.now() - this.lastSync < maxAgeMs) return;
+    // another process committed to the vault since our last sync → re-sync now, not after maxAgeMs
+    const token = this.store.stateToken?.() ?? null;
+    if (Date.now() - this.lastSync < maxAgeMs && token === this.lastToken) return;
+    this.lastToken = token;
     if (this.syncing) return this.syncing;
     this.syncing = (async () => {
       await this.loadCache();

@@ -73,7 +73,7 @@ const emit = (event, additionalContext) =>
  */
 export async function preCompact(input, { brain } = {}) {
   const t = await saveCheckpoint(input, { brain, op: "precompact" });
-  return t && hookEnabled("steer") ? steering(t) : "";
+  return t && hookEnabled("steer") ? redact(steering(t)).text : ""; // printed into the compaction: never raw secrets
 }
 
 /** B21: also checkpoint when a session simply ends, so "last session" works without a compaction. */

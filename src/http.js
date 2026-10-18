@@ -41,6 +41,7 @@ export function createHttpApp(brain, { secret, key, accounts = new Accounts({ ow
   return createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     if (url.pathname === "/health") return send(res, 200, { ok: true });
+    accounts.refresh?.();
     if (await oauth.handle(req, res, url)) return;
     const m = url.pathname.match(/^\/mcp(?:\/([^/]+))?\/?$/);
     if (!m) return send(res, 404, { error: "not found" });

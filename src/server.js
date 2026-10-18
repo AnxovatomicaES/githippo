@@ -171,6 +171,7 @@ export function buildServer(brain) {
         const ps = paths || [need(path, "path")];
         return { text: fmt.read(await Promise.all(ps.map(async (p) => (await store.read(p)) ?? { path: p, missing: true }))) };
       }
+      if (/[\u0000]/.test(content || "") || /[\u0000]/.test(nu || "")) throw new MemoryError("Content contains NUL bytes; memory files are text.");
       if (op === "write") {
         assertSafe(need(content, "content"));
         return { text: fmt.write(await refresh(await store.write(need(path, "path"), content, need(v, "v")), path)) };

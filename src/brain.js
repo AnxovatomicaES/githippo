@@ -314,7 +314,8 @@ export class Brain {
   }
 
   async _remember(fact, opts = {}) {
-    const { text: visible, removed } = stripMemoryTags(fact);
+    // control characters (NUL etc.) never belong in a fact; tabs/newlines become spaces below
+    const { text: visible, removed } = stripMemoryTags(String(fact).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ""));
     const clean = bare(visible).replace(/\s+/g, " ");
     if (clean.length < 3) throw new MemoryError(removed ? "Nothing to save: the fact was entirely inside <private> tags." : "Fact is empty.");
     assertSafe(clean);
@@ -349,7 +350,10 @@ export class Brain {
     // A duplicate must match in meaning AND in details: "end of Q1" vs "end of Q2" embed almost identically.
     const node = this.graph.nodes.get(this.graph.idOf(target.path));
     const own = new Set((node?.names || []).flatMap((n) => n.toLowerCase().split(/[\s_-]+/)));
-    const dup = scored.find((s) => s.sim >= this.t.dup && !salientDiffers(clean, s.line, s.path === target.path ? own : undefined));
+    // The same fact can be true of two entities ("prefers RFCs" for Sam and for Priya): a duplicate only
+    // counts in the note it's going to, unless it's headed for the inbox (then any note already knowing it wins).
+    const toInbox = /(^|\/)inbox\.md$/.test(target.path);
+    const dup = scored.find((s) => s.sim >= this.t.dup && (toInbox || s.path === target.path) && !salientDiffers(clean, s.line, s.path === target.path ? own : undefined));
     if (dup) return { status: "duplicate", path: dup.path, existing: plain(dup.line) };
     const related = scored.filter((s) => s.sim >= this.t.related).slice(0, 2);
 
@@ -461,7 +465,18 @@ export class Brain {
 
   async _checkpoint({ session = "default", task, state, next, files } = {}) {
     await this.index.sync();
-    const path = this.acl.user ? this.acl.home(`sessions/${slugify(session) || "default"}.md`) : `sessions/${slugify(session) || "default"}.md`;
+    const dirOf = this.acl.user ? this.acl.home("sessions/") : "sessions/";
+    if (!task && !state && !next && session === "default") {
+      // no session named: resume the most recently updated one, and say which others exist
+      const all = [...this.index.files.values()].filter((f) => f.path.startsWith(dirOf) && this.acl.canRead(f.path));
+      all.sort((a, b) => String(b.meta.updated || "").localeCompare(String(a.meta.updated || "")));
+      if (all.length) {
+        const body = plain(all[0].body.trim());
+        const others = all.slice(1, 6).map((f) => f.path.slice(dirOf.length, -3));
+        return { status: "resume", path: all[0].path, checkpoint: body + (others.length ? `\n(other sessions: ${others.join(", ")})` : ""), tokens: approxTokens(body) };
+      }
+    }
+    const path = `${dirOf}${slugify(session) || "default"}.md`;
     const existing = this.file(path) || (await this.store.read(path));
     if (!task && !state && !next) {
       if (!existing) return { status: "none", path };
@@ -625,7 +640,7 @@ export class Brain {
       const hints = duplicates.filter((d) => d.a.path === p || d.b.path === p).map((d) => [d.a.line, d.b.line]);
       const next = await this.llm.consolidate(f.content, hints);
       assertSafe(next);
-      const lost = [...f.content.matchAll(/\[\[([^\]|]+)/g)].map((m) => m[1]).filter((l) => !next.includes(`[[${l}`));
+      const lost = [...f.content.matchAll(/\[\[([^\[\]|]+)/g)].map((m) => m[1]).filter((l) => !next.includes(`[[${l}`));
       if (lost.length) throw new MemoryError(`Rewrite dropped links (${[...new Set(lost)].join(", ")}); not saved.`);
       if (f.content.startsWith("---") && !next.startsWith("---")) throw new MemoryError("Rewrite dropped frontmatter; not saved.");
       const r = await this.store.write(p, next, f.version, "consolidate");

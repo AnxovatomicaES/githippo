@@ -52,7 +52,7 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
       .split("\n")
       .map((l) => (/<!--\+\S+ src:external-->/.test(l) ? l.replace(/^(\s*[-*]\s+)/, "$1[external] ") : l))
       .join("\n")
-      .replace(/\s*<!--[\s\S]*?-->/g, "")
+      .replace(/\s*<!--[^]{0,300}?-->/g, "")
       .trim();
     if (text) {
       // The description is the file's best semantic summary ("Johnny" means nothing to a model; "Voice assistant for the Mac" does).
@@ -102,7 +102,8 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
 }
 
 /** Renders [[id|Word]] as Word and [[id]] as id: the graph lives server-side, so links cost tokens for nothing. */
-export const plain = (s) => s.replace(/\s*<!--[\s\S]*?-->/g, "").replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1");
+// bounded/linear patterns only: stamps are short, link contents exclude "["
+export const plain = (s) => s.replace(/\s*<!--[^]{0,300}?-->/g, "").replace(/\[\[([^\[\]|]+)\|([^\[\]]+)\]\]/g, "$2").replace(/\[\[([^\[\]]+)\]\]/g, "$1");
 
 export function factLines(body) {
   return body

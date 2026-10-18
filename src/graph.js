@@ -1,13 +1,14 @@
 // Knowledge graph over memory files: entities are files, edges are [[links]].
 import { stem } from "./parse.js";
 
-const LINK_RE = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g;
+// link contents exclude "[" so an unclosed "[[" can't make every later attempt scan to the end (quadratic)
+const LINK_RE = /\[\[([^\[\]|#]+)(?:#[^\[\]|]*)?(?:\|[^\[\]]*)?\]\]/g;
 // One-word first names that are also everyday words (B6).
 const COMMON_WORDS = new Set("will mark may bill grace hope rose frank april june august max jack art sky page rich dawn pat sue ray joy faith amber summer ivy hunter chase drew wade gene earl iris lily violet sage river skye angel king prince major".split(" "));
 
 /** Replaces URLs, `code` and [[links]] with spaces of the same length, so positions stay aligned (B7). */
 export function maskSpans(text) {
-  return text.replace(/https?:\/\/\S+|www\.\S+|`[^`]*`|\[\[[^\]]*\]\]/g, (m) => " ".repeat(m.length));
+  return text.replace(/https?:\/\/\S+|www\.\S+|`[^`]*`|\[\[[^\[\]]*\]\]/g, (m) => " ".repeat(m.length));
 }
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -58,7 +59,9 @@ export class KnowledgeGraph {
     const from = this.idOf(f.path);
     for (const line of (f.live ?? f.body).split("\n")) {
       // Typed relations, Basic Memory / Dataview style: "- works_on [[x]]" or "owner:: [[x]]".
-      const typed = line.match(/^\s*[-*]\s+([a-z][\w-]*)\s+\[\[/) || line.match(/([a-z][\w-]*)::\s*\[\[/);
+      if (!line.includes("[[")) continue;
+      // anchored / bounded patterns: an unanchored ([a-z][\w-]*):: backtracked quadratically on long words
+      const typed = line.match(/^\s*[-*]\s+([a-z][\w-]{0,40})\s+\[\[/) || (line.includes("::") ? line.match(/(?:^|[\s(*])([a-z][\w-]{0,40})::\s*\[\[/) : null);
       for (const m of line.matchAll(LINK_RE)) {
         const to = this.resolve(m[1]);
         this.edges.push({

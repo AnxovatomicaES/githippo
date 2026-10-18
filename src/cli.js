@@ -341,14 +341,18 @@ async function users() {
   const [sub, id] = rest;
   const flag = (n) => (rest.includes(`--${n}`) ? rest[rest.indexOf(`--${n}`) + 1] : undefined);
   if (sub === "add" || sub === "reset") {
-    const acl = sub === "reset" ? acc.get(id)?.acl : parseAcl(flag("acl") ?? ":write");
+    if (!id || id.startsWith("--")) return console.error(`usage: githippo users ${sub} <id>${sub === "add" ? ' --acl "shared/:write,people/:read"' : ""}`), process.exit(1);
+    if (sub === "add" && !flag("acl")) {
+      return console.error('Say what they can access, e.g. --acl "shared/:write,people/:read" (use --acl ":write" for full access).'), process.exit(1);
+    }
+    const acl = sub === "reset" ? acc.get(id)?.acl : parseAcl(flag("acl"));
     if (!acl) return console.error(`No user "${id}".`), process.exit(1);
     const pw = acc.add(id, acl);
     acc.save();
     console.log(`✓ ${id}  password (shown once): ${pw}\n  access: ${acl.map((r) => `${r.path || "(everything)"} ${r.access}`).join(", ")}, plus their own users/${id}/`);
     console.log(`  users file: ${file}${process.env.RENDER ? "" : "  (on Render: set USERS_JSON to its contents)"}`);
   } else if (sub === "remove") {
-    console.log(acc.remove(id) ? (acc.save(), `✓ removed ${id} (their tokens stop working immediately)`) : `No user "${id}".`);
+    console.log(acc.remove(id) ? (acc.save(), `✓ removed ${id}: running githippo servers that read this users file reject their tokens on the next request (USERS_JSON deployments need a restart)`) : `No user "${id}".`);
   } else {
     if (!acc.multiUser) return console.log("No users yet: the remote server has one owner who signs in with MCP_SECRET.\nAdd people: githippo users add <id> --acl \"shared/:write,people/:read\"");
     for (const u of acc.users.values()) console.log(`${u.id.padEnd(16)} ${new Acl(u).isAdmin ? "admin  " : "       "} ${(u.acl || []).map((r) => `${r.path || "*"}:${r.access}`).join(" ")}`);
@@ -551,9 +555,22 @@ async function bench() {
   await client.close();
 }
 
+/** Every command: readable one-line errors instead of stack traces (DEBUG=1 shows the trace). */
+async function runCommand(fn) {
+  try {
+    await fn();
+  } catch (e) {
+    if (process.env.DEBUG) throw e;
+    const msg = e?.code === "ENOENT" ? `file not found: ${e.path}` : e?.message || String(e);
+    console.error(`githippo ${cmd}: ${msg}`);
+    process.exit(1);
+  }
+}
+
 const commands = { setup, sync, warm, users, eval: evalCmd, import: importCmd, consolidate: consolidateCmd, proposals: proposalsCmd, contextualize: contextualizeCmd, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
+const HELP = ["--help", "-h", "help"].includes(cmd);
 if (cmd === "--version" || cmd === "-v") console.log(VERSION);
-else if (!commands[cmd]) {
+else if (HELP || !commands[cmd]) {
   console.log(`githippo ${VERSION}\nusage: githippo setup [--github [repo-name]]   one command, everything
        githippo sync [--github [repo-name]]    back up / sync the vault
        githippo users add <id> --acl "shared/:write,people/:read" | list | remove <id> | reset <id>
@@ -564,5 +581,5 @@ else if (!commands[cmd]) {
        githippo contextualize [--limit N]                 situating context per chunk (contextual retrieval)
        githippo demo | doctor | warm | bench
        githippo serve | http | statusline | hook <event> | install | init`);
-  process.exit(1);
-} else await commands[cmd]();
+  process.exit(HELP ? 0 : 1);
+} else await runCommand(commands[cmd]);

@@ -4,7 +4,8 @@
 // Never touched: code, inline code, URLs, paths, [[links]], numbers and units, names, and every negation
 // or limiter (not, no, never, only, without, except). Off by default: caveman's own cited research found that
 // compressing prose a model reads can hurt answers, and on githippo's already-terse memory it saves 3-13%.
-const PROTECT = /```[\s\S]*?```|`[^`]*`|https?:\/\/\S+|(?<![\p{L}\p{N}])[.~]?\/[\w./-]+|\[\[[^\]]*\]\]/gu;
+// tempered/bounded: an unclosed ``` or [[ stops at the next one instead of scanning to the end
+const PROTECT = /```(?:(?!```)[\s\S])*```|`[^`]*`|https?:\/\/\S+|(?<![\p{L}\p{N}])[.~]?\/[\w./-]+|\[\[[^\[\]]*\]\]/gu;
 // A word only counts as standalone if nothing that joins tokens touches it ("A/B", "a.m.", "the_var", "x@a").
 const W = (words) => new RegExp(`(?<![\\p{L}\\p{N}'’\\-/._@&:])(?:${words})(?![\\p{L}\\p{N}'’\\-/._@&:])\\s*`, "giu");
 
