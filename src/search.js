@@ -23,14 +23,23 @@ const STOP = new Set(
   ].join(" ").split(" "),
 );
 
+// Accents are noise in Latin, Greek, Arabic and Hebrew text ("café" = "cafe") but carry meaning elsewhere:
+// Japanese voicing marks (ダ ≠ タ), Thai tone and vowel marks, Devanagari vowel signs. Strip only where safe.
+const FOLD_MARKS = /(\p{Script=Latin}|\p{Script=Greek}|\p{Script=Arabic}|\p{Script=Hebrew})\p{M}+/gu;
+export const fold = (s) => s.normalize("NFD").replace(FOLD_MARKS, "$1").normalize("NFC");
+// Scripts written without spaces between words: indexed as overlapping character bigrams (what the trigram
+// tokenizers in OpenClaw and Hermes do for the same reason), since there are no word boundaries to split on.
+const NO_SPACE = "[\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}\\p{scx=Thai}\\p{scx=Lao}\\p{scx=Khmer}\\p{scx=Myanmar}\\p{M}]";
+const HAS_NO_SPACE = new RegExp(NO_SPACE, "u");
+const NO_SPACE_RUNS = new RegExp(`${NO_SPACE}+`, "gu");
+
 /**
  * Code-aware tokenizer (idea from claude-memory-hub): "handleRefund", "batch_insert" and "src/api/wake.ts"
  * also index as their parts ("handle", "refund", "batch", "insert", "api", "wake", "ts"), keeping the whole too.
  */
 export const tokenize = (s) => {
   const out = [];
-  const raw = s.normalize("NFD").replace(/\p{M}/gu, "").match(/[\p{L}\p{N}_./-]+/gu) || [];
-  for (const w of raw) {
+  const latin = (w) => {
     const whole = w.toLowerCase().replace(/^[./-]+|[./-]+$/g, "");
     const parts = w
       .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2")
@@ -40,8 +49,19 @@ export const tokenize = (s) => {
       .filter(Boolean);
     if (parts.length > 1 && whole) out.push(whole);
     out.push(...parts);
+  };
+  for (const w of fold(s).match(/[\p{L}\p{M}\p{N}_./-]+/gu) || []) {
+    if (!HAS_NO_SPACE.test(w)) {
+      latin(w);
+      continue;
+    }
+    for (const m of w.matchAll(NO_SPACE_RUNS)) {
+      const chars = Array.from(m[0]);
+      if (chars.length === 1) out.push(chars[0]);
+      else for (let k = 0; k < chars.length - 1; k++) out.push(chars[k] + chars[k + 1]);
+    }
+    for (const piece of w.replace(NO_SPACE_RUNS, " ").split(" ")) if (piece) latin(piece);
   }
-  // light plural folding so "refunds" meets "refund" and "invoices" meets "invoice" (not a full stemmer)
   return out.filter((t) => t.length > 1 && !STOP.has(t)).map((t) => (t.length > 4 && /[^su]s$/.test(t) ? t.slice(0, -1) : t));
 };
 

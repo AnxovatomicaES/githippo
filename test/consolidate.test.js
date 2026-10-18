@@ -54,6 +54,7 @@ test("proposeUpdates sends session + related memory to the model and parses its 
   assert.equal(ops.length, 1);
   assert.match(seen.prompt, /<current_memory>[\s\S]*Sample rate is 16 kHz[\s\S]*<session>/);
   assert.match(seen.system, /JSON array/);
+  for (const rule of [/Negative claims about tools/, /Unresolved failures/, /Transient errors/, /One-off task narratives/]) assert.match(seen.system, rule);
 });
 
 test("nothing applied → no branch left behind", async () => {
