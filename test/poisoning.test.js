@@ -46,7 +46,11 @@ test("GIT_SIGN=1 signs every memory commit with the user's key (SSH signing)", a
   try {
     execFileSync("ssh-keygen", ["-V"], { stdio: "ignore" });
   } catch {
-    try { execFileSync("which", ["ssh-keygen"], { stdio: "ignore" }); } catch { return t.skip("ssh-keygen not available"); }
+    try { execFileSync("which", ["ssh-keygen"], { stdio: "ignore" }); } catch {
+      // on CI the tool exists, so a skip there would hide a broken test: fail instead
+      if (process.env.CI) assert.fail("ssh-keygen missing on CI");
+      return t.skip("ssh-keygen not available");
+    }
   }
   const dir = await mkdtemp(join(tmpdir(), "signed-"));
   execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", join(dir, "key")]);
