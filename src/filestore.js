@@ -97,10 +97,19 @@ export class FileStore {
     }
     const f = this.abs(p);
     let content;
-    try {
-      content = await readFile(f, "utf8");
-    } catch {
-      return null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        content = await readFile(f, "utf8");
+        break;
+      } catch (e) {
+        if (["ENOENT", "EISDIR", "ENOTDIR"].includes(e.code)) return null; // genuinely not a file
+        // out of file descriptors (EMFILE/ENFILE): wait for others to close theirs; anything else is a real error
+        if (["EMFILE", "ENFILE"].includes(e.code) && attempt < 10) {
+          await new Promise((r) => setTimeout(r, 20 * (attempt + 1)));
+          continue;
+        }
+        throw e;
+      }
     }
     return { path: p, content, version: blobSha(content) };
   }

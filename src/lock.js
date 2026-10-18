@@ -51,3 +51,11 @@ export async function withFileLock(dir, key, fn, { staleMs = 15_000, timeoutMs =
     } catch {}
   }
 }
+
+/** Runs fn over items with at most `limit` in flight (an unbounded Promise.all over thousands of file reads exhausts file descriptors). */
+export async function forEachLimit(items, limit, fn) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) await fn(items[i++]);
+  }));
+}

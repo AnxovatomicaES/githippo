@@ -9,6 +9,7 @@ import { cosine } from "./embed.js";
 import { Usage } from "./usage.js";
 import { timeWindow, inWindow } from "./when.js";
 import { hash as hashText } from "./parse.js";
+import { forEachLimit } from "./lock.js";
 
 // Function words for EN, ES, FR, DE, PT, IT. They carry no topic, so they shouldn't drive keyword ranking.
 const STOP = new Set(
@@ -178,12 +179,17 @@ export class MemoryIndex {
       // Many changes (cold start): one tarball instead of one request per file, when the store supports it.
       if (changed.length > 20 && this.store.prefetch) await this.store.prefetch().catch(() => 0);
       const read = (f) => (this.store.readVersion ? this.store.readVersion(f.path, f.version) : this.store.read(f.path));
-      await Promise.all(
-        changed.map(async (f) => {
+      await forEachLimit(
+        changed,
+        32,
+        async (f) => {
           const file = await read(f);
           if (file) this.files.set(f.path, this.withContext({ ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content }));
-        }),
+        },
       );
+      // loud, not silent: a note that was listed but couldn't be read is a note the user can't search
+      const unreadable = listing.filter((f) => !this.files.has(f.path));
+      if (unreadable.length) console.error(`[githippo] ${unreadable.length} note(s) could not be read and are not searchable, e.g. ${unreadable[0].path}`);
       await this.embedMissing();
       this.rebuild();
       this.lastSync = Date.now();
