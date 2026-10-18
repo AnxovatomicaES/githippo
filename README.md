@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/instal
 
 That's the whole install: no account, no token, no questions. It sets up a local memory vault, wires Claude Code (hooks, MCP, status line) and fetches semantic search in the background. Restart Claude Code and just talk; it remembers.
 
-Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.6.1 demo` shows it working in 30 seconds without installing anything.
+Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.6.2 demo` shows it working in 30 seconds without installing anything.
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -115,7 +115,16 @@ What this does and doesn't tell you: the set is small, hand-written by the autho
 | same, sessions shuffled (sanity check) | 96.2% | 98.4% | 99.2% | 91.5 |
 | ablation: chunks only, no document-level evidence | 96.0% | 98.0% | 99.2% | 90.4 |
 | ablation: whole-session documents instead of chunks | 97.4% | 98.2% | 99.6% | 91.1 |
-| *for reference: agentmemory BM25 / BM25 + vectors (their published numbers)* | *86.2% / 95.2%* | *94.6% / 98.6%* | | |
+| *for reference: agentmemory BM25 / BM25 + vectors (their published numbers, all 500)* | *86.2% / 95.2%* | *94.6% / 98.6%* | | |
+
+The local model is too slow on CI hardware for all 500 questions (about 46 chunks a second, so 2+ hours), so it runs on an evenly spaced 100-question sample that keeps the question-type mix, next to keyword search on the same 100:
+
+| LongMemEval-S, same 100 questions | R@5 | R@10 | R@20 | MRR |
+|---|---|---|---|---|
+| githippo, keyword + graph | 97.0% | 98.0% | 98.0% | 92.6 |
+| githippo, + local multilingual model | **98.0%** | **99.0%** | **100%** | **95.3** |
+
+The model helps where keyword search is weakest: preference questions go from 83% to 100% at R@10. This first sampled run predates the check that confirms every question got semantic results; later runs in #3 include it.
 
 Read it carefully: this is retrieval recall, not the official LongMemEval QA score (which needs an LLM to answer and a judge). Shuffling the sessions changes nothing, so the score isn't an ordering artifact. githippo's keyword search scores well above agentmemory's published keyword number under the same protocol; the difference is in tokenization and ranking details we haven't isolated, so treat cross-project comparisons as indicative and reproduce them yourself. Whole sessions beat ~700-character chunks on R@5 here, which led to one design change: githippo now also ranks whole notes and fuses that with chunk evidence (best MRR of the variants, chunk-level references kept). That change was evaluated on this benchmark, so LongMemEval is no longer fully held out for it; the in-repo eval didn't change.
 
@@ -162,7 +171,7 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
 
-Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.6.1`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.6.2`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
 
 Coming from the official reference memory server? `githippo import ~/path/to/memory.jsonl` turns its entities, observations and relations into notes and typed links (secrets guard and dedupe apply, so re-running is safe).
 
