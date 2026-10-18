@@ -121,7 +121,9 @@ export class FileStore {
           await new Promise((res) => setTimeout(res, 40 + Math.random() * 120 * (1 + attempt / 4)));
           continue;
         }
-        const c = await this.git(["-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "commit", "-q", "-m", `${summary}\n\nMemory-Op: ${op}\nMemory-Source: ${this.source}`, "--", scope]);
+        // GIT_SIGN=1: sign with the user's own git identity and signing key (GPG or SSH), so tampering is detectable
+        const sign = process.env.GIT_SIGN === "1" ? ["commit", "-q", "-S"] : ["-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "commit", "-q"];
+        const c = await this.git([...sign, "-m", `${summary}\n\nMemory-Op: ${op}\nMemory-Source: ${this.source}`, "--", scope]);
         if (c.ok || /nothing to commit|no changes added/i.test(c.out + c.err)) break; // done, or another process committed it for us
         if (!locked(c)) {
           console.error(`[githippo] git commit failed: ${c.err.split("\n")[0]}`);

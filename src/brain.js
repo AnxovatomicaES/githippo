@@ -7,6 +7,7 @@ import { cosine } from "./embed.js";
 import { tokenize } from "./search.js";
 import { ALLOW_ALL, AclStore } from "./accounts.js";
 import { terse } from "./terse.js";
+import { injectionKinds } from "./injection.js";
 
 const KIND_FOLDER = { person: "people", project: "projects", topic: "topics", company: "orgs", decision: "decisions" };
 const SYSTEM_FILES = new Set(["index.md", "core.md", "inbox.md"]);
@@ -309,8 +310,16 @@ export class Brain {
     const clean = bare(visible).replace(/\s+/g, " ");
     if (clean.length < 3) throw new MemoryError(removed ? "Nothing to save: the fact was entirely inside <private> tags." : "Fact is empty.");
     assertSafe(clean);
+    const inj = injectionKinds(clean);
+    if (inj.length) {
+      throw new MemoryError(`Not saved: this reads like instructions aimed at an AI (${inj.join(", ")}), and memory is replayed into future sessions as trusted context. If it's a genuine fact, rephrase it as a statement about the source.`);
+    }
+    const source = ["user", "inferred", "external", "import"].includes(opts.source) ? opts.source : null;
     await this.index.sync();
-    if (opts.pin) return this.pin(clean);
+    if (opts.pin) {
+      if (source === "external") throw new MemoryError("External content can't be pinned to core memory, which is treated as always true.");
+      return this.pin(clean);
+    }
 
     const target = await this.writableTarget(clean, opts);
     const existing = this.file(target.path) || (await this.store.read(target.path));
@@ -337,7 +346,7 @@ export class Brain {
     const related = scored.filter((s) => s.sim >= this.t.related).slice(0, 2);
 
     const { text, linked } = this.graph.autoLink(clean, [this.graph.idOf(target.path)]);
-    const line = `- ${text}${stamp()}`;
+    const line = `- ${text}${stamp(undefined, source)}`;
     let next;
     if (!content) {
       const c = target.create || { title: stem(target.path), kind: "topic" };

@@ -29,7 +29,7 @@ export async function importReferenceMemory(brain, jsonl) {
   const r = { entities: entities.size, facts: 0, relations: 0, duplicates: 0, blocked: 0, skippedLines: bad };
   const save = async (fact, path, about, kind) => {
     try {
-      const out = await brain.remember(fact, { path, about, kind });
+      const out = await brain.remember(fact, { path, about, kind, source: "import" });
       if (out.status === "duplicate") r.duplicates++;
       return out.status !== "duplicate";
     } catch (e) {

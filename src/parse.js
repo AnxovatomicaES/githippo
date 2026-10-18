@@ -46,8 +46,14 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
   const flush = () => {
     const raw = buf.join("\n");
     // dates the chunk's facts were written (hidden stamps) or stopped being true (History "until")
-    const dates = [...raw.matchAll(/<!--\+(\d{4}-\d{2}-\d{2})-->|\(until (\d{4}-\d{2}-\d{2})\)/g)].map((m) => m[1] || m[2]);
-    const text = raw.replace(/\s*<!--[\s\S]*?-->/g, "").trim();
+    const dates = [...raw.matchAll(/<!--\+(\d{4}-\d{2}-\d{2})(?: src:\w+)?-->|\(until (\d{4}-\d{2}-\d{2})\)/g)].map((m) => m[1] || m[2]);
+    // facts that came from web pages, files or tool output are marked so Claude treats them as data
+    const text = raw
+      .split("\n")
+      .map((l) => (/<!--\+\S+ src:external-->/.test(l) ? l.replace(/^(\s*[-*]\s+)/, "$1[external] ") : l))
+      .join("\n")
+      .replace(/\s*<!--[\s\S]*?-->/g, "")
+      .trim();
     if (text) {
       // The description is the file's best semantic summary ("Johnny" means nothing to a model; "Voice assistant for the Mac" does).
       const embedText = `${title}${meta.description && meta.description !== title ? ` — ${meta.description}` : ""}${heading ? ` › ${heading}` : ""}\n${text}`;
@@ -137,5 +143,6 @@ export function stripMemoryTags(input) {
 export const wrapContext = (s) => (s ? `<githippo-context>\n${s}\n</githippo-context>` : s);
 
 /** Hidden creation stamp on a fact line: invisible in Obsidian, stripped before recall and embedding. */
-export const stamp = (date = new Date().toISOString().slice(0, 10)) => ` <!--+${date}-->`;
-export const stampOf = (line) => line.match(/<!--\+(\d{4}-\d{2}-\d{2})-->/)?.[1] || null;
+export const stamp = (date = new Date().toISOString().slice(0, 10), source = null) => ` <!--+${date}${source ? ` src:${source}` : ""}-->`;
+export const stampOf = (line) => line.match(/<!--\+(\d{4}-\d{2}-\d{2})(?: src:\w+)?-->/)?.[1] || null;
+export const sourceOf = (line) => line.match(/<!--\+\d{4}-\d{2}-\d{2} src:(\w+)-->/)?.[1] || null;
