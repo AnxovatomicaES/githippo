@@ -16,7 +16,7 @@ async function vault(embedder, extra = {}) {
 const sharedVectors = new Map();
 
 export async function runEval({ embeddings = "none" } = {}) {
-  const embedder = createEmbedder({ EMBEDDINGS: embeddings });
+  const embedder = createEmbedder({ ...process.env, EMBEDDINGS: embeddings });
   const t0 = Date.now();
   const brain = await vault(embedder);
   await brain.index.sync({ maxAgeMs: 0 });

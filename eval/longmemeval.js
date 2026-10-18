@@ -29,7 +29,7 @@ function shuffled(n, seed) {
 }
 
 export async function runLongMemEval(entries, { embeddings = "none", limit = Infinity, sample = 0, shuffle = 0, wholeSession = false, timeAware = true, log = () => {} } = {}) {
-  const embedder = createEmbedder({ EMBEDDINGS: embeddings });
+  const embedder = createEmbedder({ ...process.env, EMBEDDINGS: embeddings });
   const vectors = new Map(); // shared across questions: haystacks overlap heavily
   const K = [5, 10, 20];
   const byType = {};

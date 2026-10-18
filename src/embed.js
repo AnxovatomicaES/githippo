@@ -15,6 +15,7 @@ export const PROFILES = {
   default: { dup: 0.92, related: 0.6, conflict: 0.82, strong: 0.45, floor: 0.3, calibrated: false },
 };
 export const DEFAULT_LOCAL_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+export const DEFAULT_STATIC_MODEL = "minishlab/potion-multilingual-128M";
 
 import { fork, spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
@@ -71,7 +72,7 @@ const normalize = (v) => {
  * EMBED_IDLE_MS (default 10 min) without use, so an idle githippo uses ~50 MB instead of ~500 MB. The next
  * query restarts it (model cached on disk). If the child dies, the next call starts a new one.
  */
-export function localEmbedder(model = DEFAULT_LOCAL_MODEL) {
+export function localEmbedder(model = DEFAULT_LOCAL_MODEL, { impl } = {}) {
   const prefix = (kind) => (/e5/i.test(model) ? (kind === "query" ? "query: " : "passage: ") : "");
   const idleMs = Number(process.env.EMBED_IDLE_MS || 600_000);
   let child = null;
@@ -84,7 +85,7 @@ export function localEmbedder(model = DEFAULT_LOCAL_MODEL) {
   };
   const start = () => {
     child = fork(new URL("./embed-worker.js", import.meta.url).pathname, [], {
-      env: { ...process.env, GITHIPPO_EMBED_MODEL: model },
+      env: { ...process.env, GITHIPPO_EMBED_MODEL: model, ...(impl ? { GITHIPPO_EMBED_IMPL: impl } : {}) },
       stdio: ["ignore", "ignore", "inherit", "ipc"],
     });
     const me = child;
@@ -119,7 +120,7 @@ export function localEmbedder(model = DEFAULT_LOCAL_MODEL) {
     });
   };
   return {
-    id: `local:${model}`,
+    id: `${impl || "local"}:${model}`,
     get loaded() {
       return !!child;
     },
@@ -183,6 +184,8 @@ export function createEmbedder(env = process.env) {
   if (p === "none") return null;
   if (p === "voyage") return voyageEmbedder(env.VOYAGE_API_KEY, env.VOYAGE_MODEL);
   if (p === "hash") return hashEmbedder();
+  // static: Model2Vec lookup-table embeddings, much faster on CPU; profile uncalibrated unless measured
+  if (p === "static") return localEmbedder(env.STATIC_EMBED_MODEL || DEFAULT_STATIC_MODEL, { impl: "static" });
   return localEmbedder(env.LOCAL_EMBED_MODEL);
 }
 

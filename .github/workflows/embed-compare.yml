@@ -1,0 +1,49 @@
+name: embed-compare
+# Compare embedders on the same footing: throughput, memory, calibration, in-repo eval, LongMemEval sample.
+on: workflow_dispatch
+permissions:
+  contents: read
+  issues: write
+jobs:
+  compare:
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg:
+          - { name: "MiniLM (current default)", env: "EMBEDDINGS=local" }
+          - { name: "static potion-multilingual-128M", env: "EMBEDDINGS=static STATIC_EMBED_MODEL=minishlab/potion-multilingual-128M" }
+          - { name: "static potion-base-8M (English)", env: "EMBEDDINGS=static STATIC_EMBED_MODEL=minishlab/potion-base-8M" }
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: longmemeval_s_cleaned.json
+          key: longmemeval-s-cleaned-98d7416c
+      - run: test -s longmemeval_s_cleaned.json || curl -fsSL -o longmemeval_s_cleaned.json "$(node -e 'import("./eval/longmemeval.js").then(m=>console.log(m.DATASET_URL))')"
+      - name: Measure ${{ matrix.cfg.name }}
+        env:
+          GITHIPPO_HOME: ${{ runner.temp }}/gh
+          EMBED_IDLE_MS: "3600000"
+        run: |
+          export ${{ matrix.cfg.env }}
+          {
+            echo "### Embedder comparison: ${{ matrix.cfg.name }} (${GITHUB_SHA::7})"
+            echo; echo '```'
+            node eval/throughput.js
+            node eval/calibrate.js
+            echo '```'; echo
+            node src/cli.js eval --embeddings "$EMBEDDINGS" | sed -n '1,14p'
+            echo
+            node eval/longmemeval.js --data longmemeval_s_cleaned.json --embeddings "$EMBEDDINGS" --sample 100
+          } > out.md 2>&1
+          cat out.md
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 3 --body-file out.md

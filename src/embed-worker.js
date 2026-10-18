@@ -1,11 +1,13 @@
 // Child process that holds the embedding model. The parent kills it when idle, so the operating system
 // reclaims all of its memory (an in-process "unload" only gave back ~140 of ~480 MB, measured in CI).
-import { importTransformers, hashEmbedder } from "./embed.js";
+import { importTransformers, hashEmbedder, RUNTIME_DIR } from "./embed.js";
+import { loadStaticModel } from "./static-embed.js";
 
 const model = process.env.GITHIPPO_EMBED_MODEL;
 let extractor;
 const load = async () => {
   if (process.env.GITHIPPO_EMBED_IMPL === "hash") return (extractor ??= hashEmbedder());
+  if (process.env.GITHIPPO_EMBED_IMPL === "static") return (extractor ??= await loadStaticModel(model, { runtimeDir: RUNTIME_DIR, importTransformers }));
   if (!extractor) {
     const { pipeline } = await importTransformers();
     const pipe = await pipeline("feature-extraction", model, { dtype: "q8" });
