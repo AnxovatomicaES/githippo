@@ -7,6 +7,7 @@ import { cosine } from "./embed.js";
 import { tokenize } from "./search.js";
 import { ALLOW_ALL, AclStore } from "./accounts.js";
 import { terse } from "./terse.js";
+import { KeyedMutex } from "./lock.js";
 import { injectionKinds } from "./injection.js";
 
 const KIND_FOLDER = { person: "people", project: "projects", topic: "topics", company: "orgs", decision: "decisions" };
@@ -292,13 +293,20 @@ export class Brain {
 
   /** B15: if another session/surface changed the file between our read and write, re-sync once and redo. */
   async retrying(fn) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (!(e instanceof MemoryError) || !/Version conflict|already exists|sha|409/.test(e.message)) throw e;
-      await this.index.sync({ maxAgeMs: 0 });
-      return fn();
-    }
+    // In-process: mutating operations run one at a time (shared by every per-user view, via the index),
+    // so they always read what the previous one wrote. Across processes: re-sync and retry with backoff.
+    const mutex = (this.index.writeMutex ??= new KeyedMutex());
+    return mutex.run("memory", async () => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await fn();
+        } catch (e) {
+          if (attempt >= 5 || !(e instanceof MemoryError) || !/Version conflict|already exists|sha|409/.test(e.message)) throw e;
+          await new Promise((r) => setTimeout(r, 20 * 2 ** attempt + Math.random() * 30));
+          await this.index.sync({ maxAgeMs: 0 });
+        }
+      }
+    });
   }
 
   async remember(fact, opts = {}) {
@@ -447,7 +455,11 @@ export class Brain {
   }
 
   // ---------- session checkpoints (compaction anchor for any client) ----------
-  async checkpoint({ session = "default", task, state, next, files } = {}) {
+  async checkpoint(opts = {}) {
+    return this.retrying(() => this._checkpoint(opts));
+  }
+
+  async _checkpoint({ session = "default", task, state, next, files } = {}) {
     await this.index.sync();
     const path = this.acl.user ? this.acl.home(`sessions/${slugify(session) || "default"}.md`) : `sessions/${slugify(session) || "default"}.md`;
     const existing = this.file(path) || (await this.store.read(path));

@@ -2,10 +2,11 @@
 // No GitHub account, repo or token needed. Versions are git blob SHAs, the same values the GitHub API
 // uses, so a vault can move between local and remote without any conversion. If a git remote is set,
 // commits are pushed in the background with the user's existing git credentials (gh, SSH, keychain).
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { mkdir, open as openFile, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { existsSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { KeyedMutex, withFileLock } from "./lock.js";
 import { join, dirname } from "node:path";
 import { MemoryError, MAX_FILE_BYTES, normalizePath, sameVersion } from "./store.js";
 
@@ -30,6 +31,21 @@ export class FileStore {
     this.repo = `local:${dir}`;
     this.meta = new Map(); // path -> { mtimeMs, size, sha }
     this.queue = Promise.resolve(); // serialises git commits within this process
+    this.mutex = new KeyedMutex(); // serialises writes to the same file within this process
+  }
+
+  /** Read-check-write of one file must be atomic: in-process mutex + cross-process lock file in .git. */
+  locked(path, fn) {
+    return this.mutex.run(path, () => withFileLock(this.lockDir(), path, fn));
+  }
+
+  /** In a normal repo locks live inside .git (never committed); in a worktree .git is a file, so use .githippo. */
+  lockDir() {
+    const g = join(this.dir, ".git");
+    try {
+      if (statSync(g).isDirectory()) return join(g, "githippo-locks");
+    } catch {}
+    return join(this.dir, ".githippo", "locks");
   }
 
   abs(p) {
@@ -147,6 +163,10 @@ export class FileStore {
 
   async write(path, content, ifVersion, op = "write") {
     const p = normalizePath(path);
+    return this.locked(p, () => this._write(p, content, ifVersion, op));
+  }
+
+  async _write(p, content, ifVersion, op) {
     if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) {
       throw new MemoryError(`${p} would exceed ${MAX_FILE_BYTES} bytes. Run maintain or split it.`);
     }
@@ -158,8 +178,15 @@ export class FileStore {
     }
     const f = this.abs(p);
     await mkdir(dirname(f), { recursive: true });
-    const tmp = `${f}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(tmp, content); // atomic: readers never see a half-written file
+    // atomic + crash-safe: unique temp name, data flushed to disk, then rename over the original
+    const tmp = `${f}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+    const fh = await openFile(tmp, "w");
+    try {
+      await fh.writeFile(content);
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
     await rename(tmp, f);
     await this.commit([p], `memory: ${op} ${p}`, op);
     return { path: p, version: blobSha(content), bytes: Buffer.byteLength(content, "utf8") };
@@ -185,6 +212,10 @@ export class FileStore {
 
   async delete(path, ifVersion) {
     const p = normalizePath(path);
+    return this.locked(p, () => this._delete(p, ifVersion));
+  }
+
+  async _delete(p, ifVersion) {
     const cur = await this.read(p);
     if (!cur) throw new MemoryError(`${p} does not exist.`);
     if (!sameVersion(cur.version, ifVersion)) throw new MemoryError(`Version conflict on ${p}: re-read before deleting.`, { current: cur });

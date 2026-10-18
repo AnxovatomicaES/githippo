@@ -28,3 +28,21 @@ test("look-alikes and ordinary text pass", () => {
     "npm_install is a function name",      // not 36 chars
   ]) assert.deepEqual(kinds(t), [], t);
 });
+
+test("guard sees through encodings: lowercase, fullwidth digits, zero-width chars, NBSP, dots", () => {
+  for (const [t, kind] of [
+    ["iban es91 2100 0418 4502 0005 1332", "iban"],
+    ["card ４１１１ １１１１ １１１１ １１１１", "payment_card"],
+    ["card 4111\u200b1111\u200b1111\u200b1111", "payment_card"],
+    ["card 4111\u00a01111\u00a01111\u00a01111", "payment_card"],
+    ["card 4111.1111.1111.1111", "payment_card"],
+    ["card 4111\u20131111\u20131111\u20131111", "payment_card"],
+    ["dni 12345678z", "spanish_dni_nie"],
+    ["ni ab 12 34 56 c", "uk_nino"],
+    ["iban\u200b ES91\u00ad2100 0418 4502 0005 1332", "iban"],
+  ]) assert.ok(kinds(t).includes(kind), `${JSON.stringify(t)} → ${kinds(t)}`);
+});
+
+test("normalisation adds no false positives on ordinary text", () => {
+  for (const t of ["Version 4.1.1 shipped on 2026.10.17", "Server 192.168.100.110 is the gateway", "Room 12.04, floor 3", "Ref ab12345678 is the order", "Phone 612.345.678 (office)", "The ratio was 1.618 to 1"]) assert.deepEqual(kinds(t), [], t);
+});

@@ -69,11 +69,29 @@ const RULES = [
   { kind: "us_ssn", re: /\b(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b/g },
 ];
 
+/**
+ * What the guard actually inspects: compatibility-normalised (fullwidth digits → ASCII, NBSP → space),
+ * invisible format characters removed (zero-width space/joiners, soft hyphen, BOM, bidi marks), and dots
+ * between digit groups treated as separators. ID formats are matched case-insensitively via an upper-cased copy.
+ */
+// ID numbers can be typed in any case; API keys and tokens are case-exact formats.
+const CASE_INSENSITIVE = new Set(["iban", "payment_card", "spanish_dni_nie", "uk_nino", "french_nir", "us_ssn"]);
+
+export function normalizeForScan(text) {
+  return String(text)
+    .normalize("NFKC")
+    .replace(/[\p{Cf}\u00ad]/gu, "")
+    .replace(/(\d)[.\u2010-\u2015\u2212](?=\d)/g, "$1 ");
+}
+
 /** Returns findings; an empty array means the text is safe to store. */
 export function scan(text) {
   const findings = [];
+  const norm = normalizeForScan(text);
+  const upper = norm.toUpperCase();
   for (const { kind, re, check } of RULES) {
-    for (const m of text.matchAll(re)) {
+    const caseSensitive = !CASE_INSENSITIVE.has(kind);
+    for (const m of (caseSensitive ? norm : upper).matchAll(re)) {
       if (check && !check(m[0])) continue;
       const v = m[0];
       findings.push({ kind, preview: `${v.slice(0, 4)}…${v.slice(-2)}` });
@@ -87,11 +105,13 @@ export function scan(text) {
  * cost the whole checkpoint. Explicit saves (remember) still refuse, so nothing is silently altered.
  */
 export function redact(text) {
-  let out = text;
+  let out = normalizeForScan(text);
   let count = 0;
   for (const { kind, re, check } of RULES) {
-    out = out.replace(re, (m) => {
-      if (check && !check(m)) return m;
+    const caseSensitive = !CASE_INSENSITIVE.has(kind);
+    const reI = caseSensitive ? re : new RegExp(re.source, re.flags.includes("i") ? re.flags : `${re.flags}i`);
+    out = out.replace(reI, (m) => {
+      if (check && !check(caseSensitive ? m : m.toUpperCase())) return m;
       count++;
       return `[redacted:${kind}]`;
     });
