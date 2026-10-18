@@ -1,6 +1,6 @@
 {
   "name": "githippo",
-  "version": "3.7.3",
+  "version": "3.8.0",
   "description": "A hippocampus for your AI. Long-term memory for Claude & any MCP client, stored as Markdown in your own GitHub repo: hybrid semantic search, knowledge graph, auto-memory, compaction-proof, token-lean.",
   "main": "src/server.js",
   "directories": {

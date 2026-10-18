@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/instal
 
 That's the whole install: no account, no token, no questions. It sets up a local memory vault, wires Claude Code (hooks, MCP, status line) and fetches semantic search in the background. Restart Claude Code and just talk; it remembers.
 
-Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.7.3 demo` shows it working in 30 seconds without installing anything.
+Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.8.0 demo` shows it working in 30 seconds without installing anything.
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -130,7 +130,7 @@ Read it carefully: this is retrieval recall, not the official LongMemEval QA sco
 
 **Resources** (measured in CI, Linux): githippo itself uses about 50 MB. The local model runs in a separate process that uses about 520 MB while you're using it and exits after 10 idle minutes (`EMBED_IDLE_MS`), so an idle githippo is back to about 50 MB. Without the model (`EMBEDDINGS=none`) it never goes above about 100 MB. The model embeds about 46 chunks a second on a 4-core CI machine (batch size and thread count make no difference), so the first semantic index of a 5,000-note vault takes a few minutes; it happens once in the background, vectors are cached on disk, and keyword search works in the meantime.
 
-**Scale** (local vault, keyword index, measured): 5,000 notes: cold index 1.1 s, query 35 ms, `remember` 0.4 s, 154 MB RAM. 20,000 notes: 3.3 s, 45 ms, 1.2 s, 299 MB. 50,000 notes: 8.1 s, 90 ms, 3–6 s, 561 MB. Reads stay fast; writes slow down linearly because every write rebuilds the in-memory index, and the semantic vector cache is a JSON file (162 MB and a 6 s write at 50,000 chunks). A personal memory rarely gets past a few thousand notes; past 20,000 you'd want an incremental on-disk index, which is on the roadmap. In GitHub mode (the remote server), a 2,000-file vault cold-starts with 2 API calls (one tarball), an unchanged sync is a free `304 Not Modified`, and each write is 1 call.
+**Scale** (local vault, keyword index, measured on Linux): 5,000 notes: cold index 1.3 s, query 23 ms, `remember` 0.06–0.1 s, 149 MB RAM. 20,000 notes: 4.7 s, 41 ms, 0.17–0.2 s, 315 MB. 50,000 notes: 12.4 s, 78 ms, 0.5–0.7 s, 541 MB. A write re-tokenises only the note it touches (an inverted index with incremental add/remove), queries pick the top results from postings, and the semantic vector cache is a binary file: 77 MB, written in 0.14 s and loaded in 0.09 s at 50,000 chunks of 384 dimensions (it was 162 MB of JSON with a 6 s write that blocked the server). The trade-off: cold start is about 50% slower than the old full-scan index (12 s vs 8 s at 50,000 notes). Ranking is unchanged: LongMemEval gives identical numbers before and after. A personal memory rarely passes a few thousand notes; a database isn't needed at these sizes.
 
 ## Should you use githippo?
 
@@ -146,6 +146,8 @@ Read it carefully: this is retrieval recall, not the official LongMemEval QA sco
 | **Anthropic memory tool backend** | githippo serves Claude's native `memory_20250818` tool (`view`, `create`, `str_replace`, `insert`, `delete`, `rename`) over your vault, with the reference return strings, path-traversal protection, the secrets guard, and writes that are git commits and searchable by recall. Use `createMemoryTool(brain)` from `src/memorytool.js` in your tool-use loop. | Tested against the documented command set |
 | **Time-aware recall** | "last spring", "in March", "3 days ago", "Q1", in English and Spanish, become a date window; facts from then rank higher, and questions about the past can see superseded facts. | LongMemEval temporal MRR 86.7 → 88.9 |
 | **Poisoning defence** | Every fact records where it came from (`user`, `inferred`, `external`); external facts reach Claude marked `[external]`; text that reads as instructions to an AI is refused; `GIT_SIGN=1` signs every memory commit with your own key. | Zero false positives on the eval data; signing verified in CI |
+| **Human confirmation** | Facts from external sources (web pages, files, tool output), pins to core memory and removals ask *you* first, using MCP elicitation (Claude Code declares support; checked in its binary). `GITHIPPO_CONFIRM=auto` (default) asks when the client can; `strict` refuses these writes unless you confirm; `off` never asks. Ordinary facts you state are never interrupted. | Tested with the official MCP SDK client |
+| **Promotion suggestions** | `maintain` suggests facts for core memory that were recalled often *and* by several different questions (idea from OpenClaw's "dreaming" gates). Nothing is promoted automatically: accepting means `remember pin=true`, which asks you to confirm. | Tested |
 | **Fast static embeddings** | `EMBEDDINGS=static`: lookup-table embeddings, 70–100× faster than the default model. | Measured in CI (see Configuration) |
 | **Sleep-time consolidation** | `githippo consolidate` (or `CONSOLIDATE=1` after every session): a small Claude model reviews the session and proposes memory updates on a git branch, or a pull request if the vault is on GitHub. Nothing reaches your memory until you merge; proposals pass the secrets guard and injection screen. | Needs `ANTHROPIC_API_KEY`; tested with a stand-in model |
 | **Contextual retrieval** | `githippo contextualize`: a small model writes one sentence situating each chunk in its note (Anthropic's technique), prepended before indexing. | Needs `ANTHROPIC_API_KEY`; tested with a stand-in model |
@@ -185,7 +187,7 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
 
-Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.7.3`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.8.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
 
 Coming from the official reference memory server? `githippo import ~/path/to/memory.jsonl` turns its entities, observations and relations into notes and typed links (secrets guard and dedupe apply, so re-running is safe).
 
@@ -266,6 +268,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 | `MEMORY_ROOT` / `MEMORY_BRANCH` | `memory` / `main` | |
 | `CORE_BUDGET_TOKENS` | `400` | hard cap for pinned memory |
 | `MEMORY_STYLE` | `plain` | `terse` removes padding (articles, filler) from recalled memory and core before Claude reads it; files on disk are never changed. Rules from [caveman](https://github.com/JuliusBrussee/caveman), limited to deletions that can't change meaning: negations, numbers, names, code, URLs and paths always survive. Measured saving is small (about 3% on terse notes, 10% on wordy ones), and caveman's own cited research found compressing what a model reads can hurt answers, so it's off by default |
+| `GITHIPPO_CONFIRM` | `auto` | `auto` asks for confirmation on external-source facts, pins and removals when the client supports MCP elicitation; `strict` refuses them without it; `off` never asks |
 | `PROMPT_RECALL` | `1` | `0` turns off the per-prompt hook |
 | `ANTHROPIC_API_KEY` | | only for `maintain rewrite=` |
 | `VOYAGE_API_KEY` | | for `EMBEDDINGS=voyage` |
@@ -281,12 +284,12 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 ## Develop
 
 ```bash
-npm ci && npm test      # 128 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 140 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 
 ## Roadmap
 
-Signed `.mcpb` releases · usage-aware decay (combine ranking signals with `maintain decay`) · SSO (GitHub/Google) as an OAuth identity provider for team vaults
+Signed `.mcpb` releases · SSO (GitHub/Google) as an OAuth identity provider for team vaults · an optional derived SQLite index for vaults far beyond 50,000 notes · MCP Apps (an in-chat memory browser) once Claude Code ships it by default · MCP sampling, if Claude's clients ever declare it (Claude Code 2.1.302 declares only roots and elicitation, which is why consolidation and contextual retrieval still need an `ANTHROPIC_API_KEY`)
 
 MIT licensed. PRs welcome.
