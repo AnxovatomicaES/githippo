@@ -129,6 +129,9 @@ export function localEmbedder(model = DEFAULT_LOCAL_MODEL, { impl } = {}) {
       const r = await call({ texts: texts.map((t) => prefix(kind) + t), kind });
       return r.vecs.map(normalize);
     },
+    async rerank(query, texts) {
+      return (await call({ type: "rerank", query, texts })).scores;
+    },
     async workerRssMB() {
       return child ? (await call({ type: "stats" })).rssMB : 0;
     },

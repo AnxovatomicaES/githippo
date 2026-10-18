@@ -72,7 +72,7 @@ export async function runLongMemEval(entries, { embeddings = "none", limit = Inf
   embedder?.stop?.();
   const pct = (a, n) => Math.round((1000 * a) / n) / 10;
   const sum = (m) => ({ n: m.n, r5: pct(m.r5, m.n), r10: pct(m.r10, m.n), r20: pct(m.r20, m.n), mrr: pct(m.mrr, m.n), ndcg10: pct(m.ndcg, m.n) });
-  return { semanticQuestions, embeddings: (embedder?.id || "none (BM25 + graph)") + (sample ? ` · evenly spaced sample of ${list.length}` : "") + (shuffle ? ` · sessions shuffled (seed ${shuffle})` : "") + (wholeSession ? " · whole-session documents" : "") + (timeAware ? "" : " · without session dates"), all: sum(all), byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, sum(v)])), seconds: Math.round((Date.now() - t0) / 1000) };
+  return { semanticQuestions, embeddings: (embedder?.id || "none (BM25 + graph)") + (sample ? ` · evenly spaced sample of ${list.length}` : "") + (shuffle ? ` · sessions shuffled (seed ${shuffle})` : "") + (wholeSession ? " · whole-session documents" : "") + (timeAware ? "" : " · without session dates") + (process.env.RERANK === "local" ? " · reranked (cross-encoder)" : ""), all: sum(all), byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, sum(v)])), seconds: Math.round((Date.now() - t0) / 1000) };
 }
 
 export function formatLongMemEval(r) {
@@ -88,6 +88,7 @@ export function formatLongMemEval(r) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.argv.includes("--rerank")) process.env.RERANK = "local";
   const arg = (n, d) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1] : d);
   const data = JSON.parse(readFileSync(arg("data", "longmemeval_s_cleaned.json"), "utf8"));
   const r = await runLongMemEval(data, { embeddings: arg("embeddings", "none"), limit: Number(arg("limit", Infinity)), sample: Number(arg("sample", 0)), shuffle: Number(arg("shuffle", 0)), wholeSession: process.argv.includes("--whole-session"), timeAware: !process.argv.includes("--no-dates"), log: (m) => console.error(m) });

@@ -74,6 +74,10 @@ async function hook(event) {
       out = await postCompact(input, { brain: repoBrain() });
     } else if (event === "session-end") {
       out = await sessionEnd(input, { brain: repoBrain() });
+      // CONSOLIDATE=1: review the finished session in the background (needs ANTHROPIC_API_KEY)
+      if (process.env.CONSOLIDATE === "1" && input.transcript_path && process.env.ANTHROPIC_API_KEY) {
+        spawn(process.execPath, [new URL(import.meta.url).pathname, "consolidate", "--transcript", input.transcript_path], { detached: true, stdio: "ignore" }).unref();
+      }
     } else if (event === "session-start") {
       out = await sessionStart(input);
     } else if (event === "prompt") {
@@ -351,6 +355,84 @@ async function users() {
   }
 }
 
+/** Plain text of a Claude Code session for the consolidation model: what the user asked and what happened. */
+async function sessionText(path) {
+  const { transcriptParser } = await import("./transcript.js");
+  const { stripMemoryTags } = await import("./parse.js");
+  const { createReadStream } = await import("node:fs");
+  const { createInterface: lines } = await import("node:readline");
+  const turns = [];
+  for await (const l of lines({ input: createReadStream(path), crlfDelay: Infinity })) {
+    try {
+      const e = JSON.parse(l);
+      const c = e.message?.content;
+      const text = typeof c === "string" ? c : Array.isArray(c) ? c.filter((b) => b.type === "text").map((b) => b.text).join("\n") : "";
+      const clean = stripMemoryTags(text).text.trim();
+      if (clean && (e.type === "user" || e.type === "assistant") && !/^<(command|local-command)/.test(clean)) turns.push(`${e.type}: ${clean.slice(0, 2000)}`);
+    } catch {}
+  }
+  void transcriptParser;
+  return turns.join("\n");
+}
+
+/**
+ * Sleep-time consolidation: githippo consolidate [--transcript <path>] [--no-pr]
+ * Proposes memory updates from a session and puts them on a branch (a PR if the vault has a GitHub remote).
+ */
+async function consolidateCmd() {
+  const { createLLM } = await import("./llm.js");
+  const { proposeUpdates, applyOnBranch, openPullRequest } = await import("./consolidate.js");
+  const cfg = loadConfig();
+  const llm = createLLM(process.env);
+  if (!llm) return console.error("consolidate needs ANTHROPIC_API_KEY (it uses a small model to review the session)."), process.exit(1);
+  if (cfg.STORE !== "local") return console.error("consolidate works on a local vault (proposals are git branches)."), process.exit(1);
+  let file = rest.includes("--transcript") ? rest[rest.indexOf("--transcript") + 1] : null;
+  if (!file) {
+    const { readdirSync, statSync } = await import("node:fs");
+    const root = join(homedir(), ".claude", "projects");
+    const all = readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).flatMap((d) => readdirSync(join(root, d.name)).filter((f) => f.endsWith(".jsonl")).map((f) => join(root, d.name, f)));
+    file = all.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
+  }
+  if (!file) return console.error("No Claude Code transcript found; pass --transcript <path>."), process.exit(1);
+  const brain = brainOrExit("consolidate");
+  const ops = await proposeUpdates({ llm, sessionText: await sessionText(file), brain });
+  const r = await applyOnBranch({ vaultDir: cfg.VAULT_DIR, ops, root: cfg.MEMORY_ROOT ?? "memory" });
+  const summary = [
+    `${r.applied.length} proposed change(s) from a session, made by ${llm.model}. Review and merge, or close to discard.`,
+    ...r.applied.map((a) => `- ${a.op.op}: ${a.op.fact || `${a.op.old} → ${a.op.new}`} (${a.path})`),
+    ...(r.contradictions.length ? ["", "Possible contradictions to look at:", ...r.contradictions.map((c) => `- ${c.a} ↔ ${c.b}: ${c.note || ""}`)] : []),
+    ...(r.rejected.length ? ["", `Not proposed (${r.rejected.length}):`, ...r.rejected.map((x) => `- ${x.op.fact || x.op.new || x.op.op}: ${x.reason}`)] : []),
+  ].join("\n");
+  if (!r.applied.length) return console.log(`No changes proposed.${r.rejected.length ? `\n${summary}` : ""}`);
+  const pr = rest.includes("--no-pr") ? null : openPullRequest(cfg.VAULT_DIR, r.branch, summary);
+  console.log(`${summary}\n\n${pr ? `Pull request: ${pr}` : `Branch ${r.branch}: githippo proposals accept ${r.branch}  (or reject)`}`);
+}
+
+/** Contextual retrieval: githippo contextualize [--limit N]  (needs ANTHROPIC_API_KEY; local vault) */
+async function contextualizeCmd() {
+  const { createLLM } = await import("./llm.js");
+  const { contextualize } = await import("./contextualize.js");
+  const cfg = loadConfig();
+  const llm = createLLM(process.env);
+  if (!llm) return console.error("contextualize needs ANTHROPIC_API_KEY."), process.exit(1);
+  if (cfg.STORE !== "local") return console.error("contextualize works on a local vault."), process.exit(1);
+  const limit = rest.includes("--limit") ? Number(rest[rest.indexOf("--limit") + 1]) : Infinity;
+  const r = await contextualize({ brain: brainOrExit("contextualize"), llm, vaultDir: cfg.VAULT_DIR, limit, log: (m) => console.error(m) });
+  console.log(`✓ ${r.added} chunks contextualized (${r.total} total) · ${llm.model} · stored in .githippo/context.json`);
+}
+
+/** githippo proposals [list] | accept <branch> | reject <branch> */
+async function proposalsCmd() {
+  const { listProposals, acceptProposals, rejectProposals } = await import("./consolidate.js");
+  const dir = loadConfig().VAULT_DIR;
+  const [sub, branch] = rest;
+  if (sub === "accept" && branch) return acceptProposals(dir, branch), console.log(`✓ merged ${branch}`);
+  if (sub === "reject" && branch) return rejectProposals(dir, branch), console.log(`✓ discarded ${branch}`);
+  const list = listProposals(dir);
+  if (!list.length) return console.log("No pending proposals.");
+  for (const b of list) console.log(`${b}\n${execFileSync("git", ["-C", dir, "diff", "--stat", `HEAD...${b}`]).toString()}`);
+}
+
 /** Import from the MCP reference memory server: githippo import <memory.jsonl> */
 async function importCmd() {
   const file = rest[0];
@@ -469,7 +551,7 @@ async function bench() {
   await client.close();
 }
 
-const commands = { setup, sync, warm, users, eval: evalCmd, import: importCmd, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
+const commands = { setup, sync, warm, users, eval: evalCmd, import: importCmd, consolidate: consolidateCmd, proposals: proposalsCmd, contextualize: contextualizeCmd, serve, http, hook: () => hook(rest[0]), statusline, install, init, doctor, demo, bench };
 if (cmd === "--version" || cmd === "-v") console.log(VERSION);
 else if (!commands[cmd]) {
   console.log(`githippo ${VERSION}\nusage: githippo setup [--github [repo-name]]   one command, everything
@@ -477,6 +559,9 @@ else if (!commands[cmd]) {
        githippo users add <id> --acl "shared/:write,people/:read" | list | remove <id> | reset <id>
        githippo eval [--embeddings none|local|voyage]   retrieval-quality benchmark
        githippo import <memory.jsonl>                     from the MCP reference memory server
+       githippo consolidate [--transcript f] [--no-pr]    review a session with a small model → proposals branch/PR
+       githippo proposals [accept|reject <branch>]        review proposed memory updates
+       githippo contextualize [--limit N]                 situating context per chunk (contextual retrieval)
        githippo demo | doctor | warm | bench
        githippo serve | http | statusline | hook <event> | install | init`);
   process.exit(1);

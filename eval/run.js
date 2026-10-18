@@ -85,7 +85,7 @@ export async function runEval({ embeddings = "none" } = {}) {
   const pct = (a, b) => Math.round((1000 * a) / b) / 10;
   const summary = (m) => ({ n: m.n, hit1: pct(m.h1, m.n), hit5: pct(m.h5, m.n), mrr: Math.round((1000 * m.rr) / m.n) / 1000 });
   return {
-    embeddings: embedder?.id || "none (keyword + graph)",
+    embeddings: (embedder?.id || "none (keyword + graph)") + (process.env.RERANK === "local" ? " · reranked" : ""),
     retrieval: summary(all),
     byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, summary(v)])),
     routing: { n: ROUTING.length, accuracy: pct(routed, ROUTING.length), wrongNote: test.wrong, dev: { n: DEV_ROUTING.length, accuracy: pct(dev.ok, DEV_ROUTING.length), wrongNote: dev.wrong } },

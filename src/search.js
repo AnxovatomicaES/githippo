@@ -8,6 +8,7 @@ import { KnowledgeGraph } from "./graph.js";
 import { cosine } from "./embed.js";
 import { Usage } from "./usage.js";
 import { timeWindow, inWindow } from "./when.js";
+import { hash as hashText } from "./parse.js";
 
 // Function words for EN, ES, FR, DE, PT, IT. They carry no topic, so they shouldn't drive keyword ranking.
 const STOP = new Set(
@@ -163,6 +164,10 @@ export class MemoryIndex {
     if (this.syncing) return this.syncing;
     this.syncing = (async () => {
       await this.loadCache();
+      if (this.store.dir) {
+        const { loadContexts } = await import("./contextualize.js");
+        this.contexts = loadContexts(this.store.dir);
+      }
       const listing = await this.store.list();
       const live = new Set(listing.map((f) => f.path));
       for (const p of this.files.keys()) if (!live.has(p)) this.files.delete(p);
@@ -173,7 +178,7 @@ export class MemoryIndex {
       await Promise.all(
         changed.map(async (f) => {
           const file = await read(f);
-          if (file) this.files.set(f.path, { ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content });
+          if (file) this.files.set(f.path, this.withContext({ ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content }));
         }),
       );
       await this.embedMissing();
@@ -183,9 +188,23 @@ export class MemoryIndex {
     return this.syncing;
   }
 
+  /** Contextual retrieval: prepend a stored situating sentence to each chunk that has one. */
+  withContext(file) {
+    const ctx = this.contexts || {};
+    for (const c of file.chunks) {
+      c.baseHash = c.hash;
+      const extra = ctx[c.hash];
+      if (extra) {
+        c.embedText = `${extra}\n${c.embedText}`;
+        c.hash = hashText(c.embedText);
+      }
+    }
+    return file;
+  }
+
   /** Apply a write we just made without waiting for a full sync. */
   async upsert(path, content, version) {
-    this.files.set(path, { ...parseFile(path, content), version, content });
+    this.files.set(path, this.withContext({ ...parseFile(path, content), version, content }));
     await this.embedMissing();
     this.rebuild();
   }
@@ -293,6 +312,15 @@ export class MemoryIndex {
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
 
+    // RERANK=local: a cross-encoder rescores the top 20 (needs EMBEDDINGS=local for its worker)
+    if (process.env.RERANK === "local" && this.embedder?.rerank && ranked.length > 1) {
+      try {
+        const top = ranked.slice(0, 20);
+        const scores = await this.embedder.rerank(query, top.map((r) => r.chunk.text.slice(0, 1000)));
+        top.forEach((r, i) => (r.signals.rerank = +scores[i].toFixed(3)));
+        ranked = [...top.sort((a, b) => b.signals.rerank - a.signals.rerank), ...ranked.slice(20)];
+      } catch {}
+    }
     if (expand && ranked.length) {
       const have = new Set(ranked.map((r) => r.chunk.path));
       const extra = [];

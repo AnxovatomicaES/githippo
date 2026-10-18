@@ -25,9 +25,23 @@ const load = async () => {
   return extractor;
 };
 
+let reranker;
 process.on("message", async (m) => {
   try {
     if (m.type === "stats") return process.send({ id: m.id, rssMB: Math.round(process.memoryUsage().rss / 1e6) });
+    if (m.type === "rerank") {
+      // cross-encoder: reads question and candidate together, scores relevance
+      if (!reranker) {
+        const { pipeline } = await importTransformers();
+        reranker = await pipeline("text-classification", process.env.RERANK_MODEL || "Xenova/ms-marco-MiniLM-L-6-v2", { dtype: "q8" });
+      }
+      const scores = [];
+      for (const t of m.texts) {
+        const [r] = await reranker({ text: m.query, text_pair: t }, { top_k: 1, function_to_apply: "none" });
+        scores.push(r.score);
+      }
+      return process.send({ id: m.id, scores });
+    }
     const ex = await load();
     const vecs = await ex.embed(m.texts, m.kind);
     process.send({ id: m.id, vecs: vecs.map((v) => Array.from(v)) });
