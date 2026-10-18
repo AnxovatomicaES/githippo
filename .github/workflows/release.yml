@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  issues: write
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -32,7 +33,14 @@ jobs:
       - name: Install mcp-publisher and validate the listing (before anything is published)
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
-          ./mcp-publisher validate
+          ./mcp-publisher --version || true
+          if ! ./mcp-publisher validate > validate.log 2>&1; then
+            cat validate.log
+            { echo "### Registry validation failed for $GITHUB_REF_NAME"; echo; echo '```'; cat validate.log; echo '```'; echo; echo '```json'; cat server.json; echo '```'; } > fail.md
+            GH_TOKEN="${{ github.token }}" gh issue comment 3 --body-file fail.md
+            exit 1
+          fi
+          cat validate.log
       - name: Create GitHub release with the bundle
         env:
           GH_TOKEN: ${{ github.token }}
