@@ -12,6 +12,7 @@ export const fmt = {
     return r.context ? `${r.context}\n[~${r.tokens} tok, ${r.files} files]` : "∅ no relevant memory";
   },
   remember(r) {
+    if (r.status === "declined") return `✗ not saved: ${r.reason}`;
     if (r.status === "duplicate") return `= already known (${r.path}): ${q(r.existing)}`;
     if (r.status === "pinned") return `📌 pinned to core (${r.core_tokens}/budget tok)`;
     if (r.status === "superseded") return `↻ ${r.path}: ${q(r.old)} → ${q(r.new)} (old kept in History)`;
@@ -20,7 +21,7 @@ export const fmt = {
     for (const m of r.maybe_supersedes || []) s += `\n? may supersede ${m.path}: ${q(m.line)} → call remember with replaces if so`;
     return s;
   },
-  forget: (r) => `✗ ${r.path}: ${q(r.line)} (git history keeps it)`,
+  forget: (r) => (r.status === "declined" ? `not removed: ${r.reason}` : `✗ ${r.path}: ${q(r.line)} (git history keeps it)`),
   graph(r) {
     const e = r.entity;
     const lines = [`${e.id} [${e.type}]${e.description ? ` — ${e.description}` : ""}`];
@@ -46,6 +47,7 @@ export const fmt = {
       if (v.length) out.push(`${k}: ${v.join(", ")}`);
     }
     if (r.broken_links.length) out.push(`broken links: ${r.broken_links.map((b) => `${b.from}→${b.target}`).join(", ")}`);
+    if (r.promote?.length) out.push(`promote to core? (recalled often, by different questions; accept with remember pin=true, which asks the user):\n${r.promote.map((p) => `  ${q(p.fact)} (${p.path}) · ${p.recalls}× · ${p.queries} questions · ${p.daysAgo}d ago`).join("\n")}`);
     if (r.inbox?.length) out.push(`inbox → suggested homes (maintain tidy=true to move):\n${r.inbox.slice(0, 15).map((x) => `  ${q(x.fact)} → ${x.path} (${x.why})`).join("\n")}`);
     if (r.decay && (r.decay.inbox || r.decay.sessions) && !r.actions.some((a) => /archived|removed/.test(a))) {
       out.push(`decay candidates (${r.decay.active_days}+ active days old): ${r.decay.inbox} inbox facts, ${r.decay.sessions} checkpoints → maintain decay=true`);

@@ -8,6 +8,7 @@ import { createLLM } from "./llm.js";
 import { Brain, assertSafe } from "./brain.js";
 import { fmt, fmtError } from "./format.js";
 import { loadConfig } from "./config.js";
+import { gate } from "./confirm.js";
 
 export const VERSION = "3.7.3";
 
@@ -88,7 +89,15 @@ export function buildServer(brain) {
     },
     RW,
     fmt.remember,
-    ({ fact, ...o }) => brain.remember(fact, o),
+    async ({ fact, ...o }) => {
+      // sensitive writes ask the user first (MCP elicitation); ordinary facts are never interrupted
+      const kind = o.source === "external" ? "external" : o.pin ? "pin" : null;
+      if (kind) {
+        const g = await gate(server, kind, { text: fact });
+        if (!g.ok) return { status: "declined", reason: g.reason };
+      }
+      return brain.remember(fact, o);
+    },
   );
 
   reg(
@@ -97,7 +106,14 @@ export function buildServer(brain) {
     { text: z.string(), path: z.string().optional() },
     { ...RW, destructiveHint: true },
     fmt.forget,
-    ({ text, path }) => brain.forget(text, { path }),
+    async ({ text, path }) => {
+      const hit = await brain.locateFact(text, { path });
+      if (hit) {
+        const g = await gate(server, "forget", { text: hit.line, path: hit.path });
+        if (!g.ok) return { status: "declined", reason: g.reason, path: hit.path, line: hit.line };
+      }
+      return brain.forget(text, { path });
+    },
   );
 
   reg(

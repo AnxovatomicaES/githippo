@@ -11,6 +11,19 @@ export function maskSpans(text) {
   return text.replace(/https?:\/\/\S+|www\.\S+|`[^`]*`|\[\[[^\[\]]*\]\]/g, (m) => " ".repeat(m.length));
 }
 
+/** Wiki-link edges of one note, extracted once and cached on the parsed file object (rebuilds reuse it). */
+function linksOf(f) {
+  if (f.rawLinks) return f.rawLinks;
+  const out = [];
+  for (const line of (f.live ?? f.body).split("\n")) {
+    if (!line.includes("[[")) continue;
+    // anchored / bounded patterns: an unanchored ([a-z][\w-]*):: backtracked quadratically on long words
+    const typed = line.match(/^\s*[-*]\s+([a-z][\w-]{0,40})\s+\[\[/) || (line.includes("::") ? line.match(/(?:^|[\s(*])([a-z][\w-]{0,40})::\s*\[\[/) : null);
+    for (const m of line.matchAll(LINK_RE)) out.push({ target: m[1].trim(), type: typed ? typed[1] : "mentions", context: line.trim().replace(/^[-*]\s+/, "") });
+  }
+  return (f.rawLinks = out);
+}
+
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export class KnowledgeGraph {
@@ -57,21 +70,9 @@ export class KnowledgeGraph {
 
   addEdges(f) {
     const from = this.idOf(f.path);
-    for (const line of (f.live ?? f.body).split("\n")) {
-      // Typed relations, Basic Memory / Dataview style: "- works_on [[x]]" or "owner:: [[x]]".
-      if (!line.includes("[[")) continue;
-      // anchored / bounded patterns: an unanchored ([a-z][\w-]*):: backtracked quadratically on long words
-      const typed = line.match(/^\s*[-*]\s+([a-z][\w-]{0,40})\s+\[\[/) || (line.includes("::") ? line.match(/(?:^|[\s(*])([a-z][\w-]{0,40})::\s*\[\[/) : null);
-      for (const m of line.matchAll(LINK_RE)) {
-        const to = this.resolve(m[1]);
-        this.edges.push({
-          from,
-          to: to || m[1].trim(),
-          type: typed ? typed[1] : "mentions",
-          context: line.trim().replace(/^[-*]\s+/, ""),
-          broken: !to,
-        });
-      }
+    for (const e of linksOf(f)) {
+      const to = this.resolve(e.target);
+      this.edges.push({ from, to: to || e.target, type: e.type, context: e.context, broken: !to });
     }
   }
 

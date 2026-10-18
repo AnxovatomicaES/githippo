@@ -167,3 +167,28 @@ test("maintain suggests homes for inbox facts and moves them only with tidy=true
   assert.match(gh.text("memory/inbox.md"), /jazz/, "unrelated fact stays");
   assert.match(gh.text("memory/projects/johnny.md"), /Catalan/);
 });
+
+test("promotion suggestions need repeated recalls from DIFFERENT questions; pinned, removed and sparse facts are skipped", async () => {
+  const { brain, gh } = setup();
+  const ask = (q) => brain.recall(q, { mode: "pack" });
+  // one question asked five times is not evidence of general value
+  for (let i = 0; i < 5; i++) await ask("what sample rate does johnny use");
+  assert.deepEqual((await brain.maintain({})).promote, []);
+  // three different questions that each surface the same fact
+  await brain.remember("Johnny uses a 16 kHz sample rate", { about: "johnny" });
+  for (const q of ["johnny sample rate", "what rate is the audio at for johnny", "sample rate setting johnny kHz", "johnny audio kHz rate", "johnny 16 kHz"]) await ask(q);
+  const r = await brain.maintain({});
+  assert.equal(r.promote.length, 1);
+  assert.match(r.promote[0].fact, /16 kHz sample rate/);
+  assert.ok(r.promote[0].queries >= 3 && r.promote[0].recalls >= 3);
+  assert.match(fmt.maintain(r), /promote to core\?[\s\S]*"Johnny uses a 16 kHz sample rate" \(projects\/johnny\.md\)/);
+  // already pinned → no longer suggested
+  await brain.remember("Johnny uses a 16 kHz sample rate", { pin: true });
+  assert.deepEqual((await brain.maintain({})).promote, []);
+  // a fact that was later removed is never suggested
+  await brain.remember("Johnny listens on port 9000", { about: "johnny" });
+  for (const q of ["johnny port", "which port does johnny listen on", "port 9000 johnny listens", "johnny listens port number"]) await ask(q);
+  assert.equal((await brain.maintain({})).promote.length, 1);
+  await brain.forget("Johnny listens on port 9000", { path: "projects/johnny.md" });
+  assert.deepEqual((await brain.maintain({})).promote, []);
+});

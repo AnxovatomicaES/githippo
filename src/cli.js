@@ -422,7 +422,7 @@ async function contextualizeCmd() {
   if (cfg.STORE !== "local") return console.error("contextualize works on a local vault."), process.exit(1);
   const limit = rest.includes("--limit") ? Number(rest[rest.indexOf("--limit") + 1]) : Infinity;
   const r = await contextualize({ brain: brainOrExit("contextualize"), llm, vaultDir: cfg.VAULT_DIR, limit, log: (m) => console.error(m) });
-  console.log(`✓ ${r.added} chunks contextualized (${r.total} total) · ${llm.model} · stored in .githippo/context.json`);
+  console.log(`✓ ${r.added} chunks contextualized (${r.total} total) · ${llm.model} · stored in memory/.githippo/context.json (committed)`);
 }
 
 /** githippo proposals [list] | accept <branch> | reject <branch> */

@@ -1,7 +1,7 @@
 // Hybrid retrieval: BM25 (exact terms, names, numbers) + dense embeddings
 // (meaning, cross-lingual) fused with Reciprocal Rank Fusion, then expanded
 // one hop through the knowledge graph.
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseFile, stem } from "./parse.js";
 import { KnowledgeGraph } from "./graph.js";
@@ -10,6 +10,7 @@ import { Usage } from "./usage.js";
 import { timeWindow, inWindow } from "./when.js";
 import { hash as hashText } from "./parse.js";
 import { forEachLimit } from "./lock.js";
+import { decodeVectors, encodeVectors } from "./vecstore.js";
 
 // Function words for EN, ES, FR, DE, PT, IT. They carry no topic, so they shouldn't drive keyword ranking.
 const STOP = new Set(
@@ -65,42 +66,99 @@ export const tokenize = (s) => {
   return out.filter((t) => t.length > 1 && !STOP.has(t)).map((t) => (t.length > 4 && /[^su]s$/.test(t) ? t.slice(0, -1) : t));
 };
 
+/**
+ * BM25 over an inverted index. Documents can be added and removed one at a time, so a write touches only that
+ * note's postings (the previous version re-tokenised every chunk on every write: 3-7 s at 50,000 notes).
+ * Scores are identical to the textbook formula the old full-scan version used; ties break by id.
+ */
 export class Bm25 {
-  constructor(chunks) {
-    this.chunks = chunks;
-    this.df = new Map();
-    this.tf = new Map();
-    let total = 0;
-    for (const c of chunks) {
-      const toks = tokenize(c.embedText);
-      total += toks.length;
-      const counts = new Map();
-      for (const t of toks) counts.set(t, (counts.get(t) || 0) + 1);
-      this.tf.set(c.id, { counts, len: toks.length });
-      for (const t of counts.keys()) this.df.set(t, (this.df.get(t) || 0) + 1);
-    }
-    this.avgLen = total / (chunks.length || 1);
+  constructor(chunks = []) {
+    this.docs = new Map(); // id -> chunk
+    this.tf = new Map(); // id -> { counts: Map<term, n>, len }
+    this.postings = new Map(); // term -> Map<id, n>
+    this.totalLen = 0;
+    for (const c of chunks) this.add(c);
   }
 
-  search(query) {
+  get size() {
+    return this.docs.size;
+  }
+
+  get avgLen() {
+    return this.totalLen / (this.docs.size || 1);
+  }
+
+  /** Read-only document-frequency view (the prompt hook and routing use it). */
+  get df() {
+    const p = this.postings;
+    return { has: (t) => p.has(t), get: (t) => p.get(t)?.size, keys: () => p.keys(), get size() { return p.size; } };
+  }
+
+  add(c) {
+    if (this.docs.has(c.id)) this.remove(c.id);
+    const toks = tokenize(c.embedText);
+    const counts = new Map();
+    for (const t of toks) counts.set(t, (counts.get(t) || 0) + 1);
+    this.docs.set(c.id, c);
+    this.tf.set(c.id, { counts, len: toks.length });
+    this.totalLen += toks.length;
+    for (const [t, n] of counts) {
+      let p = this.postings.get(t);
+      if (!p) this.postings.set(t, (p = new Map()));
+      p.set(c.id, n);
+    }
+  }
+
+  remove(id) {
+    const e = this.tf.get(id);
+    if (!e) return;
+    for (const t of e.counts.keys()) {
+      const p = this.postings.get(t);
+      p.delete(id);
+      if (!p.size) this.postings.delete(t);
+    }
+    this.totalLen -= e.len;
+    this.tf.delete(id);
+    this.docs.delete(id);
+  }
+
+  search(query, limit = 1000) {
     const q = [...new Set(tokenize(query))];
-    const N = this.chunks.length;
+    const N = this.docs.size;
+    const avg = this.avgLen;
     const k1 = 1.2;
     const b = 0.75;
-    return this.chunks
-      .map((c) => {
-        const { counts, len } = this.tf.get(c.id);
-        let s = 0;
-        for (const t of q) {
-          const f = counts.get(t);
-          if (!f) continue;
-          const idf = Math.log(1 + (N - this.df.get(t) + 0.5) / (this.df.get(t) + 0.5));
-          s += idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * len) / this.avgLen)));
-        }
-        return { c, s };
-      })
-      .filter((x) => x.s > 0)
-      .sort((a, b) => b.s - a.s);
+    const scores = new Map();
+    for (const t of q) {
+      const post = this.postings.get(t);
+      if (!post) continue;
+      const idf = Math.log(1 + (N - post.size + 0.5) / (post.size + 0.5));
+      for (const [id, f] of post) {
+        const len = this.tf.get(id).len;
+        scores.set(id, (scores.get(id) || 0) + idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * len) / avg))));
+      }
+    }
+    // Top-K without sorting everything: find the K-th best score with a native numeric sort, keep what beats it
+    // (plus ties, ordered by id so results are deterministic). A common word matching all 50,000 chunks used to
+    // cost a full string-comparison sort per query.
+    const byScoreThenId = (x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0);
+    let rows;
+    if (scores.size > limit) {
+      const all = Float64Array.from(scores.values()).sort();
+      const thr = all[all.length - limit];
+      const above = [];
+      const tied = [];
+      for (const e of scores) {
+        if (e[1] > thr) above.push(e);
+        else if (e[1] === thr) tied.push(e);
+      }
+      tied.sort(byScoreThenId);
+      rows = above.concat(tied.slice(0, limit - above.length));
+    } else rows = [...scores];
+    return rows
+      .filter(([, sc]) => sc > 0)
+      .sort(byScoreThenId)
+      .map(([id, sc]) => ({ c: this.docs.get(id), s: sc }));
   }
 }
 
@@ -123,6 +181,9 @@ export class MemoryIndex {
     this.files = new Map(); // path -> parsed file (+version)
     this.vectors = new Map(); // chunk hash -> Float32Array
     this.graph = new KnowledgeGraph();
+    this.chunks = [];
+    this.lexical = new Bm25(); // chunk-level keyword index, updated incrementally
+    this.docLexical = new Bm25(); // note-level keyword index
     this.syncing = null;
     this.lastSync = 0;
     this.embedPausedUntil = 0;
@@ -148,14 +209,20 @@ export class MemoryIndex {
   }
 
   get cacheFile() {
-    return this.cacheDir && this.embedder ? join(this.cacheDir, `${this.embedder.id.replace(/\W+/g, "_")}.json`) : null;
+    return this.cacheDir && this.embedder ? join(this.cacheDir, `${this.embedder.id.replace(/\W+/g, "_")}.bin`) : null;
   }
 
   async loadCache() {
     if (!this.cacheFile || this.vectors.size) return;
     try {
-      const raw = JSON.parse(await readFile(this.cacheFile, "utf8"));
+      for (const [k, v] of decodeVectors(await readFile(this.cacheFile))) this.vectors.set(k, v);
+      return;
+    } catch {} // missing or corrupt: fall through (a corrupt cache is just re-embedded)
+    try {
+      // one-time migration from the old JSON cache
+      const raw = JSON.parse(await readFile(this.cacheFile.replace(/\.bin$/, ".json"), "utf8"));
       for (const [h, v] of Object.entries(raw)) this.vectors.set(h, Float32Array.from(v));
+      this.saveCache();
     } catch {}
   }
 
@@ -172,11 +239,14 @@ export class MemoryIndex {
   async flushCache() {
     if (!this.cacheFile) return;
     const live = new Set((this.chunks || []).map((c) => c.hash));
-    const lines = [...this.vectors.keys()].filter((k) => k.startsWith("line:")).slice(-2000);
-    for (const k of [...this.vectors.keys()]) if (!live.has(k) && !lines.includes(k)) this.vectors.delete(k);
+    const lineKeys = [...this.vectors.keys()].filter((k) => k.startsWith("line:")).slice(-2000);
+    const keepLines = new Set(lineKeys);
+    for (const k of [...this.vectors.keys()]) if (!live.has(k) && !keepLines.has(k)) this.vectors.delete(k);
     await mkdir(this.cacheDir, { recursive: true });
-    const obj = Object.fromEntries([...this.vectors].map(([h, v]) => [h, Array.from(v, (x) => +x.toFixed(5))]));
-    await writeFile(this.cacheFile, JSON.stringify(obj));
+    const tmp = `${this.cacheFile}.${process.pid}.${Date.now()}.tmp`;
+    await writeFile(tmp, encodeVectors(this.vectors));
+    await rename(tmp, this.cacheFile); // atomic: a crash never leaves a half-written cache
+    await rm(this.cacheFile.replace(/\.bin$/, ".json"), { force: true }); // migrated: drop the old JSON cache
   }
 
   /** Incremental sync: only files whose blob SHA changed are re-read and re-embedded. */
@@ -188,65 +258,105 @@ export class MemoryIndex {
     if (this.syncing) return this.syncing;
     this.syncing = (async () => {
       await this.loadCache();
+      let reapply = false;
       if (this.store.dir) {
         const { loadContexts } = await import("./contextualize.js");
-        this.contexts = loadContexts(this.store.dir);
+        this.contexts = loadContexts(this.store.base || this.store.dir);
+        const key = hashText(JSON.stringify(this.contexts));
+        if (key !== this.contextKey) {
+          reapply = this.contextKey !== undefined; // stored contexts changed: every chunk's indexed text changes
+          this.contextKey = key;
+        }
       }
       const listing = await this.store.list();
       const live = new Set(listing.map((f) => f.path));
-      for (const p of this.files.keys()) if (!live.has(p)) this.files.delete(p);
+      let touched = false;
+      for (const p of [...this.files.keys()]) {
+        if (!live.has(p)) {
+          this.applyFile(p, null);
+          touched = true;
+        }
+      }
       const changed = listing.filter((f) => this.files.get(f.path)?.version !== f.version);
       // Many changes (cold start): one tarball instead of one request per file, when the store supports it.
       if (changed.length > 20 && this.store.prefetch) await this.store.prefetch().catch(() => 0);
       const read = (f) => (this.store.readVersion ? this.store.readVersion(f.path, f.version) : this.store.read(f.path));
-      await forEachLimit(
-        changed,
-        32,
-        async (f) => {
-          const file = await read(f);
-          if (file) this.files.set(f.path, this.withContext({ ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content }));
-        },
-      );
+      const fresh = [];
+      await forEachLimit(changed, 32, async (f) => {
+        const file = await read(f);
+        if (!file) return;
+        const parsed = this.withContext({ ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content });
+        this.applyFile(f.path, parsed);
+        fresh.push(parsed);
+      });
       // loud, not silent: a note that was listed but couldn't be read is a note the user can't search
       const unreadable = listing.filter((f) => !this.files.has(f.path));
       if (unreadable.length) console.error(`[githippo] ${unreadable.length} note(s) could not be read and are not searchable, e.g. ${unreadable[0].path}`);
-      await this.embedMissing();
-      this.rebuild();
+      if (reapply) {
+        for (const f of this.files.values()) this.withContext(f);
+        this.rebuild();
+        await this.embedMissing();
+      } else {
+        await this.embedMissing(fresh);
+        if (touched || changed.length) this.refresh(); // nothing changed → nothing to rebuild
+      }
       this.lastSync = Date.now();
     })().finally(() => (this.syncing = null));
     return this.syncing;
   }
 
-  /** Contextual retrieval: prepend a stored situating sentence to each chunk that has one. */
+  /** Contextual retrieval: prepend a stored situating sentence to each chunk that has one (idempotent: re-applies from the base text). */
   withContext(file) {
     const ctx = this.contexts || {};
     for (const c of file.chunks) {
-      c.baseHash = c.hash;
-      const extra = ctx[c.hash];
-      if (extra) {
-        c.embedText = `${extra}\n${c.embedText}`;
-        c.hash = hashText(c.embedText);
-      }
+      c.baseHash ??= c.hash;
+      c.baseText ??= c.embedText;
+      const extra = ctx[c.baseHash];
+      c.embedText = extra ? `${extra}\n${c.baseText}` : c.baseText;
+      c.hash = extra ? hashText(c.embedText) : c.baseHash;
     }
     return file;
   }
 
+  docOf(f) {
+    // note-level entry: a question whose words are spread across a long note matches the note even when no
+    // single chunk contains them all; fused with chunk evidence in search()
+    return { id: f.path, path: f.path, history: false, embedText: `${f.title} ${f.description || ""}\n${f.live}` };
+  }
+
+  /** Add, replace or (file = null) drop one note in every keyword structure. Cost is the size of that note. */
+  applyFile(path, file) {
+    const old = this.files.get(path);
+    if (old) {
+      for (const c of old.chunks) this.lexical.remove(c.id);
+      this.docLexical.remove(path);
+    }
+    if (!file) {
+      this.files.delete(path);
+      return;
+    }
+    this.files.set(path, file);
+    for (const c of file.chunks) this.lexical.add(c);
+    this.docLexical.add(this.docOf(file));
+  }
+
   /** Apply a write we just made without waiting for a full sync. */
   async upsert(path, content, version) {
-    this.files.set(path, this.withContext({ ...parseFile(path, content), version, content }));
-    await this.embedMissing();
-    this.rebuild();
+    const parsed = this.withContext({ ...parseFile(path, content), version, content });
+    this.applyFile(path, parsed);
+    await this.embedMissing([parsed]);
+    this.refresh();
   }
 
   remove(path) {
-    this.files.delete(path);
-    this.rebuild();
+    this.applyFile(path, null);
+    this.refresh();
   }
 
-  async embedMissing() {
+  async embedMissing(files = this.files.values()) {
     if (!this.embedder) return;
     const todo = new Map();
-    for (const f of this.files.values()) for (const c of f.chunks) if (!this.vectors.has(c.hash)) todo.set(c.hash, c.embedText);
+    for (const f of files) for (const c of f.chunks) if (!this.vectors.has(c.hash)) todo.set(c.hash, c.embedText);
     if (!todo.size) return;
     const vecs = await this.safeEmbed([...todo.values()], "document");
     if (!vecs) return;
@@ -254,16 +364,38 @@ export class MemoryIndex {
     this.saveCache();
   }
 
-  rebuild() {
+  /** The cheap part after any change: flat chunk list, link graph, hook snapshot. No tokenising. */
+  refresh() {
     const files = [...this.files.values()];
     this.graph = new KnowledgeGraph(files);
     this.chunks = files.flatMap((f) => f.chunks);
-    this.lexical = new Bm25(this.chunks);
-    // Document-level index (one entry per note, live text only): a question whose words are spread across a
-    // long note matches the note even when no single chunk contains them all. Fused with chunk evidence.
-    this.docs = files.map((f) => ({ id: f.path, path: f.path, history: false, embedText: `${f.title} ${f.description || ""}\n${f.live}` }));
-    this.docLexical = new Bm25(this.docs);
-    this.writeSnapshot().catch(() => {});
+    this.scheduleSnapshot();
+  }
+
+  /** From scratch: only when something global changed (stored contexts). */
+  rebuild() {
+    const files = [...this.files.values()];
+    this.lexical = new Bm25(files.flatMap((f) => f.chunks));
+    this.docLexical = new Bm25(files.map((f) => this.docOf(f)));
+    this.refresh();
+  }
+
+  /** Leading edge immediately, then at most one write per 2 s (the snapshot is O(all chunks) JSON). */
+  scheduleSnapshot() {
+    if (!this.cacheDir) return;
+    const now = Date.now();
+    if (!this.snapTimer && now - (this.lastSnapshot || 0) > 2000) {
+      this.lastSnapshot = now;
+      this.writeSnapshot().catch(() => {});
+      return;
+    }
+    if (this.snapTimer) return;
+    this.snapTimer = setTimeout(() => {
+      this.snapTimer = null;
+      this.lastSnapshot = Date.now();
+      this.writeSnapshot().catch(() => {});
+    }, Math.max(0, 2000 - (now - (this.lastSnapshot || 0))));
+    this.snapTimer.unref?.();
   }
 
   bm25(query) {

@@ -3,6 +3,7 @@
 // With no usage data the ranking is exactly the same as without this module.
 import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
+import { hash } from "./parse.js";
 import { dirname } from "node:path";
 
 const HALF_LIFE_DAYS = 30;
@@ -29,15 +30,25 @@ export class Usage {
     return Math.min(MAX_BOOST, 1 + WEIGHT * Math.log1p(u.n) * Math.pow(0.5, days / HALF_LIFE_DAYS));
   }
 
-  record(chunks, user, now = Date.now()) {
+  /** `query` (optional) is remembered as a short hash so we can count DISTINCT questions that surfaced an item. */
+  record(chunks, user, now = Date.now(), query = null) {
+    const qh = query ? hash(String(query).toLowerCase().replace(/\s+/g, " ").trim()).slice(0, 8) : null;
     for (const c of chunks) {
       const k = this.key(c, user);
       const u = this.data[k] || { n: 0, t: now };
       // decay the old count before adding, so a burst long ago doesn't dominate forever
       const days = (now - u.t) / 86_400_000;
-      this.data[k] = { n: u.n * Math.pow(0.5, days / HALF_LIFE_DAYS) + 1, t: now };
+      const next = { n: u.n * Math.pow(0.5, days / HALF_LIFE_DAYS) + 1, t: now };
+      const q = qh ? [...new Set([...(u.q || []), qh])].slice(-12) : u.q;
+      if (q) next.q = q;
+      this.data[k] = next;
     }
     this.save();
+  }
+
+  /** Decayed recall count of an entry right now. */
+  count(entry, now = Date.now()) {
+    return entry.n * Math.pow(0.5, (now - entry.t) / 86_400_000 / HALF_LIFE_DAYS);
   }
 
   save() {

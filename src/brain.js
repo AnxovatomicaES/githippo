@@ -221,7 +221,19 @@ export class Brain {
     }
     for (const h of hits) take(h.path, h.text, h.signals.graph);
     // memory that was actually handed to the model counts as "used" for ranking
-    this.index.usage.record(hits.filter((h) => sections.has(h.path)).map((h) => h.chunk), this.user);
+    const surfaced = hits.filter((h) => sections.has(h.path));
+    this.index.usage.record(surfaced.map((h) => h.chunk), this.user, Date.now(), query);
+    // per-fact usage (the lines that actually share words with the question): what promotion suggestions rank
+    const qTokens = new Set(tokenize(query));
+    const facts = [];
+    for (const h of surfaced) {
+      for (const line of h.text.split("\n")) {
+        if (!/^\s*[-*]\s+/.test(line)) continue;
+        const text = plain(bare(line)).toLowerCase();
+        if (tokenize(text).some((t) => qTokens.has(t))) facts.push({ path: `fact:${h.path}`, heading: hash(text) });
+      }
+    }
+    this.index.usage.record(facts, this.user, Date.now(), query);
     let context = [...sections.values()].map((s) => `${s.head}\n${s.parts.join("\n")}`).join("\n");
     if (this.style === "terse") context = terse(context);
     return { mode: "pack", context, tokens: approxTokens(context), files: sections.size };
@@ -424,6 +436,23 @@ export class Brain {
     return this.retrying(() => this._forget(text, opts));
   }
 
+  /** Read-only: the exact fact forget(text) would remove, so a caller can show it before anything changes. */
+  async locateFact(text, { path } = {}) {
+    await this.index.sync();
+    const want = tokenize(plain(bare(text))).join(" ");
+    let candidates = path ? [normalizePath(path)] : [];
+    if (!path) {
+      const hits = await this.search(text, { k: 5, expand: false });
+      candidates = [...new Set([...hits.map((h) => h.path), "core.md", this.acl.home("core.md")])].filter((p) => this.acl.canWrite(p));
+    }
+    for (const p of candidates) {
+      const f = this.file(p);
+      const line = f?.content.split("\n").find((l) => /^\s*[-*]\s+/.test(l) && tokenize(plain(bare(l))).join(" ") === want);
+      if (line) return { path: p, line: plain(bare(line)) };
+    }
+    return null;
+  }
+
   async _forget(text, { path } = {}) {
     await this.index.sync();
     const want = tokenize(plain(bare(text))).join(" ");
@@ -528,6 +557,37 @@ export class Brain {
   }
 
   /**
+   * Facts that keep proving useful: recalled often AND by several different questions (a fact surfaced by one
+   * repeated query isn't evidence of general value). Idea from OpenClaw's "dreaming" promotion gates, with a
+   * deterministic score and hard minimums; nothing is promoted automatically. The suggestion is accepted by
+   * remember(pin=true), which asks the user to confirm.
+   */
+  promotionCandidates({ minRecalls = 3, minQueries = 3, limit = 5, now = Date.now() } = {}) {
+    const prefix = `${this.user || "_"}|fact:`;
+    const core = this.core.toLowerCase();
+    const out = [];
+    const lineCache = new Map();
+    for (const [key, u] of Object.entries(this.index.usage.data)) {
+      if (!key.startsWith(prefix)) continue;
+      const [path, h] = key.slice(prefix.length).split("#");
+      if (SYSTEM_FILES.has(path) || /(^|\/)(core|inbox)\.md$|^sessions\/|\/sessions\//.test(path)) continue;
+      const n = this.index.usage.count(u, now);
+      const queries = (u.q || []).length;
+      if (n < minRecalls || queries < minQueries) continue;
+      const f = this.file(path);
+      if (!f) continue;
+      if (!lineCache.has(path)) lineCache.set(path, new Map(factLines(f.body).map((l) => [hash(plain(l).toLowerCase()), plain(l)])));
+      const fact = lineCache.get(path).get(h);
+      if (!fact || core.includes(fact.toLowerCase())) continue; // gone, rewritten, or already pinned
+      if (approxTokens(this.core) + approxTokens(fact) > this.coreBudgetTokens) continue; // wouldn't fit
+      const days = (now - u.t) / 86_400_000;
+      const score = 0.5 * Math.min(1, Math.log1p(n) / Math.log1p(10)) + 0.3 * Math.min(1, queries / 6) + 0.2 * Math.pow(0.5, days / 30);
+      out.push({ path, fact, recalls: Math.round(n), queries, daysAgo: Math.round(days), score: +score.toFixed(3) });
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+
+  /**
    * A home for a fact sitting in the inbox. Looser than automatic filing (which refuses to guess on weak
    * evidence): any keyword match, or a semantic match above the model's floor, in a note the user can write.
    * Only applied by `maintain tidy=true`, i.e. when someone asks.
@@ -572,6 +632,7 @@ export class Brain {
       actions: [],
     };
 
+    report.promote = this.promotionCandidates();
     // Inbox triage: suggest homes; move them only when asked (tidy=true).
     const inboxFile = this.file("inbox.md");
     report.inbox = [];
