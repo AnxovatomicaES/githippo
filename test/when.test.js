@@ -13,7 +13,9 @@ test("time expressions → windows (EN/ES), and words that only look like dates 
   assert.equal(w("what did I buy 3 days ago").from, "2026-10-13");
   assert.equal(w("¿qué decidimos el mes pasado?").from, "2026-09-01");
   assert.equal(w("in March 2025").to, "2025-03-31");
-  for (const q of ["may I ask something", "what is the sample rate", "march forward with the plan"]) assert.equal(w(q), q.startsWith("march") ? w(q) : null, q);
+  for (const q of ["may I ask something", "what is the sample rate", "march forward with the plan", "we may launch soon"]) assert.equal(w(q), null, q);
+  assert.equal(w("since March the plan changed").from, "2026-03-01");
+  assert.equal(w("on May 3 we met").from, "2026-05-01");
 });
 
 test("past questions can see superseded facts from that period; present questions don't", async () => {
@@ -29,7 +31,7 @@ test("facts written in the asked-about period rank first", async () => {
   const { brain, gh } = setup();
   gh.seed("memory/topics/trips.md", "---\nname: trips\n---\n\n- Visited Lisbon for the conference <!--+2026-03-10-->\n");
   gh.seed("memory/topics/trips2.md", "---\nname: trips2\n---\n\n- Visited Lisbon to see family <!--+2026-08-02-->\n");
-  const r = await brain.search("where did I travel in March", { now: NOW });
+  const r = await brain.search("when was I in Lisbon in March", { now: NOW });
   assert.equal(r[0].path, "topics/trips.md");
   assert.equal(r[0].signals.when, true);
 });

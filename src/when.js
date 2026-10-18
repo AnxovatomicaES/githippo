@@ -47,7 +47,10 @@ export function timeWindow(query, now = new Date()) {
   for (const [name, idx] of Object.entries(MONTHS)) {
     const re = new RegExp(`\\b(?:in|en|during|last|since|de)?\\s*${name}\\b(?:\\s+(?:of\\s+|de\\s+)?(\\d{4}))?`);
     if (name.length <= 3 && !new RegExp(`\\b${name}\\b`).test(q)) continue;
-    if ((m = q.match(re)) && (name.length > 3 || /\b(in|en|last|since)\s/.test(m[0]))) {
+    // "march" and "may" are also ordinary words ("march forward", "may I ask"): only a month with time context
+    const ambiguous = ["march", "may"].includes(name) && !new RegExp(`\\b(in|en|since|last|during|until|by|of|de)\\s+${name}\\b|\\b${name}\\s+(\\d{1,2}(st|nd|rd|th)?\\b|\\d{4}\\b)`).test(q);
+    const isWord = ["march", "may"].includes(name);
+    if ((m = q.match(re)) && (isWord ? !ambiguous : name.length > 3 || /\b(in|en|last|since)\s/.test(m[0]))) {
       const y = m[1] ? +m[1] : startOfMonth(Y, idx) > t ? Y - 1 : Y;
       return win(startOfMonth(y, idx), endOfMonth(y, idx));
     }
