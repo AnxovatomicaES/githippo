@@ -11,6 +11,11 @@ export const PROFILES = {
   // e5: only score ranges were measured (docs/calibration.md), not pair thresholds, and they barely separate. Not recommended.
   "Xenova/multilingual-e5-small": { dup: 0.96, related: 0.86, conflict: 0.9, strong: 0.8, floor: 0.76, calibrated: false },
   "Xenova/multilingual-e5-base": { dup: 0.96, related: 0.86, conflict: 0.9, strong: 0.8, floor: 0.75, calibrated: false },
+  // static (Model2Vec) profiles, from eval/calibrate.js runs in CI (same pair method as docs/calibration.md):
+  //  potion-base-8M: duplicates 0.81-1.00, updated 0.51-0.93, same topic 0.23-0.46, unrelated -0.08-0.03
+  //  potion-multilingual-128M: duplicates 0.90-1.00, updated 0.47-0.91, same topic 0.22-0.71, unrelated -0.14-0.05
+  "minishlab/potion-base-8M": { dup: 0.95, related: 0.5, conflict: 0.8, strong: 0.35, floor: 0.15, calibrated: true },
+  "minishlab/potion-multilingual-128M": { dup: 0.93, related: 0.5, conflict: 0.8, strong: 0.4, floor: 0.15, calibrated: true },
   hash: { dup: 0.93, related: 0.7, conflict: 0.7, strong: 0.45, floor: 0.3, calibrated: false }, // offline/test stand-in
   default: { dup: 0.92, related: 0.6, conflict: 0.82, strong: 0.45, floor: 0.3, calibrated: false },
 };

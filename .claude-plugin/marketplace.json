@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "githippo",
-      "version": "3.6.2",
+      "version": "3.7.0",
       "source": "./",
       "description": "Long-term memory in your own GitHub repo. Survives context compaction.",
       "license": "MIT"

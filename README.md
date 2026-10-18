@@ -16,7 +16,7 @@
   <img src="https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/assets/demo.svg" alt="githippo surviving a context compaction in Claude Code" width="100%">
 </p>
 
-Long-term memory for Claude and any MCP client, stored as plain Markdown in a git repo **you own**. Hybrid semantic search, a knowledge graph, auto-memory and compaction survival, at about 775 tokens of tool overhead per turn. Every memory is a git commit you can read, diff and revert.
+Long-term memory for Claude and any MCP client, stored as plain Markdown in a git repo **you own**. Hybrid semantic search, a knowledge graph, auto-memory and compaction survival, at about 790 tokens of tool overhead per turn. Every memory is a git commit you can read, diff and revert.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/instal
 
 That's the whole install: no account, no token, no questions. It sets up a local memory vault, wires Claude Code (hooks, MCP, status line) and fetches semantic search in the background. Restart Claude Code and just talk; it remembers.
 
-Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.6.2 demo` shows it working in 30 seconds without installing anything.
+Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.7.0 demo` shows it working in 30 seconds without installing anything.
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -139,13 +139,27 @@ Read it carefully: this is retrieval recall, not the official LongMemEval QA sco
 - **[mem0](https://github.com/mem0ai/mem0)** and other hosted services extract facts with an LLM and store them in their cloud, with nothing to run. githippo never calls an LLM to save a fact and keeps everything in a repo you own.
 - **It's young.** githippo is a single-maintainer project with a few weeks of history. The benchmark, 80+ tests and the bug log in the commit history are there so you can judge it, but expect rough edges.
 
+## Claude-native features (opt-in, measured)
+
+| | What it does | Status |
+|---|---|---|
+| **Anthropic memory tool backend** | githippo serves Claude's native `memory_20250818` tool (`view`, `create`, `str_replace`, `insert`, `delete`, `rename`) over your vault, with the reference return strings, path-traversal protection, the secrets guard, and writes that are git commits and searchable by recall. Use `createMemoryTool(brain)` from `src/memorytool.js` in your tool-use loop. | Tested against the documented command set |
+| **Time-aware recall** | "last spring", "in March", "3 days ago", "Q1", in English and Spanish, become a date window; facts from then rank higher, and questions about the past can see superseded facts. | LongMemEval temporal MRR 86.7 → 88.9 |
+| **Poisoning defence** | Every fact records where it came from (`user`, `inferred`, `external`); external facts reach Claude marked `[external]`; text that reads as instructions to an AI is refused; `GIT_SIGN=1` signs every memory commit with your own key. | Zero false positives on the eval data; signing verified in CI |
+| **Fast static embeddings** | `EMBEDDINGS=static`: lookup-table embeddings, 70–100× faster than the default model. | Measured in CI (see Configuration) |
+| **Sleep-time consolidation** | `githippo consolidate` (or `CONSOLIDATE=1` after every session): a small Claude model reviews the session and proposes memory updates on a git branch, or a pull request if the vault is on GitHub. Nothing reaches your memory until you merge; proposals pass the secrets guard and injection screen. | Needs `ANTHROPIC_API_KEY`; tested with a stand-in model |
+| **Contextual retrieval** | `githippo contextualize`: a small model writes one sentence situating each chunk in its note (Anthropic's technique), prepended before indexing. | Needs `ANTHROPIC_API_KEY`; tested with a stand-in model |
+| **Does memory help answers?** | `eval/qa.js` (LongMemEval question answering: no memory vs githippo vs the gold sessions) and `eval/behavior.js` (what Claude saves with githippo's tools, junk, answers in a fresh session); the `llm-eval` workflow runs both. | Needs an `ANTHROPIC_API_KEY` repository secret; not yet run |
+
+The last three cost API credits per run, which is why they're opt-in and why their results aren't in this README yet.
+
 ## Token budget (measured, `githippo bench`)
 
 | | githippo v2 (our first version) | **githippo now** |
 |---|---|---|
 | Tools | 12 | **8** |
-| Model-visible schema, every turn | ~1,380 tok | **~775 tok** |
-| Instructions | ~340 tok | **~176 tok** + your core |
+| Model-visible schema, every turn | ~1,380 tok | **~790 tok** |
+| Instructions | ~340 tok | **~202 tok** + your core |
 | Typical recall response | ~190 tok (JSON) | **~117 tok** pack / **~47 tok** brief |
 
 How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, compact text responses instead of pretty JSON, wikilinks rendered as plain words, frontmatter stripped, 8-char version handles, History/index/sessions/core excluded from recall by default, and token budgets on every pack.
@@ -171,7 +185,7 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
 
-Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.6.2`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.7.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
 
 Coming from the official reference memory server? `githippo import ~/path/to/memory.jsonl` turns its entities, observations and relations into notes and typed links (secrets guard and dedupe apply, so re-running is safe).
 
@@ -248,7 +262,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 | `MCP_SECRET` | | remote mode, 24+ chars: owner login and OAuth signing key |
 | `PUBLIC_URL` | | remote mode: the server's public https URL (OAuth issuer) |
 | `USERS_JSON` | | remote multi-user: contents of `githippo users` file |
-| `EMBEDDINGS` | `local` | `local` (paraphrase-multilingual-MiniLM-L12-v2 in a separate process: ~520 MB while in use, exits after `EMBED_IDLE_MS`, default 10 min), `voyage`, or `none` (keyword only). Choice and thresholds are measured in [docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md) |
+| `EMBEDDINGS` | `local` | `local` (paraphrase-multilingual-MiniLM-L12-v2 in a separate process: ~520 MB while in use, exits after `EMBED_IDLE_MS`, default 10 min); `static` (Model2Vec lookup-table embeddings, `STATIC_EMBED_MODEL=minishlab/potion-base-8M` is ~100× faster at ~200 MB with about the same LongMemEval score, but English-only); `voyage`, or `none` (keyword only). Choice and thresholds are measured in [docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md) |
 | `MEMORY_ROOT` / `MEMORY_BRANCH` | `memory` / `main` | |
 | `CORE_BUDGET_TOKENS` | `400` | hard cap for pinned memory |
 | `MEMORY_STYLE` | `plain` | `terse` removes padding (articles, filler) from recalled memory and core before Claude reads it; files on disk are never changed. Rules from [caveman](https://github.com/JuliusBrussee/caveman), limited to deletions that can't change meaning: negations, numbers, names, code, URLs and paths always survive. Measured saving is small (about 3% on terse notes, 10% on wordy ones), and caveman's own cited research found compressing what a model reads can hurt answers, so it's off by default |
@@ -267,7 +281,7 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 ## Develop
 
 ```bash
-npm ci && npm test      # 89 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 106 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 
