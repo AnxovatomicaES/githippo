@@ -187,3 +187,22 @@ test("fuzz finding: a redaction marker never makes redacted text look sensitive 
   assert.ok(scan("[redacted:iban] 4111 1111 1111 1111").length, "a real card next to a marker is still caught");
   assert.ok(scan("4111 1111 1111 1111 [redacted:x]").length, "writing a marker yourself hides nothing");
 });
+
+test("existence oracle closed: a name that is a note you can't read behaves exactly like a name that doesn't exist", async () => {
+  const { store, brain } = await vault();
+  await store.write("people/bob.md", "---\nname: bob\ntitle: Bob\n---\n\n- Bob leads the secret project\n", "new");
+  await store.write("people/erin.md", "---\nname: erin\ntitle: Erin\n---\n\n- Erin runs the other secret project\n", "new");
+  await brain.index.sync({ maxAgeMs: 0 });
+  const alice = brain.forUser(new Acl({ id: "alice", acl: parseAcl("topics:write") }));
+  const hidden = await alice.remember("Likes tea", { about: "bob" }); // exists, but alice can't read people/
+  const absent = await alice.remember("Likes tea", { about: "carol" }); // doesn't exist
+  assert.equal(hidden.status, "saved");
+  assert.equal(absent.status, "saved");
+  assert.match(hidden.path, /^topics\/bob\.md$/, "a fresh note in alice's own area, exactly as for an unknown name");
+  assert.match(absent.path, /^topics\/carol\.md$/);
+  assert.match((await store.read("people/bob.md")).content, /secret project/, "the hidden note was not touched");
+  // lookups (history, as-of) resolve the same way: erin is hidden from alice, zed doesn't exist, and both give the same kind of answer
+  assert.equal(alice.resolvePath("erin"), "erin.md", "no path into the hidden note");
+  assert.equal(alice.resolvePath("zed"), "zed.md");
+  assert.equal(brain.resolvePath("erin"), "people/erin.md", "the owner still resolves it");
+});

@@ -290,7 +290,8 @@ Configuration precedence is one rule everywhere: environment variable, then `~/.
 ## Develop
 
 ```bash
-npm ci && npm test      # 210+ tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 200+ tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
+npm run fuzz            # seeded fuzzing of every entry point (FUZZ_SEED=<n> FUZZ_ITERATIONS=<k> to reproduce or go deeper); runs nightly in CI with a fresh seed
 npm run bench           # token cost of the tool surface
 ```
 

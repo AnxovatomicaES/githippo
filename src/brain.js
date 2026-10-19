@@ -329,6 +329,9 @@ export class Brain {
     if (about) {
       let id = this.graph.resolve(about);
       if (id && SYSTEM_PATH.test(this.graph.nodes.get(id).path)) id = null;
+      // A note the caller can't read doesn't exist as far as they're concerned. Routing to it would answer "denied" where an
+      // unknown name answers "saved", and that difference tells them the hidden note exists.
+      if (id && !this.acl.canRead(this.graph.nodes.get(id).path)) id = null;
       if (id) return { path: this.graph.nodes.get(id).path, reason: `entity:${id}` };
       return { path: `${KIND_FOLDER[kind] || "topics"}/${entitySlug(about)}.md`, reason: "new entity", create: { title: about, kind: kind || "topic" } };
     }
@@ -840,7 +843,8 @@ export class Brain {
 
   resolvePath(entity) {
     const id = this.graph.resolve(entity);
-    return id ? this.graph.nodes.get(id).path : normalizePath(entity.endsWith(".md") ? entity : `${entity}.md`);
+    // same rule as chooseTarget: an unreadable note resolves like a name that doesn't exist (no "denied" vs "empty" oracle)
+    return id && this.acl.canRead(this.graph.nodes.get(id).path) ? this.graph.nodes.get(id).path : normalizePath(entity.endsWith(".md") ? entity : `${entity}.md`);
   }
 
   async history(entity, { at, limit = 15 } = {}) {
