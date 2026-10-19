@@ -19,7 +19,7 @@ export function collect() {
     "manifest.json": json("manifest.json").version,
     ".claude-plugin/plugin.json": json(".claude-plugin/plugin.json").version,
     ".claude-plugin/marketplace.json": json(".claude-plugin/marketplace.json").plugins[0].version,
-    "src/server.js VERSION": read("src/server.js").match(/VERSION = "([^"]+)"/)?.[1],
+    "src/version.js VERSION": read("src/version.js").match(/VERSION = "([^"]+)"/)?.[1],
     "install.sh VERSION": read("install.sh").match(/VERSION="v([^"]+)"/)?.[1]?.replace(/^v/, ""),
   };
   // every occurrence is its own entry: keying by file alone let a stale tag hide behind a correct one later in the same file
@@ -50,7 +50,7 @@ export function bump(version) {
   setJson("manifest.json", (j) => (j.version = version));
   setJson(".claude-plugin/plugin.json", (j) => (j.version = version));
   setJson(".claude-plugin/marketplace.json", (j) => (j.plugins[0].version = version));
-  edit("src/server.js", (s) => s.replace(/VERSION = "[^"]+"/, `VERSION = "${version}"`));
+  edit("src/version.js", (s) => s.replace(/VERSION = "[^"]+"/, `VERSION = "${version}"`));
   edit("install.sh", (s) => s.replace(/VERSION="v?[^"]+"/, `VERSION="v${version}"`));
   for (const f of PINNED) if (existsSync(join(ROOT, f))) edit(f, (s) => s.replace(TAG, `githippo#v${version}`));
 }
