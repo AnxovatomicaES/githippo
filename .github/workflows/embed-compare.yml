@@ -22,7 +22,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: longmemeval_s_cleaned.json
           key: longmemeval-s-cleaned-98d7416c
