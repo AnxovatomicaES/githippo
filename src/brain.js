@@ -725,7 +725,9 @@ export class Brain {
   async maintain({ reindex = false, rewrite = null, decay = false, tidy = false, active_days = this.decayActiveDays } = {}) {
     if (!this.acl.isAdmin) throw new MemoryError("maintain works on the whole vault, so it needs full write access.");
     await this.index.sync({ maxAgeMs: 0 });
-    const files = [...this.index.files.values()].filter((f) => !f.path.startsWith("sessions/"));
+    // The report quotes facts and names paths, so it only covers notes this user may read: a catch-all rule never opens
+    // another user's users/<id>/ folder, and maintain must not hand it over through duplicates, conflicts or orphans.
+    const files = [...this.index.files.values()].filter((f) => !f.path.startsWith("sessions/") && this.acl.canRead(f.path));
     const all = files.flatMap((f) => factLines(f.body).map((line) => ({ path: f.path, line: plain(line) }))).slice(0, 500);
     const duplicates = [];
     const conflicts = [];
@@ -747,9 +749,12 @@ export class Brain {
       duplicates: duplicates.slice(0, 20),
       conflicts: conflicts.slice(0, 20),
       oversized: files.filter((f) => Buffer.byteLength(f.content) > MAX_FILE_BYTES * 0.75).map((f) => f.path),
-      missing_from_index: files.filter((f) => !SYSTEM_FILES.has(f.path) && !indexBody.includes(`[[${stem(f.path)}`)).map((f) => f.path),
-      orphans: health.orphans.filter((p) => !SYSTEM_FILES.has(p) && !p.startsWith("sessions/")),
-      broken_links: health.broken_links,
+      missing_from_index: files.filter((f) => !SYSTEM_FILES.has(f.path) && !f.path.startsWith("users/") && !indexBody.includes(`[[${stem(f.path)}`)).map((f) => f.path),
+      orphans: health.orphans.filter((p) => !SYSTEM_FILES.has(p) && !p.startsWith("sessions/") && this.acl.canRead(p)),
+      broken_links: health.broken_links.filter((e) => {
+        const from = this.graph.nodes.get(e.from)?.path;
+        return from && this.acl.canRead(from);
+      }),
       actions: [],
     };
 
@@ -800,7 +805,8 @@ export class Brain {
 
     if (reindex) {
       const groups = new Map();
-      for (const f of files.filter((f) => !SYSTEM_FILES.has(f.path))) {
+      // index.md is shared, so private per-user notes never go in it (addToIndex skips them too)
+      for (const f of files.filter((f) => !SYSTEM_FILES.has(f.path) && !f.path.startsWith("users/"))) {
         const g = f.path.includes("/") ? f.path.split("/")[0] : "root";
         if (!groups.has(g)) groups.set(g, []);
         groups.get(g).push(`- [[${stem(f.path)}]] — ${f.description || f.title}`);

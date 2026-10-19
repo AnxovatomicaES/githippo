@@ -13,6 +13,7 @@ import { loadConfig, applyFileConfig, CONFIG_FILE, HOME_DIR } from "./config.js"
 import { fileURLToPath } from "node:url";
 import { preCompact, postCompact, sessionEnd, sessionStart, promptRecall, readStdin, cleanupOld, statusLine } from "./hooks.js";
 import { createHttpApp } from "./http.js";
+import { remoteVisibility, publicBackupMessage } from "./remote.js";
 
 const [cmd = "serve", ...restRaw] = process.argv.slice(2);
 // "--limit=3" means "--limit 3". Every command reads flags as "--name value", so the "=" form is expanded once, here
@@ -114,6 +115,10 @@ async function statusline() {
   } catch {}
   process.exit(0);
 }
+
+// seconds; the same values as hooks/hooks.json, so installing by plugin or by `githippo setup` behaves the same.
+// UserPromptSubmit runs before every prompt, so it gets the shortest leash.
+const HOOK_TIMEOUTS = { PreCompact: 20, PostCompact: 15, SessionEnd: 20, SessionStart: 10, UserPromptSubmit: 5 };
 
 const HOOKS = {
   PreCompact: "githippo hook precompact",
@@ -268,7 +273,7 @@ function applyHooks(settings, { hooks = true } = {}) {
   for (const [event, command] of hooks ? Object.entries(HOOKS) : []) {
     settings.hooks[event] ??= [];
     const has = settings.hooks[event].some((g) => Array.isArray(g?.hooks) && g.hooks.some((h) => typeof h?.command === "string" && h.command.includes("githippo hook")));
-    if (!has) settings.hooks[event].push({ ...(event === "SessionStart" ? { matcher: "startup|resume|compact|fork" } : {}), hooks: [{ type: "command", command: hookCommand(command), timeout: ["PreCompact", "SessionEnd"].includes(event) ? 20 : 10 }] });
+    if (!has) settings.hooks[event].push({ ...(event === "SessionStart" ? { matcher: "startup|resume|compact|fork" } : {}), hooks: [{ type: "command", command: hookCommand(command), timeout: HOOK_TIMEOUTS[event] }] });
   }
   let statusLine = false;
   if (!settings.statusLine) {
@@ -447,6 +452,10 @@ async function syncToGitHub(name) {
     let url = "";
     try {
       url = scrubText(git("remote", "get-url", "origin"));
+      if (process.env.GITHIPPO_ALLOW_PUBLIC_BACKUP !== "1" && (await remoteVisibility(url)) === "public") {
+        process.exitCode = 1;
+        return `✗ backup         not pushed: ${publicBackupMessage(url)}`;
+      }
       git("push", "-q", "-u", "origin", "HEAD");
       return `✓ backup         already linked: ${url}`;
     } catch (e) {
@@ -641,7 +650,13 @@ async function doctor() {
     ok(existsSync(cfg.VAULT_DIR), `local vault ${cfg.VAULT_DIR}`);
     ok(await b.store.hasGit(), "vault is a git repo (history + time travel)");
     const remote = (await b.store.git(["remote", "get-url", "origin"])).out;
-    ok(true, remote ? `backup → ${scrubText(remote)}` : "no backup yet (optional: githippo sync --github)");
+    if (!remote) ok(true, "no backup yet (optional: githippo sync --github)");
+    else {
+      // memory is personal: the one thing worth failing the check for is a backup anyone can read
+      const vis = await remoteVisibility(remote);
+      if (vis === "public") ok(false, `backup → ${publicBackupMessage(remote)}`);
+      else ok(true, `backup → ${scrubText(remote)} (${vis === "private" ? "not publicly readable" : "couldn't check that it is private"})`);
+    }
   } else {
     ok(!!cfg.GITHUB_TOKEN, "GITHUB_TOKEN set");
     ok(/^[\w.-]+\/[\w.-]+$/.test(cfg.MEMORY_REPO || ""), `MEMORY_REPO ${cfg.MEMORY_REPO || "(missing)"}`);
@@ -694,10 +709,10 @@ async function demo() {
   show('› remember "Launch target is end of Q2"', fmt.remember(await brain.remember("Launch target is end of Q2")));
   show('› remember "The launch target is the end of Q2"   (same fact, reworded)', fmt.remember(await brain.remember("The launch target is the end of Q2")));
   show('› remember "Sam prefers written RFCs over meetings"', fmt.remember(await brain.remember("Sam prefers written RFCs over meetings")));
-  show('› recall "¿Qué necesita el asistente de voz?"   (Spanish question, English notes)', fmt.recall(await brain.recall("¿Qué necesita el asistente de voz?", { mode: "brief" })));
+  show('› recall "¿Qué necesita el asistente de voz?"   (Spanish question, English notes)', fmt.recall(await brain.recall("¿Qué necesita el asistente de voz?", { mode: "brief" })) + (emb ? "" : "\n(keyword search can't bridge languages: run `githippo warm` for the multilingual model, then try again)"));
   show("› graph sam", fmt.graph(await brain.neighbors("sam")));
   show("› maintain", fmt.maintain(await brain.maintain({})));
-  console.log(`\nThat's githippo. Your real memory lives in your own private repo: githippo install\n`);
+  console.log(`\nThat's githippo. To keep your own memory (a local git vault, hooks and MCP for Claude Code): githippo setup\n`);
 }
 
 async function bench() {

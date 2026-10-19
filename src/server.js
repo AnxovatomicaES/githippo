@@ -9,6 +9,8 @@ import { Brain, assertSafe } from "./brain.js";
 import { fmt, fmtError } from "./format.js";
 import { loadConfig } from "./config.js";
 import { gate } from "./confirm.js";
+import { makePushGuard } from "./remote.js";
+import { join } from "node:path";
 
 export const VERSION = "3.9.1";
 
@@ -40,7 +42,7 @@ export function createBrain(env = process.env, { source = "githippo" } = {}) {
   const store =
     cfg.STORE === "github"
       ? new GitHubMemoryStore({ token: cfg.GITHUB_TOKEN, repo: cfg.MEMORY_REPO, branch: cfg.MEMORY_BRANCH || "main", root: cfg.MEMORY_ROOT ?? "memory", source })
-      : new FileStore({ dir: cfg.VAULT_DIR, root: cfg.MEMORY_ROOT ?? "memory", source });
+      : new FileStore({ dir: cfg.VAULT_DIR, root: cfg.MEMORY_ROOT ?? "memory", source, pushGuard: makePushGuard({ cacheFile: join(cfg.CACHE_DIR, "remote-visibility.json"), env }) });
   const index = new MemoryIndex(store, createEmbedder(cfg), { cacheDir: cfg.CACHE_DIR });
   return new Brain({ store, index, llm: createLLM(cfg), coreBudgetTokens: cfg.CORE_BUDGET_TOKENS, decayActiveDays: cfg.DECAY_ACTIVE_DAYS, style: cfg.MEMORY_STYLE === "terse" ? "terse" : "plain" });
 }
