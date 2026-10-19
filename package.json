@@ -11,7 +11,8 @@
     "start": "node src/cli.js http",
     "bench": "node src/cli.js bench",
     "fuzz": "node --test --test-timeout=900000 fuzz/fuzz.test.js",
-    "bench:scale": "node eval/scale-context.js"
+    "bench:scale": "node eval/scale-context.js",
+    "bench:paraphrase": "node eval/paraphrase.js"
   },
   "keywords": [
     "mcp",

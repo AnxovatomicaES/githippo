@@ -1,0 +1,3883 @@
+{
+ "provenance": "Notes and queries written by Claude Sonnet 5.5 subagents (one domain each); English queries kept only if they share no content word with their note (see violations()).",
+ "notes": [
+  {
+   "domain": "engineering",
+   "path": "people/lena-voss.md",
+   "title": "Lena Voss",
+   "description": "Staff engineer on the platform team who owns design reviews",
+   "aliases": [
+    "Lena V."
+   ],
+   "facts": [
+    "Prefers written RFCs over meetings for design decisions.",
+    "Reviews pull requests every morning before 10:00 Berlin time.",
+    "Mentors two junior engineers in a standing Thursday slot.",
+    "Dislikes Slack DMs for technical questions and asks for them in channel threads.",
+    "Joined in March 2022 after six years at a logistics startup."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Does Lena favor hashing out architecture choices live or on paper?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "At what hour does Lena begin vetting colleagues' code submissions?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos años trabajó Lena en una startup de logística antes de unirse al equipo?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "people/tomasz-wrobel.md",
+   "title": "Tomasz Wróbel",
+   "description": "Site reliability engineer covering capacity and cost control",
+   "aliases": [
+    "Tomek"
+   ],
+   "facts": [
+    "Prefers phone calls over chat when paged at night.",
+    "Keeps a personal runbook in a plain-text file synced through Syncthing.",
+    "Wrote the Terraform module that provisions every staging cluster.",
+    "Rejects dashboards with more than eight panels during review.",
+    "Moved from Kraków to Lisbon in January 2024 and works UTC+0 hours.",
+    "Drinks only tea and banned energy drinks from the war room."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What infrastructure-as-code piece did Tomasz author for the pre-production environments?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What kind of monitoring screen does Tomasz turn down when it's too crowded?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿En qué ciudad vive Tomasz desde 2024?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "people/amara-okonkwo.md",
+   "title": "Amara Okonkwo",
+   "description": "Engineering manager for the payments squad",
+   "aliases": [],
+   "facts": [
+    "Holds one-on-ones every second Wednesday for 30 minutes, walking outdoors when weather allows.",
+    "Wants status updates as a three-line summary: shipped, blocked, next.",
+    "Approved budget for two extra backend hires in the Q3 2026 plan.",
+    "Is vegetarian, so team offsites book restaurants with plant-based menus.",
+    "Previously ran a support engineering team in Lagos for four years."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Where does Amara take her biweekly catch-ups with direct reports?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "In what format does Amara expect progress notes from her people?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos puestos adicionales de backend aprobó Amara en el plan del tercer trimestre?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "people/hiroshi-tanabe.md",
+   "title": "Hiroshi Tanabe",
+   "description": "Backend engineer championing Rust in latency-sensitive services",
+   "aliases": [
+    "Hiro"
+   ],
+   "facts": [
+    "Rewrote the image-resizing worker from Python to Rust, cutting p99 from 480 ms to 70 ms.",
+    "Posts async stand-up notes in text by 9:30 and skips live ones.",
+    "Collects mechanical keyboards and brings a Model M to every offsite.",
+    "Volunteers as an alpine rescue medic on weekends and is unreachable then.",
+    "Holds the team record for merged PRs in 2025, with 412."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "By how much did Hiroshi shrink tail response time after switching the thumbnail job's language?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How many accepted code changes did Hiroshi land in the prior calendar year?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué hace Hiroshi los fines de semana que lo deja sin conexión?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "people/priya-raghunathan.md",
+   "title": "Priya Raghunathan",
+   "description": "Data engineer who maintains the analytics pipelines",
+   "aliases": [
+    "Priya R."
+   ],
+   "facts": [
+    "Maintains the dbt project with 340 models and enforces stg_, int_ and mart_ naming prefixes.",
+    "Batches replies to non-urgent requests into one email window at 16:00 IST.",
+    "Presented at PyData Chennai in 2025 on incremental backfills.",
+    "Leads a Tuesday data-quality triage capped at 20 minutes.",
+    "Insists on Airflow for all scheduled jobs and bans ad hoc SQL against production replicas."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "When does Priya sit down to answer her inbox?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "At which conference did Priya speak, and about what?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos modelos tiene el proyecto dbt que mantiene Priya?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "people/mateo-quispe.md",
+   "title": "Mateo Quispe",
+   "description": "Frontend lead responsible for the web client and design system",
+   "aliases": [
+    "Mat"
+   ],
+   "facts": [
+    "Standardised on React 19 with TanStack Query; no Redux in new code since February 2026.",
+    "Runs accessibility audits with axe-core before every release and enforces a zero critical issues rule.",
+    "Speaks Spanish and Quechua and often writes docs bilingually.",
+    "Hates pings during focus blocks; keeps Slack on do-not-disturb from 13:00 to 16:00 Lima time.",
+    "Lost a bet in 2025 and wore the office mascot costume, a green hippo, for a whole day."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which state-management library did Mateo retire from the browser app?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "During which hours is Mateo off-limits for interruptions?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué disfraz usó Mateo después de perder una apuesta?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "people/ingrid-solheim.md",
+   "title": "Ingrid Solheim",
+   "description": "Security engineer running vulnerability management and the bug bounty",
+   "aliases": [
+    "Ingrid S."
+   ],
+   "facts": [
+    "Triages bounty submissions within 24 hours and has paid out 18,500 EUR in total since 2024.",
+    "Requires hardware security keys (YubiKey 5C) for every engineer with production access.",
+    "Wants suspected leaks reported by voice call, never in public channels.",
+    "Runs a quarterly phishing simulation; the March 2026 click rate was 6 percent, down from 14.",
+    "Plays Hardanger fiddle and has performed at two company retreats."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which physical authentication device must anyone touching live systems carry, per Ingrid?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What share of employees fell for the spring mock-scam email drill Ingrid organised?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué instrumento musical toca Ingrid?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "people/farid-nazari.md",
+   "title": "Farid Nazari",
+   "description": "Junior engineer hired in 2026 and still onboarding",
+   "aliases": [
+    "Fari"
+   ],
+   "facts": [
+    "Started on 4 May 2026 as the first hire from the apprenticeship program.",
+    "Onboarding goal: ship a production change by day 30; he met it with a logging fix on day 26.",
+    "Learns best from pair programming, two sessions per week with his buddy.",
+    "Prefers camera-off video calls because of a patchy home connection.",
+    "Is studying for the CKA exam and the company reimburses the 150 USD fee."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How quickly did Farid push his initial real-world patch during ramp-up, relative to the target?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How does Farid absorb new material most effectively?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién paga la tarifa del examen de certificación de Farid?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "projects/atlas-gateway.md",
+   "title": "Atlas Gateway",
+   "description": "Edge API gateway fronting all public traffic",
+   "aliases": [
+    "atlas",
+    "edge gateway"
+   ],
+   "facts": [
+    "Built on Envoy 1.31 with a custom Lua filter for tenant routing.",
+    "Peak load was 22,000 requests per second during Black Friday 2025 with zero errors.",
+    "Rate limits default to 600 requests per minute per API key; enterprise tenants get 6,000.",
+    "Configuration lives in the atlas-config repo and rolls out via ArgoCD with a 10 percent canary.",
+    "Owned by the platform team; the on-call alias is atlas-oncall.",
+    "TLS certificates renew automatically through cert-manager every 60 days."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What was the highest throughput Atlas ever sustained during the holiday shopping rush?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cada cuántos días se renuevan los certificados TLS de Atlas?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "projects/lumen-billing.md",
+   "title": "Lumen Billing",
+   "description": "Invoicing and subscription billing service backed by Postgres",
+   "aliases": [
+    "lumen"
+   ],
+   "facts": [
+    "Stores invoices in PostgreSQL 15 on a three-node Patroni cluster in the Frankfurt region.",
+    "Invoice runs execute on the 1st of each month at 02:00 UTC and take about 40 minutes.",
+    "Tax calculation is delegated to the in-house Taxwise library, which supports 31 countries.",
+    "Uses idempotency keys on every charge call; duplicates are discarded for 72 hours.",
+    "Owned by the payments squad; backlog is tracked on the LUM board.",
+    "Refunds above 5,000 EUR require manual approval from finance."
+   ],
+   "queries": [
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿A partir de qué monto los reembolsos necesitan aprobación manual en Lumen?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "projects/harbor-ci.md",
+   "title": "Harbor CI",
+   "description": "Self-hosted continuous integration pipeline for the monorepo",
+   "aliases": [
+    "harbor",
+    "build farm"
+   ],
+   "facts": [
+    "Runs on up to 48 ephemeral runners scheduled by Nomad; the pool autoscales from 8 to 48.",
+    "Median pipeline time for the monorepo is 11 minutes against a target of 8.",
+    "Build cache sits in an S3-compatible MinIO bucket with a 14-day expiry.",
+    "Flaky tests are quarantined automatically after three failures in a rolling window of 50 runs.",
+    "Nightly full-suite run starts at 01:30 UTC and posts results to #harbor-alerts.",
+    "Maintained part-time by two engineers on the tooling squad."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What happens in Harbor to a check that gives inconsistent verdicts?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How long do compilation artifacts survive in Harbor before getting purged?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos runners efímeros tiene Harbor como máximo?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "projects/kestrel-search.md",
+   "title": "Kestrel Search",
+   "description": "Product search service on OpenSearch with a nightly reindex",
+   "aliases": [
+    "kestrel"
+   ],
+   "facts": [
+    "Runs OpenSearch 2.11 on six data nodes with 64 GB of RAM each.",
+    "Full reindex takes 3 hours 20 minutes and is triggered at 03:00 UTC by an Airflow DAG.",
+    "Query latency p95 is 85 ms; the alert fires above 150 ms for 5 minutes.",
+    "Synonym lists are maintained by the merchandising team in a shared spreadsheet synced hourly.",
+    "Typo tolerance uses fuzziness AUTO capped at edit distance 2.",
+    "Ranking experiments sit behind the ksr-boost flag."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How much memory does a single machine in the Kestrel cluster have?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who curates the equivalent-term dictionaries for Kestrel?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuál es el umbral de latencia que dispara la alerta en Kestrel?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "projects/mosaic-dashboard.md",
+   "title": "Mosaic Dashboard",
+   "description": "Customer-facing analytics web app showing usage metrics",
+   "aliases": [
+    "mosaic"
+   ],
+   "facts": [
+    "Built with React and Vite; charts render with uPlot for datasets above 100k points.",
+    "Served from a CDN with a 5 minute cache; data refreshes every 60 seconds via server-sent events.",
+    "Dark mode launched in April 2026 and was requested by 38 percent of surveyed users.",
+    "Export to CSV is capped at 50,000 rows to protect the API.",
+    "Accessibility target is WCAG 2.2 AA; the last audit found 3 contrast issues, all fixed.",
+    "Product owner is Rosalind Achterberg; releases ship every second Tuesday."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is the maximum size of a downloadable table in Mosaic?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What share of polled clients wanted the night theme in Mosaic?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién es el responsable de producto de Mosaic y cada cuánto salen versiones?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "projects/sable-notifications.md",
+   "title": "Sable Notifications",
+   "description": "Push, email and SMS notification service with Redis-backed queues",
+   "aliases": [
+    "sable"
+   ],
+   "facts": [
+    "Uses Redis 7 streams with consumer groups; the main stream is capped at 2 million entries.",
+    "Sends about 1.8 million pushes a day; email goes out through a self-hosted Postfix relay.",
+    "Quiet hours default to 22:00 to 07:00 in the recipient's local timezone.",
+    "SMS is capped at 5 messages per user per day to control carrier costs.",
+    "Templates are written in MJML and versioned in the sable-templates repo.",
+    "Retries use exponential backoff starting at 30 seconds and stop after 6 attempts."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "During which overnight window does Sable withhold alerts to people?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How does Sable pace redelivery after a bounce, and at what point does it abandon the effort?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué tecnología usa Sable para sus colas de mensajes?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "projects/quarry-warehouse.md",
+   "title": "Quarry Warehouse",
+   "description": "ClickHouse-based analytics warehouse for event data",
+   "aliases": [
+    "quarry",
+    "the warehouse"
+   ],
+   "facts": [
+    "Runs ClickHouse 24.3 on 3 shards with 2 replicas each; total storage is 38 TB.",
+    "Ingests events from Kafka topics through a Vector pipeline at roughly 90,000 events per second.",
+    "Retention is 400 days for raw events and indefinite for daily aggregates.",
+    "Query cost is capped per user at 30 seconds and 8 GB of memory scanned.",
+    "Nightly backups go to object storage; the last restore drill took 5 hours 10 minutes.",
+    "Schema changes need a PR to quarry-schemas, reviewed by a data engineer."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How long does Quarry keep unprocessed records before deleting them?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How much time did the most recent disaster-recovery rehearsal consume for Quarry?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto almacenamiento total tiene Quarry?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "projects/pennant-flags.md",
+   "title": "Pennant Flags",
+   "description": "In-house feature flag service with percentage rollouts",
+   "aliases": [
+    "pennant"
+   ],
+   "facts": [
+    "Flags are evaluated locally from a rules snapshot polled every 15 seconds, with no network call per check.",
+    "SDKs exist for Go, TypeScript and Kotlin; the Python SDK is community-maintained.",
+    "Stale flags older than 90 days trigger a Slack reminder to the owning team.",
+    "Kill switches are a separate flag class and bypass the approval workflow.",
+    "Built in 2024 to replace a paid vendor whose invoice was 31,000 USD a year.",
+    "Audit log is retained for 2 years in an append-only table."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which emergency-off toggles skip sign-off in Pennant?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What did Pennant displace, and what was the annual cost of that?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cada cuántos segundos actualiza Pennant las reglas locales?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "decisions/2026-queue-choice.md",
+   "title": "Queue choice: NATS JetStream over Kafka",
+   "description": "Decision to adopt NATS JetStream for inter-service messaging",
+   "aliases": [
+    "NATS decision"
+   ],
+   "facts": [
+    "Decided on 12 February 2026 to adopt NATS JetStream for inter-service events instead of Kafka.",
+    "Main reason: operating Kafka needed a dedicated 0.5 FTE, while JetStream runs on three small nodes.",
+    "Benchmark: JetStream sustained 140,000 msgs/s with 4 ms p99 publish latency on the test rig.",
+    "Kafka is kept only for analytics ingestion.",
+    "RabbitMQ was rejected because of weak replay support.",
+    "Revisit in February 2027 once message volume passes 1 billion a month."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What was the staffing argument behind picking the lighter-weight broker?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Which competing broker was dismissed owing to poor ability to rewind and reread old entries?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo se revisará de nuevo la decisión sobre la cola de mensajes?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "decisions/2025-monorepo-consolidation.md",
+   "title": "Monorepo consolidation",
+   "description": "Decision to consolidate 14 service repositories into a single Bazel monorepo",
+   "aliases": [
+    "monorepo decision"
+   ],
+   "facts": [
+    "Approved on 3 June 2025 by the architecture guild after a 6-week trial with 3 services.",
+    "Build tool is Bazel 7 with a remote cache; engineers must install Bazelisk.",
+    "Migration finished on 30 November 2025, two weeks behind schedule.",
+    "Ownership is enforced through CODEOWNERS files, one per top-level directory.",
+    "Main objection was clone size; sparse checkout and partial clones cut it from 9 GB to 1.4 GB.",
+    "Mobile apps stay in their own repository because of a different release cadence."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What was the biggest complaint against lumping everything together into a gigantic source tree, and how was it handled?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How long was the pilot period before the design council gave the go-ahead?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿De cuántos GB a cuántos se redujo el tamaño del clon?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "decisions/2025-python-version-policy.md",
+   "title": "Python version policy",
+   "description": "Rule on which Python releases services may run",
+   "aliases": [
+    "py policy"
+   ],
+   "facts": [
+    "Services must run a Python release still inside upstream security support.",
+    "Standard is Python 3.12 as of October 2025; 3.13 is allowed but not the default.",
+    "Upgrades happen within two weeks of each October release and are tracked on a board.",
+    "Versions are pinned in .python-version files and enforced by a pre-commit hook.",
+    "The legacy report generator may stay on 3.9 until 31 March 2027.",
+    "Owner is Marguerite Duval of the tooling squad, who approves exceptions."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which ageing in-house program is permitted to lag behind the current interpreter line, and for how long?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who grants waivers from the language-runtime guideline?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuál es la versión de Python estándar desde octubre de 2025?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "decisions/2026-observability-vendor.md",
+   "title": "Observability vendor choice: Halyard",
+   "description": "Decision to move metrics and tracing to the hosted vendor Halyard",
+   "aliases": [
+    "Halyard contract"
+   ],
+   "facts": [
+    "Signed a 2-year contract with Halyard on 9 January 2026 at 96,000 USD per year, replacing a self-hosted Prometheus and Jaeger stack.",
+    "Runner-up Gantry Observe lost on pricing for high-cardinality metrics.",
+    "Retention is 15 months for metrics, 30 days for traces and 14 days for logs.",
+    "Trace sampling is tail-based at 5 percent, keeping 100 percent of errors.",
+    "Dashboards were cut from 212 to 64 by the end of the 20 April 2026 migration.",
+    "An opt-out clause at month 12 applies if uptime drops below 99.9 percent."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Under what circumstances can we exit the Halyard agreement early?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Which rival finished behind Halyard in the evaluation, and why did it fall short?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos días se conservan las trazas en la plataforma de observabilidad?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "topics/on-call.md",
+   "title": "On-call rotation",
+   "description": "How the primary and secondary on-call rotation works",
+   "aliases": [
+    "pager rotation"
+   ],
+   "facts": [
+    "Rotation is weekly with handover on Monday at 10:00 CET among eight engineers.",
+    "Primary has 5 minutes to acknowledge a page before it escalates to the secondary.",
+    "Stipend is 350 EUR per week plus a day off in lieu after a night with more than two pages.",
+    "Pages are limited to customer-impacting alerts; a 2025 cleanup removed 61 noisy ones.",
+    "Handover notes go in the #oncall-handover channel using a fixed template.",
+    "New engineers shadow two full rotations before joining the pool."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How much extra pay comes with being reachable outside office hours?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How quickly must the first responder react, otherwise the alarm moves up to their backup?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos ingenieros hay en la rotación de guardia?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "topics/incident-2026-03-ledger-stall.md",
+   "title": "Incident 2026-03-14: ledger stall",
+   "description": "Postmortem of the March 2026 outage where ledger writes stalled for 47 minutes",
+   "aliases": [
+    "INC-2291"
+   ],
+   "facts": [
+    "Began 14 March 2026 at 21:12 UTC; ledger writes stalled for 47 minutes and about 3,100 checkouts failed.",
+    "Root cause: a missing index on the transactions table let a vacuum hold locks after a bulk backfill.",
+    "A customer ticket arrived before any alert fired because the lock-wait threshold was 10 minutes.",
+    "Fix: the index was added concurrently and the lock-wait threshold cut to 60 seconds.",
+    "The secondary on-call was incident commander; the status page was updated every 15 minutes.",
+    "Follow-up: backfills now require a dry run on a staging copy; the action item closed on 2 April 2026."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What underlying flaw lay behind the spring breakdown that froze our bookkeeping store?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who noticed the spring breakdown first, our monitoring or someone outside the company?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos minutos estuvieron bloqueadas las escrituras del libro mayor?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "topics/hiring-loop.md",
+   "title": "Hiring loop for backend engineers",
+   "description": "Interview stages and scoring for backend engineer candidates",
+   "aliases": [
+    "interview process"
+   ],
+   "facts": [
+    "Four stages: a 30-minute recruiter screen, 60-minute coding pairing, 90-minute system design, then a values conversation.",
+    "The coding round happens on the candidate's own laptop and editor, with no whiteboard puzzles.",
+    "Every interviewer submits written feedback within 24 hours, before seeing others' scores.",
+    "Offers are decided in a Thursday debrief with a bar-raiser from another team.",
+    "Take-home assignments were dropped in 2024 after the completion rate fell to 38 percent.",
+    "Target from first call to offer is 18 days; the 2025 median was 23."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What equipment do applicants work on during the hands-on programming exercise?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Why did the organisation abandon giving applicants a project to finish remotely?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántas etapas tiene el proceso de entrevistas?"
+    }
+   ]
+  },
+  {
+   "domain": "engineering",
+   "path": "topics/friday-demo.md",
+   "title": "Friday demo ritual",
+   "description": "Weekly cross-team demo session held on Fridays",
+   "aliases": [
+    "show and tell"
+   ],
+   "facts": [
+    "Runs Fridays at 15:30 for 45 minutes in the Lighthouse room and over video.",
+    "Each team gets a strict 5-minute slot, enforced by a rubber duck timer that quacks.",
+    "Slides are banned; presenters must show working software, even if only a staging build.",
+    "Hosting rotates alphabetically by team name; the host brings snacks on a 40 EUR budget.",
+    "Recordings are posted to the #demos channel and kept for 90 days.",
+    "Started in September 2023 to counter silos after the platform reorganisation."
+   ],
+   "queries": [
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Desde cuándo se hacen estas demos y por qué se empezaron?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "people/marta-olsen.md",
+   "title": "Marta Olsen",
+   "description": "Procurement director at Fjordlys Logistics and the main buyer contact.",
+   "aliases": [
+    "Marta O."
+   ],
+   "facts": [
+    "Prefers calls on Thursday mornings, never on Mondays.",
+    "Any purchase above 40,000 euros needs her CFO to approve it before she signs.",
+    "Dislikes slide decks; wants a one-page summary emailed the day before each meeting.",
+    "Her team works in the Norwegian-language interface of the product.",
+    "Took over the relationship from Henrik Dahl in March 2026."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "When is the best time to ring Marta?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What's Marta's ceiling on spend before her finance head must give the green light?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿A quién sustituyó Marta cuando asumió la relación en marzo?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "people/kenji-arakawa.md",
+   "title": "Kenji Arakawa",
+   "description": "Head of IT security at Tessaly Clinics and gatekeeper for vendor questionnaires.",
+   "aliases": [
+    "Kenji"
+   ],
+   "facts": [
+    "Answers email only between 07:00 and 09:00 Tokyo time.",
+    "Requires a completed SOC 2 report and a pen-test summary before any pilot starts.",
+    "Vetoed the cloud-hosted option in June 2026; only on-premise deployment is acceptable.",
+    "Wants a named engineer as escalation contact, not a shared support inbox.",
+    "Wants security updates as plain text, never PDF attachments."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which way of running the software did Kenji reject last summer?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What audit paperwork does Kenji need to see before a trial can kick off?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿A qué hora del día responde Kenji a los correos?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "people/amara-okafor.md",
+   "title": "Amara Okafor",
+   "description": "Executive sponsor at Harbourlight Bakeries who championed the original purchase.",
+   "aliases": [],
+   "facts": [
+    "Likes in-person meetings at the Lagos office, once per quarter; she covers lunch herself.",
+    "Her birthday is 14 November and she appreciates a handwritten card.",
+    "Never takes calls on Friday afternoons because of school pickups.",
+    "Asked for invoices in Nigerian naira, converted at the monthly average rate.",
+    "Presented the business case to the board in February 2025.",
+    "Moves up to COO in January 2027, so a successor sponsor must be named."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Is Amara free for a chat at the end of the working week?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Which currency should we use when billing Amara's company?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo es el cumpleaños de Amara?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "accounts/fjordlys-logistics.md",
+   "title": "Fjordlys Logistics",
+   "description": "Norwegian freight forwarder, mid-market account with an annual contract renewing each April.",
+   "aliases": [
+    "Fjordlys"
+   ],
+   "facts": [
+    "180 seats on the Growth plan at 62 euros per seat per month.",
+    "Contract renews 1 April; 90 days written notice required to cancel.",
+    "Annual price uplift capped at 4 percent, agreed in the 2025 negotiation.",
+    "Account owner is Ingrid Solheim; customer success manager is Dev Patel.",
+    "Evaluating a rival tool after a three-day outage in August 2026."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How early must Fjordlys tell us they're leaving?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Why is Fjordlys looking at competing products?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto paga Fjordlys por cada usuario al mes?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "accounts/tessaly-clinics.md",
+   "title": "Tessaly Clinics",
+   "description": "Greek private clinic chain on a two-year contract that lapses in September 2027.",
+   "aliases": [
+    "Tessaly"
+   ],
+   "facts": [
+    "46 clinicians on the Professional tier, billed 3,900 euros per quarter.",
+    "Two-year term signed 15 September 2025 with no auto-renewal clause.",
+    "Gets a 12 percent discount in exchange for acting as a public reference customer.",
+    "Executive sponsor is Dr. Eleni Marketaki, but the technical veto sits with Kenji Arakawa.",
+    "Wants the data-processing addendum updated before any renewal talks begin."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Why does Tessaly enjoy a cheaper rate than most accounts?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How long does Tessaly's deal last overall?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién es el patrocinador ejecutivo de Tessaly?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "accounts/harbourlight-bakeries.md",
+   "title": "Harbourlight Bakeries",
+   "description": "Lagos-based bakery group whose annual deal expired and now rolls on a monthly basis.",
+   "aliases": [
+    "Harbourlight"
+   ],
+   "facts": [
+    "22 outlets live; rollout to 15 more stalled since July 2026.",
+    "Contract expired 30 June 2026; now month-to-month at a 15 percent premium over the old price.",
+    "Amara Okafor is the sponsor; Tunde Bakare is the finance contact.",
+    "Payment arrives 45 days late on average, so a credit hold triggers at 60 days.",
+    "Offered a three-year renewal at 8 percent off; awaiting a board answer by 30 November."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Is there an incentive on the table for Harbourlight to commit for longer?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How many shops are currently running with Harbourlight?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién es el contacto de finanzas de Harbourlight?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "accounts/norrland-timber.md",
+   "title": "Norrland Timber",
+   "description": "Swedish sawmill group, strategic account on a custom three-year agreement signed in 2024.",
+   "aliases": [
+    "Norrland"
+   ],
+   "facts": [
+    "Pays a flat 210,000 euros per year regardless of seat count.",
+    "Agreement has a most-favoured-customer clause reviewed every 12 months.",
+    "Term ends 31 December 2026; the buyer has asked for a 6 percent reduction at renewal.",
+    "Executive sponsor Lars Eklund golfs with our regional VP, so route sensitive news through the VP.",
+    "Dedicated support engineer is Salome Beridze, on call 08:00 to 18:00 CET."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is the fee structure for Norrland, and does headcount affect it?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Through whom should awkward developments be conveyed at Norrland?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién es el ingeniero de soporte dedicado de Norrland?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "accounts/solano-agro-cooperativa.md",
+   "title": "Solano Agro Cooperativa",
+   "description": "Spanish farming cooperative, a small account bought through a distributor with seasonal usage.",
+   "aliases": [
+    "Solano"
+   ],
+   "facts": [
+    "Buys through the distributor Agrotec Iberia, which keeps a 20 percent margin.",
+    "Usage spikes between March and June during harvest planning, then falls to near zero.",
+    "12-month contract renewing 1 February; auto-renews unless cancelled 30 days beforehand.",
+    "Main user is Pilar Echeverría, who reads only Spanish, so send materials in Spanish.",
+    "Support tickets average 7 per month, mostly about exporting irrigation reports."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What cut does the middleman take on Solano?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "When is Solano busiest?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿En qué idioma hay que enviar los materiales a Pilar?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "topics/discount-approval-rules.md",
+   "title": "Discount Approval Rules",
+   "description": "Who may approve which discount level on new business and renewals.",
+   "aliases": [
+    "discount policy"
+   ],
+   "facts": [
+    "Reps can approve up to 10 percent on their own.",
+    "11 to 20 percent needs the regional sales director.",
+    "Anything above 20 percent goes to the chief revenue officer and finance together.",
+    "Multi-year deals get an extra 3 points only if billed annually upfront.",
+    "Renewal discounts are capped at 5 percent unless the account is flagged at-risk.",
+    "No discount may be offered in writing before approval is logged in the CRM."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How far can an individual seller go on price cuts without asking anyone?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Is it okay to promise a lower number to a buyer by email before sign-off?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué descuento máximo puede dar un vendedor sin aprobación?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "decisions/2026-pricing-change.md",
+   "title": "2026 Pricing Change",
+   "description": "Decision to move from per-seat pricing to tiered bundles starting 1 July 2026.",
+   "aliases": [
+    "tier migration"
+   ],
+   "facts": [
+    "Approved by the leadership team on 12 May 2026.",
+    "New list prices: Starter 29, Growth 62, Professional 95 euros per user per month.",
+    "Existing customers keep legacy prices until their next renewal date, then migrate.",
+    "Nadia Haddad in revenue operations owns the migration spreadsheet.",
+    "Early-adopter customers who migrate before 1 October get a one-time credit of 250 euros."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Who maintains the tracker used for shifting older accounts onto the latest packages?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Is there a sweetener for accounts that switch ahead of the autumn deadline?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo aprobó la dirección el cambio de precios de 2026?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "playbooks/churn-save-playbook.md",
+   "title": "Churn Save Playbook",
+   "description": "Steps to take when an account signals it will cancel.",
+   "aliases": [
+    "rescue plan"
+   ],
+   "facts": [
+    "Within 24 hours of a cancellation signal, the account owner must book a call with the economic buyer.",
+    "A save offer may include up to two free months, authorised by the head of customer success.",
+    "Never lead with discounts; first ask what outcome the customer failed to get.",
+    "Log the real reason in the CRM using the loss-reason picklist, not free text.",
+    "If there is no save within 14 days, hand the account to the winback team led by Oskar Lindqvist."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How soon must we speak with the budget holder once a client threatens to quit?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Where should the true motive for the departure be recorded, and in what format?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos días hay para retener a un cliente antes de pasar al equipo de recuperación?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "playbooks/qbr-playbook.md",
+   "title": "QBR Playbook",
+   "description": "How customer success runs quarterly business reviews for strategic accounts.",
+   "aliases": [
+    "QBR template"
+   ],
+   "facts": [
+    "Send the pre-read 5 business days before the meeting, maximum 8 slides.",
+    "Open with the customer's own goals from the kickoff, not our product metrics.",
+    "Bring one executive from our side whose seniority matches the customer's sponsor.",
+    "Close with exactly three agreed actions, each with an owner and a date.",
+    "Record the session and file the summary in the shared drive within 48 hours."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is the length cap for the briefing document circulated ahead of time?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How many to-dos should we leave everyone with at the end of the get-together?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién debe asistir por nuestra parte para igualar la jerarquía del patrocinador?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "deals/project-lantern.md",
+   "title": "Project Lantern",
+   "description": "Public-sector deal with the Korvala Water Board, now in the final procurement stage.",
+   "aliases": [
+    "Korvala deal"
+   ],
+   "facts": [
+    "Deal value is 480,000 euros over three years; close forecast for 18 December 2026.",
+    "Requires a formal tender response; legal review takes at least 6 weeks.",
+    "Competitor Veldspar was shortlisted and undercut us by roughly 11 percent.",
+    "Champion is the operations manager Teodora Vasilescu; the board chair has not met us yet.",
+    "Deal owner is Rafael Quintero, with solutions engineer Yuki Tanabe supporting."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "On Lantern, by what margin was the rival's offer cheaper?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who is the internal advocate for Lantern on the buyer's side?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto tarda la revisión legal en el proyecto Lantern?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "deals/zephyr-expansion.md",
+   "title": "Zephyr Expansion",
+   "description": "Upsell opportunity at Brandvik Dental to add a second region and an analytics module.",
+   "aliases": [],
+   "facts": [
+    "Proposes adding 60 seats and the analytics module for an extra 41,000 euros annually.",
+    "Customer's CFO Beatriz Almeida wants proof of 15 percent time savings before approving.",
+    "Pilot in the Porto clinic ran 6 weeks and showed an 11 percent saving in scheduling time.",
+    "Proposal is on hold until the group's fiscal year opens on 1 January.",
+    "Expansion owner is Chidi Nwosu in customer success, with sales support from Rafael Quintero."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Why is Zephyr frozen until the spending cycle restarts?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What efficiency gain must Zephyr's top finance decision-maker see demonstrated before agreeing?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántas semanas duró el piloto en Oporto?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "people/rafael-quintero.md",
+   "title": "Rafael Quintero",
+   "description": "Senior account executive covering Iberia and the Nordics, an internal sales colleague.",
+   "aliases": [
+    "Rafa"
+   ],
+   "facts": [
+    "Hosts the team pipeline call on Tuesdays at 09:30 CET and wants CRM updates entered the evening before.",
+    "Quota for 2026 is 1.4 million euros; he reached 82 percent by the end of September.",
+    "Owns Project Lantern and is backup on the Zephyr expansion.",
+    "Is vegetarian, so choose restaurants accordingly when hosting guests.",
+    "Out of office 23 to 31 December 2026 for family travel to Bogotá."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How close is Rafael to hitting his target as of this fall?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What should we remember about Rafael's eating habits when arranging a meal for visitors?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo está de vacaciones Rafael en diciembre?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "people/priya-venkataraman.md",
+   "title": "Priya Venkataraman",
+   "description": "Finance operations manager at Kowalczyk and Sons Printing, handles billing disputes.",
+   "aliases": [
+    "Priya V."
+   ],
+   "facts": [
+    "Works from Chennai, so only reachable 06:00 to 10:00 UTC.",
+    "Wants meeting invites sent with 48 hours lead time and an agenda attached.",
+    "Prefers WhatsApp over email for quick questions, but contracts must go by email.",
+    "Disputed the March 2026 invoice over 340 euros of overage charges; settled with a credit note.",
+    "Her boss, managing director Tomasz Kowalczyk, is copied on every escalation."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which messaging app is best for brief inquiries to Priya?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How did Priya's disagreement over surplus consumption fees end?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Con cuánta antelación hay que mandar las invitaciones a Priya?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "topics/partner-commission-schedule.md",
+   "title": "Partner Commission Schedule",
+   "description": "Rates and payout timing for reseller and referral partners.",
+   "aliases": [
+    "channel payouts"
+   ],
+   "facts": [
+    "Resellers earn 20 percent of first-year revenue and 10 percent on renewals.",
+    "Referral-only partners earn a flat 8 percent of first-year revenue, nothing recurring.",
+    "Commissions are paid 45 days after the customer's first invoice is settled.",
+    "Deals sourced by partners but closed by our reps are split 50/50.",
+    "Partners must register a lead within 5 business days to claim protection for 90 days."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How long does an intermediary have exclusivity once it flags a prospect to us?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "When does the cash reach an intermediary once the buyer's initial bill is cleared?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué porcentaje reciben los socios que solo recomiendan clientes?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "topics/refund-and-credit-policy.md",
+   "title": "Refund and Credit Policy",
+   "description": "When we give money back or issue credits for unused subscription time.",
+   "aliases": [],
+   "facts": [
+    "Full refund only within 30 days of first purchase, and only for new customers.",
+    "After 30 days, unused time becomes credit, never cash, unless local law requires otherwise.",
+    "Refunds above 5,000 euros need written approval from finance controller Hannelore Brandt.",
+    "Outages longer than 4 hours trigger an automatic credit of one thirtieth of the fee per outage day.",
+    "Credit notes expire after 12 months."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Can a buyer still recover funds once a quarter of a year has elapsed since signing up?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who must authorise big reimbursements?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos días tienen los clientes nuevos para pedir un reembolso completo?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "events/lisbon-roadshow-2026.md",
+   "title": "Lisbon Roadshow 2026",
+   "description": "Two-day customer event in Lisbon with workshops and a partner dinner.",
+   "aliases": [
+    "Lisbon event"
+   ],
+   "facts": [
+    "Held 9 and 10 November 2026 at the Palácio Hotel, capacity 120 attendees.",
+    "94 people registered by 15 October, of whom 31 are existing customers.",
+    "Budget is 38,000 euros; Naomi Fischer in marketing is the organiser.",
+    "Keynote by our CTO, followed by a customer panel with Tessaly Clinics and Fjordlys Logistics.",
+    "Every attendee gets a free 30-minute roadmap session with product during the event."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How much cash was set aside for the Lisbon gathering?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Which clients will join the discussion on stage in Lisbon?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántas personas se habían inscrito para el evento de Lisboa a mediados de octubre?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "topics/veldspar-battlecard.md",
+   "title": "Veldspar Battlecard",
+   "description": "How to position against competitor Veldspar in head-to-head deals.",
+   "aliases": [
+    "Veldspar"
+   ],
+   "facts": [
+    "Veldspar lists roughly 11 percent below us but charges extra for API access.",
+    "Weak spot: reporting is nightly batch only, no real-time dashboards.",
+    "Wins mostly on public tenders where the cheapest compliant bid is chosen.",
+    "Their CEO publicly promised a mobile app by Q2 2027; treat it as vapourware until shipped.",
+    "Our counter is a free two-week sandbox so prospects can test live data feeds."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is Veldspar's main technical shortcoming around freshness of its analytics views?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What hands-on trial can we hand to hesitant buyers when Veldspar is in the mix?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿En qué tipo de licitaciones suele ganar Veldspar?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "decisions/2026-territory-realignment.md",
+   "title": "2026 Territory Realignment",
+   "description": "Decision to split the single EMEA territory into three pods effective 1 September 2026.",
+   "aliases": [
+    "pod reorg"
+   ],
+   "facts": [
+    "Announced by VP of Sales Giulia Ferraro on 4 August 2026.",
+    "Three pods: Southern Europe, Nordics-Benelux, and Middle East-Africa, each with its own team lead.",
+    "Named accounts above 150,000 euros stay with the original owner for 12 months to avoid disruption.",
+    "Quota was rebalanced so the Middle East-Africa pod carries 20 percent less in year one.",
+    "Rationale: response times to inbound leads averaged 31 hours under the old structure."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Why did leadership carve up the large geographic area?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Which big clients won't change hands right away after the shake-up?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién anunció el cambio de territorios y en qué fecha?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "accounts/kowalczyk-and-sons-printing.md",
+   "title": "Kowalczyk and Sons Printing",
+   "description": "Polish family print shop on a two-year agreement, a small but loyal account.",
+   "aliases": [
+    "Kowalczyk"
+   ],
+   "facts": [
+    "14 seats on the Starter plan, locked at the legacy price of 24 euros per seat per month until 30 April 2027.",
+    "Renewal date is 1 May 2027; the owner has said verbally they will upgrade to Growth.",
+    "Owner Tomasz Kowalczyk makes every decision personally and distrusts auto-renewals.",
+    "Pays by bank transfer only, never by card.",
+    "Account manager Dev Patel visits the shop in Łódź once a year."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which way of remitting money does Kowalczyk insist on?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How long does Kowalczyk's old rate stay frozen?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Con qué frecuencia visita Dev Patel el taller de Kowalczyk?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "topics/support-escalation-policy.md",
+   "title": "Support Escalation Policy",
+   "description": "Severity levels and response targets for customer-reported incidents.",
+   "aliases": [],
+   "facts": [
+    "Severity 1 means production is fully down; first response within 30 minutes, 24/7.",
+    "Severity 2 is major degradation; response within 4 business hours.",
+    "Only the account owner or customer success manager may raise a Severity 1 on a customer's behalf.",
+    "After 2 hours without progress on a Severity 1, on-call director Emeka Obi is paged automatically.",
+    "A post-incident report must reach affected customers within 5 business days."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Who gets woken up when a total outage drags on?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How soon after a crisis must clients be given a written explanation?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿En cuánto tiempo hay que responder a un problema de severidad 1?"
+    }
+   ]
+  },
+  {
+   "domain": "sales",
+   "path": "people/chidi-nwosu.md",
+   "title": "Chidi Nwosu",
+   "description": "Customer success manager for mid-market European accounts and owner of expansion plays.",
+   "aliases": [
+    "Chidi"
+   ],
+   "facts": [
+    "Manages a book of 31 accounts worth 2.9 million euros in annual recurring revenue.",
+    "Runs the customer-health review every second Wednesday at 14:00 UTC.",
+    "Net revenue retention for his book was 112 percent last quarter, the best on the team.",
+    "Mentors new hire Sven Aaltonen until the end of November 2026.",
+    "Asks to be tagged in any Slack thread mentioning Brandvik Dental or Harbourlight Bakeries."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How well is Chidi's portfolio holding onto income from existing clients lately?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Whom is Chidi coaching at the moment?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo es la reunión quincenal de salud de clientes de Chidi?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "people/aunt-ines.md",
+   "title": "Aunt Inés",
+   "description": "Mother's older sister in Valladolid; allergy, tastes, weekly call",
+   "aliases": [
+    "Tía Inés"
+   ],
+   "facts": [
+    "Allergic to shellfish; carries an epinephrine pen in her handbag.",
+    "Birthday is 14 March; loves hand-embroidered napkins as presents.",
+    "Lives in a third-floor flat in Valladolid with no lift.",
+    "Phones every Sunday at 11:00 after mass.",
+    "Drinks only decaf coffee since her heart arrhythmia was found in 2022."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which foods from the sea are dangerous for Inés?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What sort of gift with needlework would Inés adore?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿A qué hora llama Inés los domingos?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "people/kofi-mensah.md",
+   "title": "Kofi Mensah",
+   "description": "University friend in Rotterdam; eating habits, interests, debt",
+   "aliases": [
+    "Kofi"
+   ],
+   "facts": [
+    "Vegan since 2019; avoids honey and wine clarified with fish bladder.",
+    "Birthday 2 October; likes vinyl records of highlife music.",
+    "Works as a structural engineer in Rotterdam, moved there in 2018.",
+    "Plays five-a-side football on Thursdays at 20:00.",
+    "Owes me €120 for the concert tickets, to be repaid by end of November."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which animal products does Kofi steer clear of?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How much does Kofi need to give back to me for the gig?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿En qué ciudad trabaja Kofi como ingeniero?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "people/nephew-tomas.md",
+   "title": "Nephew Tomás",
+   "description": "Sister Carla's younger son; allergy, school, activities",
+   "aliases": [
+    "Tomi"
+   ],
+   "facts": [
+    "Turns 9 on 21 June; obsessed with dinosaurs and fossil digging kits.",
+    "Mild peanut allergy; the school nurse keeps antihistamine syrup in her office.",
+    "Swimming lessons on Wednesdays at 17:30 at the Municipal Aquatic Centre.",
+    "Shoe size 33 (EU) as of September; outgrows shoes about every four months.",
+    "Frightened of dogs since a neighbour's terrier nipped him."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What prehistoric-themed present should I buy Tomás?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "On which weekday and at what hour is Tomás in the pool?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué le pasa a Tomás si come cacahuetes?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "people/grandma-oksana.md",
+   "title": "Grandma Oksana",
+   "description": "Mum's mother from Lviv; health, eyesight, baking",
+   "aliases": [
+    "Baba Oksana"
+   ],
+   "facts": [
+    "Born in 1941 in Lviv; likes to be called Baba Oksana.",
+    "Type 2 diabetes; takes metformin 500 mg twice daily with meals.",
+    "Reading glasses +2.5; spare pairs in the kitchen drawer and on the bedside table.",
+    "Bakes poppy-seed roll (makivnyk) every Christmas from her mother's recipe.",
+    "Hip replacement operation set for 9 February at St Anne's Hospital."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which tablet is Oksana prescribed for her glucose problem?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "When is Oksana due to go under the knife?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué hornea la abuela Oksana en Navidad?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "people/uncle-rashid.md",
+   "title": "Uncle Rashid",
+   "description": "Uncle by marriage in Leicester; food rules and hobbies",
+   "aliases": [],
+   "facts": [
+    "Coeliac disease diagnosed in 2020; needs strictly gluten-free meals and a separate toaster.",
+    "Eats halal only; favourite restaurant is Zaytoun Grill on Elm Road.",
+    "Retired bus driver; walks 6 km each morning along the canal.",
+    "Wedding anniversary 5 August with wife Samira; they mark it with a dinner each year.",
+    "Collects antique brass lanterns; more than 40 so far."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which gut disorder troubles Rashid?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How many vintage lamps does Rashid own?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Dónde le gusta cenar a Rashid?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "people/dad-henrik.md",
+   "title": "Dad Henrik",
+   "description": "Dad in Bergen; daily pills, food limits, river hobby, wish list",
+   "aliases": [
+    "Pappa"
+   ],
+   "facts": [
+    "Takes amlodipine 5 mg every morning for high blood pressure; target reading is below 130/80.",
+    "Lactose intolerant; oat milk in his coffee, hard cheeses are fine.",
+    "Fly-fishes for trout on the river Alna every first weekend of May.",
+    "Birthday 30 November; wants a new pair of waders in size 44.",
+    "Retired in 2024 after 38 years as a ferry mechanic in Bergen."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Why does ice cream bother Henrik?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué talla de botas de pescador quiere Henrik de cumpleaños?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "people/partner-amara.md",
+   "title": "Partner Amara",
+   "description": "Partner; flavours, presents, job",
+   "aliases": [],
+   "facts": [
+    "Cannot stand coriander; says it tastes like soap.",
+    "Favourite dessert is mango sticky rice.",
+    "Ring size 52; favourite colour is deep teal.",
+    "Birthday 17 January; hinted at a 12-week pottery course at Clayworks (€340).",
+    "Works night shifts as a paramedic during the first and third week of each month."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which herb does Amara find repulsive?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How often is Amara out until dawn on ambulance duty?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué talla de anillo usa Amara?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "pets/biscuit-beagle.md",
+   "title": "Biscuit the beagle",
+   "description": "Family dog; diet, vet visits, microchip, fence escapes",
+   "aliases": [
+    "Biscuit"
+   ],
+   "facts": [
+    "Beagle born 12 April 2019; weighs 11.4 kg, ideal range 10 to 12 kg.",
+    "Allergic to chicken; eats only lamb-and-rice kibble from the vet.",
+    "Rabies booster due every March at Willowbrook Veterinary with Dr Hanley.",
+    "Microchip number ends in 4471.",
+    "Squeezes through the gap under the back fence; neighbour Mr Okafor returns him."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which poultry makes Biscuit ill?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who brings Biscuit home when he bolts?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto pesa Biscuit y cuál es su peso ideal?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "pets/mochi-cat.md",
+   "title": "Mochi the cat",
+   "description": "Ginger shelter cat; thyroid pills, indoor rules, dental history",
+   "aliases": [],
+   "facts": [
+    "Female ginger cat adopted from a shelter on 3 November 2021.",
+    "Thyroid medication, methimazole 2.5 mg, hidden in a pill pocket at 08:00 and 20:00.",
+    "Indoor only; the balcony door latch must stay shut.",
+    "Dental cleaning every 18 months; last one on 5 May 2026.",
+    "Loves a feather wand toy; hides from the hair dryer."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is Mochi prescribed twice a day for her gland trouble?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "When were Mochi's teeth scaled most recently?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿De dónde adoptamos a Mochi?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "pets/ziggy-parrot.md",
+   "title": "Ziggy the parrot",
+   "description": "Family conure; meals, cage routine, speech, clinic",
+   "aliases": [
+    "Ziggy"
+   ],
+   "facts": [
+    "Green-cheeked conure hatched 8 July 2022; weighs about 65 g.",
+    "Gets a pellet mix with chopped kale; avocado and chocolate are toxic.",
+    "Screams at dusk; cage is covered with a blue sheet at 21:00.",
+    "Says about 15 words, including 'hola, guapo' and the doorbell chime.",
+    "Annual check-up at Feathers & Fins Clinic every July; costs €58."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Which treats could poison Ziggy?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "At what hour is Ziggy tucked in for the evening?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué palabras sabe decir Ziggy?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "home/gas-boiler.md",
+   "title": "Gas boiler",
+   "description": "Wall-mounted condensing unit in the utility cupboard; servicing and fault info",
+   "aliases": [
+    "central heating"
+   ],
+   "facts": [
+    "Thermoline 28X condensing boiler installed 14 September 2017.",
+    "Annual service each October; last done 9 October 2025 by Hartley Heating for £85.",
+    "Pressure should read 1.0 to 1.5 bar; top up with the filling loop under the kitchen sink.",
+    "Manufacturer warranty ends 14 September 2027.",
+    "Error code F28 means ignition failure; hold the reset button for 3 seconds."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What number should the dial on the hot-water appliance show?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Until when does the maker's guarantee protect our hot-water appliance?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién hizo la última revisión de la caldera y cuánto costó?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "home/washing-machine.md",
+   "title": "Washing machine",
+   "description": "Front-loading drum unit in the bathroom; cycles, upkeep, repairs",
+   "aliases": [],
+   "facts": [
+    "Front-loader with 9 kg drum, bought 3 March 2022 for €549.",
+    "Run the 90 degree maintenance cycle on the first of each month, empty.",
+    "Filter hatch at bottom right must be emptied every 3 months; keep a towel handy.",
+    "Eco 40 cycle takes 3 h 10 min; Quick 15 handles up to 2 kg.",
+    "Technician Mr Vasquez replaced the drain pump on 11 January 2026."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How frequently should I clear the lint catcher behind the little flap?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who fixed our laundry device early this year?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto pagamos por la lavadora?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "home/robot-vacuum.md",
+   "title": "Robot vacuum Roscoe",
+   "description": "Robot cleaner named Roscoe; schedule, consumables, quirks",
+   "aliases": [
+    "Roscoe"
+   ],
+   "facts": [
+    "Bought refurbished on 20 June 2024 for €199; named Roscoe.",
+    "Runs automatically Monday, Wednesday and Friday at 10:30 while we are out.",
+    "Side brush replaced every 6 months, filter every 3; spares kept in the hall closet.",
+    "Gets stuck on the fringe of the living-room rug; tuck the tassels under before starting.",
+    "Dock is in the corridor next to the shoe rack; battery lasts about 75 minutes."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Why does Roscoe become entangled in the lounge?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How long can Roscoe go on one charge?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo se enciende solo el robot aspirador?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "cars/family-hatchback.md",
+   "title": "Family hatchback",
+   "description": "Silver 2016 diesel hatchback; inspection, insurance, tyres, garage",
+   "aliases": [
+    "Silvie"
+   ],
+   "facts": [
+    "Silver 2016 diesel hatchback, plate 7KLM 392, bought used in 2019 for €8,400.",
+    "Roadworthiness inspection due 28 November 2026; book with Kovač Garage.",
+    "Insurance renews 3 March at about €612 a year; the broker is Ms Lindqvist.",
+    "Tyre pressure is 2.3 bar front and 2.5 bar rear; winter tyres go on in mid-November.",
+    "Service interval 15,000 km; odometer showed 118,200 km at the last oil change."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "By when must Silvie pass its compulsory safety check?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How much do I pay annually to cover the vehicle against accidents?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Con qué presión se inflan las ruedas delanteras?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "places/lisbon-trip.md",
+   "title": "Lisbon trip",
+   "description": "City break with friends booked for March 2027; flights, lodging, plans",
+   "aliases": [
+    "Portugal getaway"
+   ],
+   "facts": [
+    "Flights booked for 18-22 March 2027, departing 06:45 from the regional airport at €214 each.",
+    "Apartment in Alfama, third floor with terrace, €96 per night; check-in after 15:00.",
+    "Day trip to Sintra planned for Saturday 20 March; buy train tickets in advance.",
+    "Dinner reserved at Taberna do Faroleiro on Friday at 20:30 for four people.",
+    "Travel companions are Marta and Joaquim; costs split through a shared spreadsheet."
+   ],
+   "queries": [
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who is joining us in Lisbon?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué día vamos a Sintra?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "places/oaxaca-trip.md",
+   "title": "Oaxaca trip",
+   "description": "Two-week Mexico plan for April 2027; costs, health prep, stays, classes",
+   "aliases": [],
+   "facts": [
+    "Tentative dates 3-17 April 2027; flights not yet bought, watching fares under €780.",
+    "Budget cap of €3,500 for two people, excluding flights.",
+    "Plan to stay five nights in the city centre, then four on the coast at Mazunte.",
+    "Must book a cooking class with Doña Reyna for mole negro; she limits groups to six.",
+    "Hepatitis A booster needed; appointment at the travel clinic on 12 January."
+   ],
+   "queries": [
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "When is my shot scheduled before Oaxaca?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué platillo aprenderemos a cocinar con Doña Reyna?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "places/lake-vesna-cabin.md",
+   "title": "Lake Vesna cabin",
+   "description": "Lakeside cabin rented for August 2027; capacity, stove, shopping",
+   "aliases": [],
+   "facts": [
+    "Rented every August from the Kuznetsov family: 7-14 August 2027, deposit of €300 paid.",
+    "Sleeps eight; bunk room has four beds, the loft two, the main bedroom two.",
+    "Wood stove only heat; firewood is stacked behind the shed, one crate per evening.",
+    "Dogs allowed but not on beds; bring own blankets.",
+    "Nearest supermarket is 18 km away in Pruchnik; shop on arrival day."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How many guests can Vesna accommodate?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What keeps the place warm at Vesna?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿A qué distancia está el supermercado más cercano de la cabaña?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "topics/running-routine.md",
+   "title": "Running routine",
+   "description": "Weekly jogging plan and race goal",
+   "aliases": [],
+   "facts": [
+    "Runs Tuesday and Thursday at 06:15 (8 km easy) and Saturday long run of 14 km.",
+    "Target is the Ghent half marathon on 7 March 2027 in under 1 h 55 min.",
+    "Shoes: wide-fit trainers, 700 km mileage limit; current pair has 540 km.",
+    "Left Achilles tendon flares up; calf stretches for 5 minutes after every session.",
+    "Fuel: banana and a coffee before, 500 ml water bottle on the long run."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What finishing time am I aiming for at the Belgian event?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "At what distance should I retire my footwear?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué tendón me molesta al correr?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "topics/back-physio-routine.md",
+   "title": "Back physio routine",
+   "description": "Daily exercises for lower back pain from the physiotherapist",
+   "aliases": [],
+   "facts": [
+    "Physio is Ewa Nowak at Kinesis Clinic; sessions every second Monday at 18:00, €60.",
+    "Daily 10-minute set: cat-cow x10, bird-dog 8 per side, glute bridge x12.",
+    "Pain flares after more than 90 minutes of sitting; stand up with a timer every 45 minutes.",
+    "MRI in 2024 showed mild disc bulge at L4-L5; no surgery advised.",
+    "Sleep on the left side with a pillow between the knees."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How frequently should I rise from my chair to protect my spine?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "In what position should I lie down at bedtime?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto cuesta cada sesión con la fisioterapeuta?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "topics/sourdough-baking.md",
+   "title": "Sourdough baking",
+   "description": "Weekend bread hobby; starter care and recipe ratios",
+   "aliases": [],
+   "facts": [
+    "Starter named Gustavo, kept in a glass jar on the fridge's top shelf; fed once a week.",
+    "Standard loaf: 500 g bread flour, 375 g water (75% hydration), 100 g starter, 10 g salt.",
+    "Bulk ferment 5 hours at 24 °C, then proof overnight in the fridge for 12 hours.",
+    "Bakes in a cast-iron pot at 245 °C for 20 minutes lid on, 25 minutes lid off.",
+    "Bakes every Saturday; gives the second loaf to neighbour Mrs Adeyemi."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How much liquid goes into my usual dough?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who is handed the surplus boule?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿A qué temperatura se hornea el pan en la olla de hierro?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "topics/balcony-garden.md",
+   "title": "Balcony garden",
+   "description": "Container vegetables and herbs on the south-facing terrace",
+   "aliases": [],
+   "facts": [
+    "Six tomato plants of the 'Black Krim' variety, planted 15 May in 20-litre pots.",
+    "Water every morning in summer, every third day in spring; drip tray under each pot.",
+    "Basil and mint share one trough; mint is kept apart because it spreads.",
+    "Last frost date here is about 28 April; first frost expected around 25 October.",
+    "Aphids treated with diluted soapy water; ladybird larvae bought from the garden centre in June."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What do I spray to fight the sap-sucking bugs?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "When do I anticipate the cold snap that ends the growing season?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué variedad de tomates plantamos en el balcón?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "finances/mortgage.md",
+   "title": "Mortgage",
+   "description": "Home loan terms with Nordhaven Bank; rate, payment, fixed period",
+   "aliases": [],
+   "facts": [
+    "Loan taken in June 2019: €212,000 over 25 years, 3.1% fixed until 30 June 2029.",
+    "Monthly payment is €1,240, debited on the 3rd from the joint account.",
+    "Overpayment allowed up to 10% of the original balance each year without penalty.",
+    "Remaining balance was €168,450 on 1 September 2026.",
+    "Loan adviser is Ms Dlamini; the bank's direct line ends in 0831."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How much do we still owe on the house?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Can we make additional lump sums annually without being charged a fee?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Hasta cuándo es fijo el tipo de interés?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "finances/emergency-fund.md",
+   "title": "Emergency fund",
+   "description": "Household cash buffer; goal, account, deposit and withdrawal rules",
+   "aliases": [],
+   "facts": [
+    "Target is six months of essential expenses, set at €13,800.",
+    "Held in a high-interest savings account at Brightwell Credit Union at 2.8% AER.",
+    "Currently €9,650; we add €250 on the 28th of each month.",
+    "Withdraw only for job loss, medical bills, or urgent repairs over €800; log every withdrawal in the shared sheet.",
+    "Sinking fund for a new roof, €6,000 by 2028, sits in a separate pot."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How much rainy-day money do we presently possess?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Under what circumstances may we dip into the rainy-day money?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto añadimos cada mes al fondo de emergencia?"
+    }
+   ]
+  },
+  {
+   "domain": "personal",
+   "path": "topics/weekly-meal-plan.md",
+   "title": "Weekly meal plan",
+   "description": "Household dinner rotation, shopping day, and kitchen favourites",
+   "aliases": [],
+   "facts": [
+    "Monday lentil dahl, Tuesday fish tacos, Wednesday leftovers, Thursday pasta, Friday homemade pizza.",
+    "Grocery delivery from Greenbasket arrives Sunday between 16:00 and 18:00; the order closes Friday at midnight.",
+    "Weekly food budget is €140 for two adults.",
+    "Spice tolerance differs: one of us handles level 4 of 5, the other stays at level 2, so chilli is served on the side.",
+    "Sunday batch cook: tomato sauce frozen in 6 portions of 400 ml."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "When does the supermarket van show up?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What's our spending cap for provisions?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántas porciones de salsa de tomate congelamos?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "equipment/kestrel-qx7-mass-spectrometer.md",
+   "title": "Kestrel QX-7 Mass Spectrometer",
+   "description": "Shared LC-MS instrument in room B214 used for metabolomics runs",
+   "aliases": [
+    "Kestrel",
+    "QX-7"
+   ],
+   "facts": [
+    "Ion source is cleaned every second Monday by Tomasz Wierzba.",
+    "Calibration mix runs each morning before 9:00 and mass error must stay under 3 ppm.",
+    "Nitrogen supply must hold 6.5 bar or the instrument trips offline.",
+    "Bookings are capped at four-hour slots on the shared calendar; overnight runs need written approval from the lab manager.",
+    "Turbo pump was replaced in March 2026 and is rated for 20,000 hours."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Who scrubs the Kestrel's front-end hardware and how frequently?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What accuracy limit does the Kestrel need to reach after its daily tuning check?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto dura como máximo cada reserva del espectrómetro de masas Kestrel?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "equipment/lumora-c5-confocal-microscope.md",
+   "title": "Lumora C5 Confocal Microscope",
+   "description": "Laser scanning microscope in the imaging suite, room A108",
+   "aliases": [
+    "Lumora",
+    "the confocal"
+   ],
+   "facts": [
+    "Argon laser is warmed up for 20 minutes before any imaging session.",
+    "Objective lenses are cleaned with lens tissue only; oil from the 63x lens must be wiped off the same day.",
+    "Service contract with Optivane visits every six months, next visit is 12 November 2026.",
+    "Users must sign the logbook at the instrument and record laser hours.",
+    "Maximum scan resolution used for published figures is 2048 by 2048 pixels at 400 Hz."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "When does the vendor technician show up again to inspect the Lumora?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How long should the beam source heat up before I start capturing pictures on the Lumora?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué hay que anotar en el cuaderno junto al microscopio confocal?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "equipment/bank-f12-ultra-low-freezer.md",
+   "title": "Bank F-12 Ultra-Low Freezer",
+   "description": "Minus 80 freezer bank holding the lab's long-term tissue archive",
+   "aliases": [
+    "F-12",
+    "the minus-80"
+   ],
+   "facts": [
+    "Alarm contacts Pilar Sandoval first, then the facilities hotline 4455.",
+    "Door may stay open no longer than 30 seconds during retrieval.",
+    "Defrost and filter cleaning happen every January and July.",
+    "Rack C is reserved for the Meridian cohort tissue and must never be shared.",
+    "Backup unit F-13 stays empty at minus 80 so contents can be moved within one hour of failure."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "If the cold box starts beeping in the dead of night, whom should I phone?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How much time can the lid be left ajar while I fish a vial out of the F-12?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Dónde se guarda el tejido de la cohorte Meridian en el congelador?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "equipment/rotaris-uc90-ultracentrifuge.md",
+   "title": "Rotaris UC-90 Ultracentrifuge",
+   "description": "Floor-standing ultracentrifuge in room C020 for exosome and lipoprotein spins",
+   "aliases": [
+    "UC-90"
+   ],
+   "facts": [
+    "Rotor TH-641 has logged 1,840 runs and must be retired at 2,000 runs.",
+    "Maximum speed for the SW-32 rotor is 32,000 rpm; never exceed 28,000 rpm with glass tubes.",
+    "Vacuum pump oil is changed every quarter by Hyun-woo Baek.",
+    "Tubes must be balanced to within 0.05 grams before every spin.",
+    "Runs over eight hours need a note on the door with a phone number."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How many cycles can a Rotaris head go through before we discard it?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who swaps the lubricant for the UC-90's air-removal equipment, and how frequently?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué tolerancia de peso se exige entre tubos antes de cada centrifugación?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "people/dr-amara-nwosu.md",
+   "title": "Dr. Amara Nwosu",
+   "description": "Statistician collaborator at Ibadan Institute handling mixed-effects models",
+   "aliases": [
+    "Amara"
+   ],
+   "facts": [
+    "Based in Ibadan, one hour ahead of the lab, and answers messages between 10:00 and 15:00 our time.",
+    "Unavailable for calls from 1 to 14 December 2026 because of fieldwork in Enugu.",
+    "Prefers analysis scripts in R with renv lockfiles, not Python notebooks.",
+    "Review turnaround is five working days.",
+    "Co-supervises Ngozi Eze, a joint PhD student."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "When is Amara unreachable by phone because she's away collecting measurements in the countryside?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Which programming language does Amara want my number-crunching code written in?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos días tarda Amara en devolver una revisión de borrador?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "people/prof-henrik-solvang.md",
+   "title": "Prof. Henrik Solvang",
+   "description": "Principal investigator and lab director; office hours and sign-off rules",
+   "aliases": [
+    "Henrik",
+    "the PI"
+   ],
+   "facts": [
+    "Holds open office hours on Thursdays from 14:00 to 16:00 in room D301.",
+    "Must approve any purchase above 2,500 euros before the order is placed.",
+    "Travels to the Tromsø conference from 9 to 13 March 2027 and will not answer email.",
+    "Insists on a one-page summary before every committee meeting.",
+    "Authorship order is decided by him after the first full draft circulates."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What price level requires Henrik's go-ahead before buying anything?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "In which period will Henrik be out of reach while he's overseas at a symposium?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién decide el orden de los autores cuando circula el primer borrador?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "people/dr-leila-haddad.md",
+   "title": "Dr. Leila Haddad",
+   "description": "Beamline scientist at the Marlow Light Source who controls our X-ray beamtime",
+   "aliases": [
+    "Leila"
+   ],
+   "facts": [
+    "Allocates our beamtime in two proposal rounds, deadlines 15 March and 15 September.",
+    "Only on site Tuesday to Thursday; Fridays she works remotely.",
+    "Needs sample dimensions and hazard sheets at least ten days before arrival.",
+    "Direct line is extension 7720; email gets slow replies.",
+    "Shift changeover on the beamline is at 08:00, 16:00 and 24:00."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "When are the cutoff dates for requesting the machine slots that Leila hands out?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "On which part of the week can I find Leila physically at the facility?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Con cuánta antelación hay que entregar las fichas de peligros antes de llegar?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "people/ishaan-venkataraghavan.md",
+   "title": "Ishaan Venkataraghavan",
+   "description": "Fourth-year PhD student writing a thesis on protein folding kinetics",
+   "aliases": [
+    "Ishaan",
+    "Ish"
+   ],
+   "facts": [
+    "Thesis submission deadline is 30 April 2027; defense is tentatively set for 21 June 2027.",
+    "Committee chair is Prof. Marguerite Delacroix-Boyer.",
+    "Teaches the undergraduate biophysics lab on Wednesday afternoons until the end of term.",
+    "Holds the key to the cold room on level 2.",
+    "Thesis is typeset in LaTeX using the lab template stored under /templates/thesis-v3 on the shared drive."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "When does Ishaan need to hand in his dissertation?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Where on the network does the page-layout skeleton for Ishaan's dissertation live?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué tarde de la semana da clases Ishaan en el laboratorio de licenciatura?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "people/dr-sione-taufa.md",
+   "title": "Dr. Sione Taufa",
+   "description": "Visiting marine ecologist from Nuku'alofa on a six-month stay",
+   "aliases": [
+    "Sione"
+   ],
+   "facts": [
+    "Visa expires 28 February 2027, so his stay cannot be extended beyond that date.",
+    "Desk is 4B in the shared postdoc room; badge access works from 7:00 to 20:00 only.",
+    "Brings his own dive logs and wants them stored on the lab server under /marine/taufa.",
+    "Does not eat pork; catering for his talks must be halal or vegetarian.",
+    "Gives a seminar on reef recovery on 5 November 2026 at 15:00 in lecture room 2."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "On what day does Sione's permit to remain in the country run out?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "At what hour does Sione's presentation start?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué tipo de comida debe servirse en las charlas de Sione?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "projects/lumen-yeast-evolution-experiment.md",
+   "title": "Lumen Yeast Evolution Experiment",
+   "description": "Long-term serial transfer experiment evolving yeast populations under salt stress",
+   "aliases": [
+    "Lumen",
+    "yeast evo"
+   ],
+   "facts": [
+    "Twelve replicate populations are transferred every 24 hours with a 1:100 dilution.",
+    "Salt concentration was raised from 0.4 M to 0.8 M on day 150.",
+    "Frozen fossil records are kept every 50 generations in glycerol at minus 80 degrees.",
+    "Generation 1,000 was reached on 3 September 2026.",
+    "Plate contamination in population 7 on day 212 led to a restart from the day-200 freezer stock."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How often do we pass the cultures into fresh medium and by what ratio?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What happened when a stray microbe got into one lineage, and which backup did we resume from?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo se alcanzó la generación mil del experimento Lumen?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "projects/halcyon-tardigrade-desiccation-trial.md",
+   "title": "Halcyon Tardigrade Desiccation Trial",
+   "description": "Survival experiment testing how long tardigrades tolerate drying and rehydration",
+   "aliases": [
+    "Halcyon"
+   ],
+   "facts": [
+    "Animals are dried on filter paper for 48 hours at 30 percent relative humidity.",
+    "Survival is scored 24 hours after rehydration; the cutoff for alive is any visible leg movement.",
+    "Pilot of 120 animals gave 71 percent survival; the main run will use 600 animals.",
+    "Main run starts 11 January 2027 and is led by Mei-Ling Tsao.",
+    "Animals come from moss collected at Hallingdal and are kept at 16 degrees in the dark."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What counts as evidence that one of the little water bears has pulled through after soaking?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How many specimens go into the full-scale version of Halcyon?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿De dónde proviene el musgo que se usa para los tardígrados?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "projects/graphene-sensor-pilot-gs3.md",
+   "title": "Graphene Sensor Pilot GS-3",
+   "description": "Prototype graphene gas sensor tested for ammonia detection in barn air",
+   "aliases": [
+    "GS-3"
+   ],
+   "facts": [
+    "Chips are fabricated in batches of 24 in the university cleanroom.",
+    "Detection limit reached 0.8 ppm ammonia at 40 percent humidity.",
+    "Baseline drifts by about 5 percent per day and requires a nightly re-zero routine.",
+    "Field trial at the Brandvold dairy farm starts in June 2027.",
+    "Gold contacts are 80 nanometres thick; a 120 nm layer cracked during bending tests."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How quickly does the reference signal wander for GS-3, and what do we do about it each evening?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Where will GS-3 be put through its paces under real-world conditions next year?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué grosor tienen los contactos de oro?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "projects/aurora-soil-microbiome-transect.md",
+   "title": "Aurora Soil Microbiome Transect",
+   "description": "Field campaign sampling soil along an elevation gradient in the Dolomites",
+   "aliases": [
+    "Aurora transect"
+   ],
+   "facts": [
+    "Soil cores are taken at 12 sites from 800 to 2,600 metres at 200-metre steps.",
+    "Each core is 10 cm deep and is split into three subsamples.",
+    "Sampling window is the last two weeks of July to avoid snow cover.",
+    "DNA is extracted with the PowerSoil kit and sequenced on the in-house short-read machine.",
+    "Field team is Chiara Bellandi, Joao Pereira and two undergraduates; the permit number is DOL-2026-114."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What part of the summer do we go out to dig for Aurora, and what are we trying to dodge?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How many locations are visited along the mountainside for Aurora?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuál es el número de permiso del trabajo de campo?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "datasets/ember-live-cell-imaging-archive.md",
+   "title": "Ember Live-Cell Imaging Archive",
+   "description": "Time-lapse microscopy dataset of fibroblast migration",
+   "aliases": [
+    "Ember archive"
+   ],
+   "facts": [
+    "Contains 48,000 TIFF frames from 96 wells, captured every 10 minutes for 72 hours.",
+    "Stored on server nas-02 under /archive/ember, 3.1 TB in total.",
+    "Segmentation masks were produced with a U-Net model, version 2.4, by Beatriz Quintanilla.",
+    "Dataset is embargoed until the Ember paper is accepted; do not share outside the lab.",
+    "Wells A1 to A6 are excluded because of focus drift."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How much disk space does the Ember collection take up?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Why were some plate positions left out of Ember?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién generó las máscaras de segmentación?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "datasets/tidewater-sediment-core-chemistry.md",
+   "title": "Tidewater Sediment Core Chemistry Table",
+   "description": "Geochemical measurements from estuary sediment cores, 2019 to 2024",
+   "aliases": [
+    "Tidewater table"
+   ],
+   "facts": [
+    "Holds 3,412 rows covering lead, zinc, copper and organic carbon at 2 cm depth intervals.",
+    "Lead values before 2021 were measured with an older ICP instrument and carry a correction factor of 1.07.",
+    "Owner is Marit Haugland and updates are logged in the file CHANGELOG.txt.",
+    "Public release on Zenodo is planned for 1 March 2027 under a CC-BY licence.",
+    "Missing values are coded as -999, not left blank."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What multiplier must be applied to the early toxic-metal readings in Tidewater?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How are absent entries flagged in the Tidewater spreadsheet?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo se publicará el conjunto de datos en Zenodo?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "datasets/vesper-bat-acoustic-recordings.md",
+   "title": "Vesper Bat Acoustic Recordings",
+   "description": "Ultrasonic recordings of bat echolocation from 40 recorder stations in Gelderland",
+   "aliases": [
+    "Vesper",
+    "bat audio"
+   ],
+   "facts": [
+    "Recorders sample at 384 kHz and write 16-bit WAV files, roughly 11 GB per night.",
+    "Season ran from 1 April to 31 October 2025; 1.9 million files total.",
+    "Species labels come from the BatID classifier with a confidence threshold of 0.85.",
+    "Raw audio is kept on tape in the library basement; only the labelled 5 percent subset lives on the server.",
+    "Data steward is Oksana Melnychenko, who must approve any external access request."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is the minimum certainty for assigning an animal type in Vesper?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Where is the unprocessed sound material for Vesper archived?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién debe aprobar las solicitudes de acceso externo a estos datos?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "papers/bacterial-swarm-hysteresis-manuscript.md",
+   "title": "Bacterial Swarm Hysteresis Manuscript",
+   "description": "Draft paper on hysteresis in bacterial swarming, targeting Cascadia Biophysics Letters",
+   "aliases": [
+    "swarm paper"
+   ],
+   "facts": [
+    "First author is Dmitri Voskresensky; corresponding author is Dr. Yara Benitez.",
+    "Submitted to Cascadia Biophysics Letters on 14 September 2026 as manuscript CBL-26-0482.",
+    "Reviewers asked for a control with a non-motile mutant and three extra replicates; revision due 20 December 2026.",
+    "Word limit is 6,000 including references, and the draft is currently 6,450 words.",
+    "Figure 3 must be redrawn in a colour-blind-safe palette."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What additional comparison condition did the peer assessors demand for our write-up on microbes moving collectively?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "By what date should we send the amended version of the article on microbe crowds back to the editors?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántas palabras tiene actualmente el borrador sobre el enjambre bacteriano?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "papers/lisbon-congress-poster-abstract.md",
+   "title": "Lisbon Congress Poster Abstract",
+   "description": "Poster abstract on sleep loss in cavefish submitted to the Lisbon Neuroethology Congress",
+   "aliases": [
+    "Lisbon poster"
+   ],
+   "facts": [
+    "Abstract limit is 250 words and the current text is 243 words.",
+    "Submission closes 8 January 2027 at 23:59 Lisbon time.",
+    "Presenting author is Joao Pereira; the poster board is 90 cm wide by 120 cm tall.",
+    "Registration fee of 340 euros is paid from the department travel fund.",
+    "Notification of acceptance is expected by 15 March 2027."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What does attendance cost for the Lisbon conference entry, and which pot of money covers it?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "When do we find out whether the Lisbon entry got chosen?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué dimensiones tiene el panel del póster?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "papers/jame-2291-peer-review.md",
+   "title": "Peer Review Assignment JAME-2291",
+   "description": "Referee request for a manuscript on permafrost methane from the Journal of Applied Microbial Ecology",
+   "aliases": [
+    "JAME review"
+   ],
+   "facts": [
+    "Report is due 2 November 2026 and the handling editor is Dr. Rosalind Achterberg.",
+    "Review is single-blind and must be returned through the ScholarOne portal, never by email.",
+    "Manuscript claims a 38 percent rise in methane flux, but the sample size is only nine cores.",
+    "Recommended decision so far is major revision, with concerns about the statistics and missing site metadata.",
+    "Review is being written by Joao Pereira under the lab mentoring scheme."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Through which channel should I hand in my critique of the frozen-ground gas article?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who at the periodical is waiting for the JAME-2291 critique?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿De cuántos núcleos de muestra depende la afirmación sobre el metano?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "grants/verdant-futures-research-grant.md",
+   "title": "Verdant Futures Research Grant",
+   "description": "Three-year national grant of 480,000 euros funding the soil microbiome and sensor work",
+   "aliases": [
+    "Verdant",
+    "VFRG"
+   ],
+   "facts": [
+    "Interim report is due 31 January 2027 and must be uploaded to the funder portal by grants officer Elodie Marchetti.",
+    "Equipment line is capped at 120,000 euros and any item over 15,000 euros needs three quotes.",
+    "Unspent personnel funds may not be carried over past 31 December 2027.",
+    "Grant ends 30 June 2028; a no-cost extension of up to six months can be requested by 31 March 2028.",
+    "Open access fees are reimbursed up to 2,200 euros per article."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is the ceiling for hardware purchases on Verdant?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How late can we ask Verdant for more time beyond the finish date?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto reembolsa la beca por publicar en acceso abierto?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "grants/helix-seed-fund-proposal.md",
+   "title": "Helix Seed Fund Proposal",
+   "description": "Internal 25,000 euro seed grant application for an automated pipetting robot",
+   "aliases": [
+    "Helix"
+   ],
+   "facts": [
+    "Application deadline is 4 December 2026 at noon via the faculty research office form.",
+    "Maximum award is 25,000 euros and the money must be spent within 12 months.",
+    "Proposal needs a two-page narrative and a one-page budget; page limits are strict.",
+    "Panel interviews are scheduled for the week of 18 January 2027.",
+    "Co-applicants are Beatriz Quintanilla and Mei-Ling Tsao; the lead applicant must hold a permanent contract.",
+    "Vendor quote for the liquid-handling robot is 23,400 euros from Fluidica, valid until 30 November 2026."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How long do Helix winners have to burn through their cash?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "When do the finalists sit in front of the judges for Helix?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué tipo de contrato debe tener quien lidere la solicitud?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "topics/chemical-waste-disposal-rules.md",
+   "title": "Chemical Waste Disposal Rules",
+   "description": "Lab rules for sorting and collecting hazardous liquid waste",
+   "aliases": [
+    "waste rules"
+   ],
+   "facts": [
+    "Halogenated and non-halogenated solvents go into separate 10-litre carboys, labelled with the date of first use.",
+    "Carboys are collected by facilities every Wednesday at 8:30; anything not at the door by then waits a week.",
+    "Never pour ethidium bromide or acrylamide gels down the drain; use the yellow bin in room C015.",
+    "Containers must be closed with a screw cap, not parafilm or foil.",
+    "Waste log sheet must be signed by the person who filled the carboy; unsigned carboys are refused."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "When do the porters come to take away the jugs of toxic leftovers?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What is the right way to seal a bottle of nasty fluids?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Dónde se desechan los geles de acrilamida?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "topics/data-backup-policy.md",
+   "title": "Data Backup Policy",
+   "description": "Rules for how raw data is copied, labelled and retained on lab servers",
+   "aliases": [
+    "backup rule",
+    "3-2-1 rule"
+   ],
+   "facts": [
+    "Every raw file needs three copies on two media types with one copy off site, the 3-2-1 rule.",
+    "The nightly backup to nas-03 starts at 02:00 and failure alerts go to sysadmin Pavel Horvath.",
+    "Raw data must be retained for ten years after publication.",
+    "Laptops may not be the only holder of unpublished data; sync to the server weekly.",
+    "File names follow YYYYMMDD_initials_experiment_runNN, with no spaces."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How long should original measurements be kept after the article comes out?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What format should the titles of my documents take?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿A qué hora empieza la copia de seguridad nocturna?"
+    }
+   ]
+  },
+  {
+   "domain": "research",
+   "path": "reading/tanaka-whitlock-phage-resistance-review.md",
+   "title": "Reading Note: Tanaka-Whitlock on Phage Resistance",
+   "description": "Notes on a review article about bacteriophage resistance mechanisms by Tanaka and Whitlock",
+   "aliases": [
+    "Tanaka-Whitlock review"
+   ],
+   "facts": [
+    "Review catalogues 14 anti-phage defence systems and argues that most are horizontally transferred.",
+    "Key claim: CRISPR accounts for under 10 percent of observed resistance in wild isolates.",
+    "Figure 4 table of defence-island sizes is worth copying into our introduction.",
+    "Weakness: all isolates come from hospital sewage, so the sample is biased.",
+    "Read by Yara Benitez on 6 October 2026; follow-up reading is Vasquez and Ito 2025."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What fraction of the immunity in natural strains is attributable to the gene-editing machinery, per Tanaka-Whitlock?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What is the main criticism of where the specimens were obtained, according to Tanaka-Whitlock?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué figura conviene copiar para nuestra introducción?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "suppliers/kerrowen-creamery.md",
+   "title": "Kerrowen Creamery",
+   "description": "Dairy supplier for milk, cream and butter with two deliveries a week.",
+   "aliases": [
+    "Kerrowen"
+   ],
+   "facts": [
+    "Delivers on Tuesday and Friday mornings between 6:00 and 7:30.",
+    "Whole milk costs 1.12 euros per litre and butter costs 7.80 euros per kilo.",
+    "Orders must reach Orla by 16:00 on the day before delivery.",
+    "Invoices are settled on the 15th of the month, and paying within 7 days gives 2 percent off.",
+    "Empty crates are collected at the next visit, with a 20 euro deposit charged for each missing crate."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "At what hour does the Kerrowen truck arrive?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How big is the rebate if we clear Kerrowen's bill early?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto nos cobran por cada caja vacía que no devolvemos a Kerrowen?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "people/hassan-demir.md",
+   "title": "Hassan Demir",
+   "description": "Weekend baker on a part-time contract with fixed shifts.",
+   "aliases": [
+    "Hassan"
+   ],
+   "facts": [
+    "Works Saturday and Sunday from 4:30 to 12:30 at the bread counter.",
+    "Contract is 16 hours per week at 14.50 euros gross per hour.",
+    "His food hygiene certificate expires on 3 March 2027.",
+    "Swaps shifts with Mina whenever Sunday falls on a public holiday.",
+    "Reachable on the staff WhatsApp group only after 18:00."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What does Hassan earn before tax is taken out?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "When does Hassan's paperwork on kitchen cleanliness lapse?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Con quién intercambia turnos Hassan cuando el domingo es festivo?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "topics/returns-and-refund-policy.md",
+   "title": "Returns and Refund Policy",
+   "description": "Rules for customer returns, refunds and store credit at the counter.",
+   "aliases": [
+    "refund policy"
+   ],
+   "facts": [
+    "Unworn items can be returned within 30 days with a receipt for a full refund.",
+    "Without a receipt only store credit is given, valued at the lowest price of the last 90 days.",
+    "Custom-engraved items are final sale and cannot be returned.",
+    "Refunds go back to the original payment card within 5 working days.",
+    "A manager must approve any refund over 150 euros."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is the time window for bringing an unused purchase to us to recover the money?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who has to authorise a large reimbursement?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Se pueden devolver los artículos grabados a medida?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "suppliers/okonkwo-packaging.md",
+   "title": "Okonkwo Packaging",
+   "description": "Supplier of printed paper bags and cardboard boxes with a long lead time.",
+   "aliases": [
+    "Okonkwo"
+   ],
+   "facts": [
+    "Minimum order is 500 units per item, and unit prices drop by 8 percent above 2,000 units.",
+    "Lead time is 12 working days from artwork approval.",
+    "Account manager is Chidi Okonkwo, direct line 0161 555 0142.",
+    "Printed kraft bags cost 0.19 euros each at the 1,000 unit tier.",
+    "Payment terms are net 45 days from the invoice date."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How soon after we sign off on our logo design do the goods arrive?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What is the smallest quantity Okonkwo will accept?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos días tenemos para pagar las facturas de Okonkwo?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "contracts/fjordline-mutual-insurance.md",
+   "title": "Fjordline Mutual Insurance",
+   "description": "Shop public liability and stock policy with a yearly renewal each November.",
+   "aliases": [
+    "business policy"
+   ],
+   "facts": [
+    "Public liability cover is 2 million euros per claim with a 500 euro excess.",
+    "Policy number FM-48213-B renews on 1 November each year.",
+    "The premium of 1,860 euros is paid in four quarterly instalments by direct debit.",
+    "Claims must be reported within 48 hours on helpline 0800 555 0199.",
+    "Stock theft is covered only if the alarm was armed and a break-in is visible."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How soon do we have to phone Fjordline after something goes wrong?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What amount comes out of our own pocket before Fjordline steps in?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo vence la póliza del seguro del negocio?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "equipment/brasolina-duo-espresso-machine.md",
+   "title": "Brasolina Duo Espresso Machine",
+   "description": "Two-group espresso machine behind the counter and its maintenance routine.",
+   "aliases": [
+    "coffee machine"
+   ],
+   "facts": [
+    "Bought on 12 May 2023 for 4,950 euros.",
+    "Descaled every 4 weeks by Samira, with the log sheet hanging beside the grinder.",
+    "The water filter cartridge is replaced every 6 months, and spares are on the cellar shelf.",
+    "Service contract with Technica Cafe covers two visits a year, the next due on 14 February.",
+    "Boiler pressure should read 1.0 to 1.2 bar, and above 1.5 bar it must be turned off and the technician called."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How often does the Brasolina need its limescale removed?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "At what gauge value on the Brasolina's steam tank do we stop and ring the repair person?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuándo es la próxima visita de mantenimiento de la máquina de café?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "decisions/2026-winter-opening-hours.md",
+   "title": "Winter Opening Hours 2026",
+   "description": "Decision to shorten shop hours and drop Sunday trading for winter 2026-27.",
+   "aliases": [
+    "winter hours"
+   ],
+   "facts": [
+    "From 4 November 2026 the shop opens 8:00 to 17:30 Monday to Friday and 9:00 to 14:00 on Saturday.",
+    "Sunday trading stops completely and resumes on 28 March 2027.",
+    "Decided on 6 October 2026 after counts showed fewer than 4 customers per hour after 18:00.",
+    "Thursday late opening until 20:00 is kept for the book club evenings.",
+    "Owner Ingrid signs off any exception."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What evidence convinced us to close earlier at night?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who has final say on departures from the new timetable?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Hasta qué hora está abierto el jueves por la noche?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "contracts/unit-4-lease-marlowe-property.md",
+   "title": "Unit 4 Lease with Marlowe Property",
+   "description": "Five-year lease on the shop premises with rent escalation and a break clause.",
+   "aliases": [
+    "shop lease"
+   ],
+   "facts": [
+    "Five-year lease runs from 1 April 2024 to 31 March 2029.",
+    "Monthly rent is 2,350 euros due on the 1st, rising by 3 percent each April.",
+    "The 7,050 euro deposit is held in escrow by the landlord.",
+    "A tenant break clause allows exit after 36 months with 6 months written notice.",
+    "Landlord contact is Beatriz Marlowe, and the landlord is responsible for roof and shutter repairs."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "By how much does Marlowe increase our occupancy charge every spring?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Can we leave the building agreement early, and how much warning is required?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Quién es responsable de las reparaciones del tejado?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "topics/quarterly-sales-tax-return.md",
+   "title": "Quarterly Sales Tax Return",
+   "description": "Filing deadlines, penalties and process for the quarterly sales tax return.",
+   "aliases": [
+    "VAT return"
+   ],
+   "facts": [
+    "Returns are due on the 28th of the month after each quarter ends: 28 January, 28 April, 28 July and 28 October.",
+    "Accountant Priya Raman files it online and needs the sales ledgers by the 14th.",
+    "A late filing costs a 100 euro penalty plus 1.5 percent of the tax owed for each month.",
+    "Payment is made by bank transfer quoting reference code TT-7714-S.",
+    "The next return, for July to September, is due on 28 October 2026."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What fine do we face for handing in the periodic levy paperwork past the cutoff?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Who handles the levy submission for us and by which date does she want our records?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuál es el código de referencia para abonar el impuesto por transferencia?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "topics/weekly-rota-rules.md",
+   "title": "Weekly Rota Rules",
+   "description": "How the staff rota is published, swapped and limited.",
+   "aliases": [
+    "shift rota"
+   ],
+   "facts": [
+    "The rota for the following week is posted every Wednesday at 17:00 on the staff board and in the group chat.",
+    "Shift swaps need approval from supervisor Dariusz at least 24 hours ahead.",
+    "Nobody works more than 5 days in a row, and there must be 11 hours of rest between a closing and an opening shift.",
+    "Sick calls must be phoned in to the shop line before 6:00 for morning shifts.",
+    "Overtime is paid at 1.5 times the normal rate after 40 hours a week."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "By what cutoff do I have to let the boss know I'm too ill to come in for an early start?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How much extra money do people earn once they exceed the standard allotment?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántas horas de descanso se necesitan entre el cierre y la apertura del turno siguiente?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "customers/casa-lumbrera-standing-order.md",
+   "title": "Casa Lumbrera Standing Order",
+   "description": "Restaurant customer's recurring bread order with delivery and billing terms.",
+   "aliases": [
+    "Lumbrera"
+   ],
+   "facts": [
+    "Standing order is 40 sourdough loaves and 60 rolls every Monday, Wednesday and Friday.",
+    "Delivered to the kitchen back door by 7:15, where chef Rosalia Quintero signs for it.",
+    "Loaves cost 3.10 euros wholesale and rolls 0.45 euros each, billed on the last day of the month.",
+    "Quantities can be reduced with 48 hours notice, but not on the days before public holidays.",
+    "Account has been active since February 2022 with a 600 euro credit limit."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Who accepts the goods at Lumbrera's rear entrance?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How much advance warning does Lumbrera need to give to scale down the amounts?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántas hogazas de masa madre se entregan a Casa Lumbrera en cada entrega?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "suppliers/ayodele-farms.md",
+   "title": "Ayodele Farms",
+   "description": "Fresh produce supplier with two weekly deliveries and weekly price messages.",
+   "aliases": [
+    "Ayodele"
+   ],
+   "facts": [
+    "Delivers vegetables and herbs to the loading bay on Monday and Thursday before 8:00.",
+    "Prices are set each Friday by Ayodele Bankole on WhatsApp, and tomatoes are 2.40 euros per kilo on the latest list.",
+    "The order cut-off is 18:00 on the evening before delivery.",
+    "Out-of-stock items are substituted only if we reply yes within 30 minutes.",
+    "Spoiled produce earns a credit note if claimed with a photo within 24 hours of delivery."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How do we get compensation for rotten goods from Ayodele?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What is the going rate for the red salad fruit from Ayodele at the moment?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué pasa si Ayodele no tiene un producto y propone un sustituto?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "equipment/frostline-walk-in-cooler.md",
+   "title": "Frostline Walk-in Cooler",
+   "description": "Cold room temperature rules, alarm settings and warranty details.",
+   "aliases": [
+    "cold room"
+   ],
+   "facts": [
+    "Must hold between 2 and 4 degrees Celsius, logged at 9:00 and 17:00 on the clipboard on the door.",
+    "The alarm sounds if it stays above 6 degrees for more than 20 minutes and texts manager Teodor at 07 555 0183.",
+    "The compressor was replaced in August 2025 under a 3-year warranty that ends in 2028.",
+    "Door seal is checked monthly, and stock must not block the vents on the back wall.",
+    "Automatic defrost cycle runs at 3:00 every Sunday."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "Who receives the SMS if the Frostline gets too warm for too long?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Until when is the Frostline's motor covered by the manufacturer's guarantee?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿A qué hora se descongela automáticamente la cámara frigorífica?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "topics/cash-handling-policy.md",
+   "title": "Cash Handling Policy",
+   "description": "Till floats, closing counts, safe drops and bank run routines.",
+   "aliases": [
+    "till policy"
+   ],
+   "facts": [
+    "Each till opens with a 150 euro float in coins and small notes.",
+    "Tills are cashed up by two people at closing, and any difference over 5 euros goes in the discrepancy book.",
+    "Takings above 400 euros are moved to the safe at midday.",
+    "Marit does the bank run every Tuesday and Friday, recording bag numbers in the ledger.",
+    "The safe code changes on the first of each quarter and is known by only three staff."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How much starter money is put into a register before any customer walks in?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "At what sum of paper money in the drawer should somebody carry it to the strongbox?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Con qué frecuencia se cambia la combinación de la caja fuerte?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "people/mei-lin-zhao.md",
+   "title": "Mei-Lin Zhao",
+   "description": "Freelance bookkeeper who reconciles accounts and prepares payroll each month.",
+   "aliases": [
+    "bookkeeper"
+   ],
+   "facts": [
+    "Comes in every second Thursday from 10:00 to 15:00.",
+    "Rate is 38 euros per hour, invoiced monthly and capped at 900 euros.",
+    "Needs paper receipts sorted by month by the 3rd of each month.",
+    "Enters everything in the Ledgerly cloud software and reconciles the bank account.",
+    "Prepares payroll for the 25th payout, so staff hours must reach her by the 20th."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What's the upper limit on what Mei-Lin can bill us?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "By when does she require everyone's attendance totals for the wage run?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué programa utiliza Mei-Lin para llevar la contabilidad?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "topics/municipal-food-licence.md",
+   "title": "Municipal Food Licence",
+   "description": "Annual food business licence renewal, inspection and display requirements.",
+   "aliases": [
+    "food licence"
+   ],
+   "facts": [
+    "Registration number FB-2209-14 expires on 30 June each year.",
+    "The renewal application must be submitted at least 45 days before expiry, by 16 May, and costs 215 euros.",
+    "Inspector Gunnar Halldorsson makes an unannounced visit once a year, and the last one on 11 September 2025 scored 5 out of 5.",
+    "The licence certificate must hang by the front door.",
+    "The allergen chart must be updated whenever a recipe changes and is kept in the binder under the till."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What rating did the council's checker give us on the previous drop-in?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Where is the permit meant to be put up so people see it?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto cuesta renovar la licencia de alimentos y hasta cuándo hay que presentar la solicitud?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "topics/break-and-meal-policy.md",
+   "title": "Break and Meal Policy",
+   "description": "Rules on break length, timing and free staff food during shifts.",
+   "aliases": [
+    "breaks policy"
+   ],
+   "facts": [
+    "Shifts over 6 hours get a 30 minute unpaid break, and shifts over 9 hours get an extra paid 15 minute break.",
+    "Breaks are taken on the back step, never at the counter or in the kitchen.",
+    "Staff meals are limited to one free pastry and one hot drink per shift.",
+    "Smoking is only allowed at the bench by the bins.",
+    "No break may start during the lunch rush from 12:00 to 13:30."
+   ],
+   "queries": [
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How much do workers receive to eat for nothing during a stint?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Dónde se puede fumar durante el turno?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "contracts/nilufar-cleaning-services.md",
+   "title": "Nilufar Cleaning Services Contract",
+   "description": "Evening cleaning contract with a fixed monthly fee and automatic renewal terms.",
+   "aliases": [
+    "cleaners"
+   ],
+   "facts": [
+    "Cleaners arrive Monday, Wednesday and Saturday at 21:00 after closing and finish by 23:00.",
+    "The monthly fee is 640 euros plus sales tax, fixed until 31 December 2026.",
+    "The contract renews for 12 months unless cancelled in writing 60 days before the end date.",
+    "Supervisor Nilufar Rashidova holds a spare key, and the alarm code is given in person only.",
+    "Deep cleaning of ovens and extractors is done on the last Sunday of each quarter for 120 euros extra."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How early do we have to tell Nilufar we're stopping, so the deal doesn't roll over?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "On what schedule do the sweepers come in after we lock up?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuánto cuesta limpiar a fondo los hornos?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "decisions/2026-paynest-card-terminal-switch.md",
+   "title": "Paynest Card Terminal Switch",
+   "description": "Decision to replace the bank card terminal and the terms of the new provider.",
+   "aliases": [
+    "card machine"
+   ],
+   "facts": [
+    "Switched from the old bank terminal to Paynest on 2 September 2026.",
+    "The fee is 1.2 percent per transaction with no monthly charge, saving about 85 euros a month.",
+    "Contactless limit is 100 euros, above which a PIN is required.",
+    "Payouts reach the bank account on the next working day by 10:00.",
+    "Support line is open 24 hours on 0800 555 0112, and the old terminal must be returned by 30 October 2026 or a 60 euro fee applies."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is the highest amount a customer can tap before being asked for a secret number?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How soon after a sale does Paynest send us our money?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Hasta cuándo hay que devolver el terminal antiguo para evitar un cargo?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "topics/morning-opening-checklist.md",
+   "title": "Morning Opening Checklist",
+   "description": "Step-by-step routine for the first person in to get the bakery ready.",
+   "aliases": [
+    "opening routine"
+   ],
+   "facts": [
+    "The first person in unlocks the back door at 6:45 and disarms the alarm within 30 seconds with a personal code.",
+    "Ovens are switched on at 6:50 and preheated to 230 degrees before the first tray.",
+    "The till float is counted by 7:30 and the card terminal is tested with a 1 cent transaction.",
+    "Display cases are stocked by 7:45 and the chalkboard menu is updated with allergens.",
+    "The front door is unlocked at 8:00 sharp and the Open sign is flipped."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "How long do you have to silence the burglar system after coming in?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What tiny sale is rung up to confirm the payment machine is working?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿A qué hora se gira el cartel de abierto en la puerta principal?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "suppliers/molino-reyes-flour.md",
+   "title": "Molino Reyes Flour",
+   "description": "Flour supplier with weekly pallet delivery and prices fixed through March 2027.",
+   "aliases": [
+    "Molino Reyes"
+   ],
+   "facts": [
+    "Supplies 25 kg sacks of bread flour at 21.60 euros and rye flour at 24.90 euros.",
+    "Delivery is by pallet only on Wednesdays, with a minimum order of 8 sacks and free delivery above 20 sacks.",
+    "Prices are fixed until 31 March 2027 under a verbal agreement with owner Joaquin Reyes.",
+    "Flour must be stored off the floor, and the oldest sacks with the earliest best-before date are used first.",
+    "Short deliveries must be reported by phone on the same day or the claim is void."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "From what volume does Molino Reyes waive its transport costs?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "Up to when will Molino Reyes keep its rates steady?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Qué hay que hacer si llega menos harina de la pedida?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "topics/stamp-card-loyalty-scheme.md",
+   "title": "Stamp Card Loyalty Scheme",
+   "description": "Rules for the paper loyalty card used at the counter.",
+   "aliases": [
+    "loyalty card"
+   ],
+   "facts": [
+    "Customers collect one stamp per purchase over 6 euros, and ten stamps earn a free coffee worth up to 4.50 euros.",
+    "Cards expire 12 months after the first stamp, and lost cards are not replaced.",
+    "Printing costs about 140 euros each quarter from Dovetail Print.",
+    "Birthday customers get a free pastry once per year if they show ID.",
+    "Staff must not stamp purchases made through delivery apps."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What's the smallest spend that qualifies a visitor for a mark toward the reward?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "What happens when a regular misplaces their punch sheet?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos sellos hacen falta para conseguir un café gratis?"
+    }
+   ]
+  },
+  {
+   "domain": "business",
+   "path": "topics/annual-leave-policy.md",
+   "title": "Annual Leave Policy",
+   "description": "Holiday entitlement, request deadlines and carry-over rules for employees.",
+   "aliases": [
+    "holiday policy"
+   ],
+   "facts": [
+    "Full-time staff get 25 days paid holiday per year, and part-timers accrue it pro rata.",
+    "Requests for more than 3 consecutive days need 4 weeks notice and are answered within 7 days.",
+    "No more than two employees may be off at once, and 15 to 31 December is blocked unless drawn by lottery on 1 November.",
+    "Up to 5 unused days carry over until 31 March.",
+    "Sick leave is paid in full for the first 3 days, then at 70 percent up to 28 days with a doctor's note."
+   ],
+   "queries": [
+    {
+     "id": "q1",
+     "lang": "en",
+     "text": "What is the biggest leftover vacation balance that can roll into spring?"
+    },
+    {
+     "id": "q2",
+     "lang": "en",
+     "text": "How much of your normal earnings do you keep while ill after the initial stretch?"
+    },
+    {
+     "id": "q3",
+     "lang": "es",
+     "text": "¿Cuántos empleados pueden estar de vacaciones a la vez?"
+    }
+   ]
+  }
+ ]
+}
