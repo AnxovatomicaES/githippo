@@ -143,3 +143,20 @@ test("import: different non-Latin names stay different notes", async () => {
   const paths = (await store.list()).map((f) => f.path).filter((p) => p.startsWith("topics/"));
   assert.equal(new Set(paths).size, 3, paths.join(", "));
 });
+
+test("plugin installed: setup and install don't add a second copy of the hooks and the MCP server", async () => {
+  const { home, env } = await box();
+  const settings = join(home, ".claude", "settings.json");
+  await mkdir(join(home, ".claude", "plugins"), { recursive: true });
+  await writeFile(join(home, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: { "githippo@githippo": [{ version: "3.9.0" }] } }));
+  await writeFile(settings, JSON.stringify({ theme: "dark" }));
+  const r = run(["install", "--repo", "a/b", "--token-env", "T"], { ...env, T: "ghp_explicit_token_value_1234" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /hooks and MCP: from the githippo plugin/);
+  const after = JSON.parse(await readFile(settings, "utf8"));
+  assert.equal(after.hooks, undefined, "no hooks were added next to the plugin's");
+  assert.ok(after.statusLine, "the status line is not something a plugin provides, so it is still added");
+  const ss = run(["setup"], { ...env, STORE: "local", VAULT_DIR: join(home, "vault") });
+  assert.match(ss.stdout, /hooks come from the githippo plugin/);
+  assert.equal(JSON.parse(await readFile(settings, "utf8")).hooks, undefined);
+});

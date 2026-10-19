@@ -157,3 +157,13 @@ test("versions: every pinned tag in a file is checked, and doctor exits non-zero
   assert.match(r.stdout, /✗ Claude Code hooks installed/);
   assert.equal(r.status, 1, "a ✗ line means a failing exit code");
 });
+
+test("recall: a pack never goes over its token budget", async () => {
+  const store = new InMemoryStore();
+  for (let i = 0; i < 60; i++) await store.write(`topics/t${i}.md`, `---\nname: t${i}\n---\n\n${Array.from({ length: 6 }, (_, j) => `- Deployment fact ${i}-${j}: the pelican release pipeline uses blue green rollout with canary stage number ${j} and rollback window`).join("\n")}\n`, "new");
+  const brain = new Brain({ store, index: new MemoryIndex(store, null, {}) });
+  for (const budget of [100, 150, 200, 333, 500, 1200, 4000]) {
+    const r = await brain.recall("pelican release pipeline deployment", { mode: "pack", budget });
+    assert.ok(r.tokens <= budget, `budget ${budget}: pack is ${r.tokens} tokens`);
+  }
+});

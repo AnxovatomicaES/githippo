@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/instal
 
 That's the whole install: no account, no token, no questions. It sets up a local memory vault, wires Claude Code (hooks, MCP, status line) and fetches semantic search in the background. Restart Claude Code and just talk; it remembers.
 
-Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.8.1 demo` shows it working in 30 seconds without installing anything.
+Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.9.0 demo` shows it working in 30 seconds without installing anything.
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -187,11 +187,11 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
 
-Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.8.1`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.9.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
 
 Coming from the official reference memory server? `githippo import ~/path/to/memory.jsonl` turns its entities, observations and relations into notes and typed links (secrets guard and dedupe apply, so re-running is safe).
 
-Plugin route: run the install above, then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. Or hand your agent [`INSTALL_FOR_AGENTS.md`](https://github.com/AnxovatomicaES/githippo/blob/main/INSTALL_FOR_AGENTS.md).
+Plugin route: run the install above (for the `githippo` command), then `/plugin marketplace add AnxovatomicaES/githippo` and `/plugin install githippo`. The plugin supplies the hooks and the MCP server, and `githippo setup` / `githippo install` notice it and don't add a second copy (that used to run every hook twice). If you already have both, run `githippo uninstall` and keep the plugin. Or hand your agent [`INSTALL_FOR_AGENTS.md`](https://github.com/AnxovatomicaES/githippo/blob/main/INSTALL_FOR_AGENTS.md).
 
 <details><summary><b>Claude Desktop</b> (one-click extension)</summary>
 
@@ -212,7 +212,7 @@ Every change is pushed in the background; the server pulls other machines' chang
 The phone and web apps can't reach your laptop, so this mode reads the vault from GitHub:
 
 1. `githippo sync --github` (above).
-2. Click **Deploy to Render** at the top. Set `MEMORY_REPO` (e.g. `you/githippo-memory`), `GITHUB_TOKEN` (fine-grained, that one repo, *Contents: Read and write*) and `PUBLIC_URL` (your service's https URL). `MCP_SECRET` is generated for you. The default Render plan has 512 MB, so the server starts with keyword search (`EMBEDDINGS=none`); on a plan with 2 GB or more, set `EMBEDDINGS=local` for the multilingual model.
+2. Click **Deploy to Render** at the top. Set `MEMORY_REPO` (e.g. `you/githippo-memory`), `GITHUB_TOKEN` (fine-grained, that one repo, *Contents: Read and write*) and `PUBLIC_URL` (your service's https URL). `MCP_SECRET` is generated for you. The default Render plan has 512 MB, so the server starts with keyword search (`EMBEDDINGS=none`); on a plan with 2 GB or more, set `EMBEDDINGS=local` for the multilingual model. The blueprint also attaches a 1 GB disk at `/var/data` for the OAuth state file (spent login codes and refresh tokens): without a persistent disk, reuse detection forgets everything at each restart. Tokens still expire; this is defence in depth, and costs about $0.25 a month.
 3. In claude.ai: Settings → Connectors → Add custom connector → `https://<your-app>.onrender.com/mcp`. Claude registers itself and opens a sign-in page; enter `MCP_SECRET` once. That's standard OAuth 2.1 (PKCE, dynamic client registration, audience-bound tokens), so nothing secret ever sits in a URL.
 
 **A shared vault for a team.** Add people with folder-level access; each signs in with their own password:
@@ -276,7 +276,7 @@ Configuration precedence is one rule everywhere: environment variable, then `~/.
 | `MEMORY_STYLE` | `plain` | `terse` removes padding (articles, filler) from recalled memory and core before Claude reads it; files on disk are never changed. Rules from [caveman](https://github.com/JuliusBrussee/caveman), limited to deletions that can't change meaning: negations, numbers, names, code, URLs and paths always survive. Measured saving is small (about 3% on terse notes, 10% on wordy ones), and caveman's own cited research found compressing what a model reads can hurt answers, so it's off by default |
 | `GITHIPPO_CONFIRM` | `auto` | `auto` asks for confirmation on external-source facts, pins and removals when the client supports MCP elicitation; `strict` refuses them without it; `off` never asks |
 | `PROMPT_RECALL` | `1` | `0` turns off the per-prompt hook |
-| `ANTHROPIC_API_KEY` | | only for `maintain rewrite=` |
+| `ANTHROPIC_API_KEY` | | paid model calls: `maintain rewrite=`, `consolidate`, `contextualize` and the `llm-eval` benchmarks (nothing else uses it) |
 | `VOYAGE_API_KEY` | | for `EMBEDDINGS=voyage` |
 
 ## Security model, honestly
@@ -290,7 +290,7 @@ Configuration precedence is one rule everywhere: environment variable, then `~/.
 ## Develop
 
 ```bash
-npm ci && npm test      # 171 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 210+ tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 

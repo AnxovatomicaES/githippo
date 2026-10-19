@@ -243,7 +243,8 @@ async function install() {
     console.error(`✗ ${settingsPath} isn't valid JSON, so hooks weren't added. Fix it and run githippo install again.`);
     process.exit(1);
   }
-  const applied = applyHooks(settings);
+  const viaPlugin = await pluginInstalled();
+  const applied = applyHooks(settings, { hooks: !viaPlugin });
   if (applied.error) {
     console.error(`✗ ${settingsPath}: ${applied.error}, so hooks weren't added. Fix it and run githippo install again.`);
     process.exit(1);
@@ -251,20 +252,20 @@ async function install() {
   await backupOnce(settingsPath);
   await mkdir(join(homedir(), ".claude"), { recursive: true });
   await writeFile(settingsPath, JSON.stringify(settings, null, 2));
-  console.log(`\n✓ config → ${CONFIG_FILE} (chmod 600)\n✓ hooks → ${settingsPath} (original backed up once)\n✓ status line: ${applied.statusLine ? "added" : "kept your existing status line"}\n✓ MCP: ${registerMcp()}\n\nNext:\n  githippo init     # seed the repo\n  githippo doctor   # verify\n`);
+  console.log(`\n✓ config → ${CONFIG_FILE} (chmod 600)\n${viaPlugin ? "✓ hooks and MCP: from the githippo plugin (not added a second time)" : `✓ hooks → ${settingsPath} (original backed up once)`}\n✓ status line: ${applied.statusLine ? "added" : "kept your existing status line"}\n${viaPlugin ? "" : `✓ MCP: ${registerMcp()}\n`}\n\nNext:\n  githippo init     # seed the repo\n  githippo doctor   # verify\n`);
 }
 
 // A hook command that does nothing if githippo has been uninstalled (instead of failing on every Claude Code event).
 const hookCommand = (c) => (process.platform === "win32" ? c : `sh -c 'command -v githippo >/dev/null 2>&1 || exit 0; exec ${c}'`);
 
 /** Adds githippo's hooks and status line to a parsed settings.json. Refuses shapes it doesn't understand instead of mangling them. */
-function applyHooks(settings) {
+function applyHooks(settings, { hooks = true } = {}) {
   const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
   if (!isObj(settings)) return { error: "it must contain a JSON object" };
   if (settings.hooks !== undefined && !isObj(settings.hooks)) return { error: '"hooks" isn\'t an object' };
   for (const event of Object.keys(HOOKS)) if (settings.hooks?.[event] !== undefined && !Array.isArray(settings.hooks[event])) return { error: `hooks.${event} isn't a list` };
-  settings.hooks ??= {};
-  for (const [event, command] of Object.entries(HOOKS)) {
+  if (hooks) settings.hooks ??= {};
+  for (const [event, command] of hooks ? Object.entries(HOOKS) : []) {
     settings.hooks[event] ??= [];
     const has = settings.hooks[event].some((g) => Array.isArray(g?.hooks) && g.hooks.some((h) => typeof h?.command === "string" && h.command.includes("githippo hook")));
     if (!has) settings.hooks[event].push({ ...(event === "SessionStart" ? { matcher: "startup|resume|compact|fork" } : {}), hooks: [{ type: "command", command: hookCommand(command), timeout: ["PreCompact", "SessionEnd"].includes(event) ? 20 : 10 }] });
@@ -275,6 +276,11 @@ function applyHooks(settings) {
     statusLine = true;
   }
   return { statusLine };
+}
+
+/** True when the githippo Claude Code plugin is installed: it already provides the hooks and the MCP server. */
+async function pluginInstalled() {
+  return /githippo/i.test(await readFile(join(homedir(), ".claude", "plugins", "installed_plugins.json"), "utf8").catch(() => ""));
 }
 
 /** Keeps the FIRST backup only: later runs would otherwise overwrite your original with an already-modified file. */
@@ -379,7 +385,7 @@ async function setup() {
     if (r.error) {
       say(`✗ Claude Code    not set up: ${r.error}. Fix that file, then run githippo setup again.`);
       process.exitCode = 1;
-    } else say(`✓ Claude Code    hooks${r.statusLine ? " + status line" : ""} · MCP ${r.mcp}`);
+    } else say(`✓ Claude Code    ${r.viaPlugin ? "hooks come from the githippo plugin" : "hooks"}${r.statusLine ? " + status line" : ""} · MCP ${r.mcp}`);
   } else {
     say("· Claude Code    not found (add the MCP server to your client: command `githippo serve`)");
   }
@@ -417,12 +423,14 @@ async function wireClaudeCode(settingsPath) {
   } catch {
     return { mcp: "skipped", statusLine: false, error: `${settingsPath} isn't valid JSON` };
   }
-  const applied = applyHooks(settings);
+  // With the plugin installed, hooks and MCP come from it: adding ours too would run every hook and register the server twice.
+  const viaPlugin = await pluginInstalled();
+  const applied = applyHooks(settings, { hooks: !viaPlugin });
   if (applied.error) return { mcp: "skipped", statusLine: false, error: `${settingsPath}: ${applied.error}` };
   await backupOnce(settingsPath);
   await mkdir(join(homedir(), ".claude"), { recursive: true });
   await writeFile(settingsPath, JSON.stringify(settings, null, 2));
-  return { mcp: commandExists("claude") ? registerMcp() : "not registered (claude CLI not found)", statusLine: applied.statusLine };
+  return { mcp: viaPlugin ? "from the githippo plugin (not added twice)" : commandExists("claude") ? registerMcp() : "not registered (claude CLI not found)", statusLine: applied.statusLine, viaPlugin };
 }
 
 /** Backs the local vault up to a private GitHub repo using the user's own gh login. No token is stored. */

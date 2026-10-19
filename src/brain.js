@@ -281,17 +281,17 @@ export class Brain {
       text = plain(text);
       if (!sections.has(path)) {
         const head = `§ ${path}${f.description ? ` — ${f.description}` : ""}${via ? ` (via ${via})` : ""} v:${f.version.slice(0, 8)}`;
-        if (used + head.length > cap) return;
+        if (used + head.length + 1 > cap) return; // +1: the newline that joins it to what follows
         sections.set(path, { head, parts: [] });
-        used += head.length;
+        used += head.length + 1;
       }
       const s = sections.get(path);
       if (s.parts.includes(text)) return;
-      const room = cap - used;
+      const room = cap - used - 1;
       if (room < 40) return;
       const piece = text.length > room ? `${text.slice(0, room - 1)}…` : text;
       s.parts.push(piece);
-      used += piece.length;
+      used += piece.length + 1; // the joining newlines count too, or the pack drifts a few characters over its budget
     };
     if (entityId && !SYSTEM_FILES.has(this.graph.nodes.get(entityId).path)) {
       const f = this.file(this.graph.nodes.get(entityId).path);

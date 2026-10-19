@@ -7,6 +7,10 @@ services:
     buildCommand: npm ci
     startCommand: node src/cli.js http
     healthCheckPath: /health
+    disk:                    # holds the OAuth state file so spent login codes / refresh tokens stay spent across restarts
+      name: githippo-state
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: "22"
@@ -26,6 +30,8 @@ services:
         value: none              # none | local (needs 2 GB+) | static (English only, ~200 MB) | voyage (API key)
       - key: CACHE_DIR
         value: /tmp/githippo
+      - key: OAUTH_STATE_FILE
+        value: /var/data/oauth-state.json
       - key: VOYAGE_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
