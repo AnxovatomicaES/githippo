@@ -128,17 +128,20 @@ export async function parseTranscriptFile(path) {
   const p = transcriptParser();
   // Split on "\n" only. readline also splits on U+2028/U+2029, and JSON.stringify writes those raw inside strings, so a prompt
   // containing one was cut in two and both halves were dropped as invalid JSON.
-  let rest = "";
+  // Each chunk is searched once and the pieces of an unfinished line are joined once, when it ends: re-scanning the accumulated text for
+  // every chunk is quadratic, and one 30 MB line (a pasted file, a base64 image) took seconds.
+  let parts = [];
   for await (const chunk of createReadStream(path, { encoding: "utf8" })) {
-    rest += chunk;
     let from = 0;
-    for (let i = rest.indexOf("\n", from); i >= 0; i = rest.indexOf("\n", from)) {
-      p.line(rest.slice(from, i).replace(/\r$/, ""));
+    for (let i = chunk.indexOf("\n", from); i >= 0; i = chunk.indexOf("\n", from)) {
+      parts.push(chunk.slice(from, i));
+      p.line(parts.join("").replace(/\r$/, ""));
+      parts = [];
       from = i + 1;
     }
-    rest = rest.slice(from);
+    if (from < chunk.length) parts.push(chunk.slice(from));
   }
-  p.line(rest.replace(/\r$/, ""));
+  if (parts.length) p.line(parts.join("").replace(/\r$/, ""));
   return p.result();
 }
 

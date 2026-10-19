@@ -250,7 +250,7 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
         }
         if (b.client_id !== c.cid || b.redirect_uri !== c.uri) return oauthError(res, 400, "invalid_grant", "client_id or redirect_uri mismatch"), true;
         if (b64(createHash("sha256").update(String(b.code_verifier || "")).digest()) !== c.chal) return oauthError(res, 400, "invalid_grant", "PKCE verification failed"), true;
-        if (b.resource && b.resource.replace(/\/+$/, "") !== c.res.replace(/\/+$/, "")) return oauthError(res, 400, "invalid_target", "resource mismatch"), true;
+        if (b.resource && String(b.resource).replace(/\/+$/, "") !== c.res.replace(/\/+$/, "")) return oauthError(res, 400, "invalid_target", "resource mismatch"), true;
         usedCodes.set(c.jti, c.exp);
         for (const [k, exp] of usedCodes) if (exp < now()) usedCodes.delete(k);
         persist();

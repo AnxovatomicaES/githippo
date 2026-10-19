@@ -9,6 +9,7 @@ const home = await mkdtemp(join(tmpdir(), "r5h-"));
 process.env.GITHIPPO_HOME = home;
 const { postCompact } = await import("../src/hooks.js");
 const { parseTranscript, parseTranscriptFile, renderCheckpoint } = await import("../src/transcript.js");
+const { speedFactor } = await import("./helpers.js");
 
 const line = (o) => JSON.stringify(o);
 const user = (text, extra = {}) => line({ type: "user", cwd: "/work/app", message: { role: "user", content: text }, ...extra });
@@ -86,4 +87,15 @@ test("MEDIUM B10: the compactor's summary is screened, and can't forge one of ou
   const after2 = await readFile(join(ckDir, `${sid2}.md`), "utf8");
   assert.ok(!/ignore all previous instructions/i.test(after2), after2);
   assert.match(after2, /instruction-like text removed/);
+});
+
+test("MEDIUM B8b: reading a transcript is linear: one 60 MB line (a pasted file or image) takes milliseconds, not seconds (found by the fuzzer)", async () => {
+  const file = join(home, "bigline.jsonl");
+  await writeFile(file, `${JSON.stringify({ type: "user", message: { content: "y".repeat(60_000_000) } })}\n${user("after the big one")}`);
+  const t = performance.now();
+  const parsed = await parseTranscriptFile(file);
+  const took = performance.now() - t;
+  assert.equal(parsed.prompts.length, 2);
+  assert.equal(parsed.prompts[1], "after the big one", "the line after it is still read");
+  assert.ok(took < 1000 * speedFactor(), `took ${took.toFixed(0)} ms (the earlier version took ~3.5 s for this)`);
 });
