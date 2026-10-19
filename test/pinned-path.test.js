@@ -47,7 +47,7 @@ test("setup pins absolute paths: the hooks and the status line run with a PATH t
   assert.equal(status.status, 0);
   assert.match(status.stdout, /githippo/, "the status line ran too");
   assert.equal(pre.stderr + status.stderr, "", "nothing on stderr");
-  assert.equal(spawnSync("sh", ["-c", "command -v githippo"], { env: { PATH: GUI_PATH } }).status, 1, "the control: githippo really is not on that PATH");
+  assert.notEqual(spawnSync("sh", ["-c", "command -v githippo"], { env: { PATH: GUI_PATH } }).status, 0, "the control: githippo really is not on that PATH (dash exits 127 here, bash 1)");
 });
 
 test("the pinned node is a PATH entry that survives an upgrade, not the versioned folder it points into", opts, async () => {
