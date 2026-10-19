@@ -261,3 +261,21 @@ test("LOW A12: the consent page shows where the browser will be sent and warns t
     s.app.close();
   }
 });
+
+test("LOW A13: a non-string `resource` at the token endpoint is an invalid_target, not a 500", async () => {
+  const s = await startApp();
+  try {
+    const p = await loginPage(s);
+    const r = await fetch(`${s.base}/authorize`, { method: "POST", body: new URLSearchParams({ req: p.req, action: "allow", username: "john", password: s.pw.john }), redirect: "manual" });
+    const code = new URL(r.headers.get("location")).searchParams.get("code");
+    const res = await fetch(`${s.base}/token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ grant_type: "authorization_code", code, client_id: p.reg.client_id, redirect_uri: p.redirect, code_verifier: p.verifier, resource: 12345 }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).error, "invalid_target");
+  } finally {
+    s.app.close();
+  }
+});

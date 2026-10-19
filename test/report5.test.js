@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, mkdir, symlink, chmod, stat } from "node:fs/promises";
-import { existsSync, mkdirSync, cpSync, readdirSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, cpSync, readdirSync, symlinkSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -372,4 +372,53 @@ test("HIGH A2: plain `githippo sync` and `doctor` refuse a public backup (no ano
   assert.match(doc.stdout, /✗ backup → .*PUBLIC repository/);
   const ok = cli(["doctor"], { ...e, GITHIPPO_ALLOW_PUBLIC_BACKUP: "1" }, { nodeArgs });
   assert.match(ok.stdout, /backup → /);
+});
+
+test("MEDIUM C13: a note in another encoding is reported, never decoded lossily and written back over the user's file", async () => {
+  const dir = await tmp("r5-latin1-");
+  const store = await new FileStore({ dir, autoPush: false }).ensure();
+  const brain = new Brain({ store, index: new MemoryIndex(store, null, {}) });
+  await store.write("topics/ok.md", "---\nname: ok\n---\n\n- a fine note about tea\n", "new");
+  const latin1 = Buffer.concat([Buffer.from("---\nname: cafe\n---\n\n- caf"), Buffer.from([0xe9]), Buffer.from(" au lait, 5 euros\n")]);
+  const file = join(dir, "memory", "topics", "cafe.md");
+  await writeFile(file, latin1);
+  await assert.rejects(store.read("topics/cafe.md"), /isn't valid UTF-8/);
+  await assert.rejects(store.append("topics/cafe.md", "- more", "x"), /isn't valid UTF-8|Version conflict|does not exist/);
+  await assert.rejects(store.replace("topics/cafe.md", "au lait", "noir", "x"), /isn't valid UTF-8/);
+  await assert.rejects(store.write("topics/cafe.md", "---\nname: cafe\n---\n\n- replaced\n", "x"), /isn't valid UTF-8/);
+  assert.ok((await readFile(file)).equals(latin1), "the original bytes are untouched");
+  // everything else keeps working, and the unreadable note is reported rather than taking memory down
+  const lines = [];
+  const orig = console.error;
+  console.error = (...a) => lines.push(a.join(" "));
+  try {
+    assert.equal((await brain.remember("Prefers green tea", { about: "ok" })).status, "saved");
+    assert.match(JSON.stringify(await brain.recall("tea")), /green tea/);
+  } finally {
+    console.error = orig;
+  }
+  assert.match(lines.join("\n"), /cafe\.md: .*UTF-8/, "the skip is reported");
+  assert.ok((await readFile(file)).equals(latin1), "still untouched after remember and recall");
+  // the same on the GitHub store
+  const body = { type: "file", sha: "a".repeat(40), size: latin1.length, content: latin1.toString("base64"), encoding: "base64" };
+  const gh = new GitHubMemoryStore({ token: "t", repo: "me/mem", fetchImpl: async () => ({ status: 200, ok: true, headers: { get: () => null }, json: async () => body }) });
+  await assert.rejects(gh.read("topics/cafe.md"), /isn't valid UTF-8/);
+  await assert.rejects(gh.append("topics/cafe.md", "- more", "a".repeat(40)), /isn't valid UTF-8/);
+});
+
+test("LOW C14: a relative VAULT_DIR means a stable place, not a vault per working directory", async () => {
+  const home = await tmp("r5-cfg-");
+  await mkdir(join(home, "g"));
+  await writeFile(join(home, "g", "config.json"), JSON.stringify({ VAULT_DIR: "notes", CACHE_DIR: "../elsewhere" }));
+  const elsewhere = await tmp("r5-cwd-");
+  const script = `const m = await import(${JSON.stringify(pathToFileURL(join(SRC, "config.js")).href)});
+    const env = {}; m.applyFileConfig(env); const c = m.loadConfig(env);
+    const e2 = { VAULT_DIR: "rel/vault" }; const c2 = m.loadConfig(e2);
+    console.log(JSON.stringify({ fileVault: c.VAULT_DIR, fileCache: c.CACHE_DIR, envVault: c2.VAULT_DIR }));`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], { cwd: elsewhere, env: { PATH: process.env.PATH, HOME: home, GITHIPPO_HOME: join(home, "g") }, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.fileVault, join(home, "g", "notes"), "from config.json: inside ~/.githippo, wherever the process started");
+  assert.equal(out.fileCache, join(home, "elsewhere"));
+  assert.equal(out.envVault, join(realpathSync(elsewhere), "rel", "vault"), "from the environment: relative to where it was typed");
 });

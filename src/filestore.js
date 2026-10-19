@@ -7,6 +7,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
+import { isUtf8 } from "node:buffer";
 import { KeyedMutex, withFileLock } from "./lock.js";
 import { join, dirname, sep } from "node:path";
 import { MemoryError, MAX_FILE_BYTES, normalizePath, sameVersion } from "./store.js";
@@ -156,7 +157,11 @@ export class FileStore {
     let content;
     for (let attempt = 0; ; attempt++) {
       try {
-        content = await readFile(f, "utf8");
+        const buf = await readFile(f);
+        // A note in another encoding (Latin-1 from an old editor…) can't be decoded without replacing bytes with U+FFFD, and the next
+        // append or edit would write that damage back over the user's file. So such a note is reported, never read or rewritten.
+        if (!isUtf8(buf)) throw new MemoryError(`${p} isn't valid UTF-8 text, so githippo won't read or rewrite it (that would replace the bytes it can't decode). Convert it to UTF-8 first.`);
+        content = buf.toString("utf8");
         break;
       } catch (e) {
         if (["ENOENT", "EISDIR", "ENOTDIR"].includes(e.code)) return null; // genuinely not a file

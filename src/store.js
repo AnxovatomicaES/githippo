@@ -1,5 +1,6 @@
 // GitHub-backed memory store. Every write is a commit; the blob SHA is the
 // version token, so concurrent sessions can't silently overwrite each other.
+import { isUtf8 } from "node:buffer";
 
 export class MemoryError extends Error {
   constructor(message, details = {}) {
@@ -65,7 +66,12 @@ export function* untar(buf) {
 }
 
 const b64encode = (s) => Buffer.from(s, "utf8").toString("base64");
-const b64decode = (s) => Buffer.from(s, "base64").toString("utf8");
+const b64decode = (s, p = "this note") => {
+  const buf = Buffer.from(s, "base64");
+  // see FileStore.read: decoding a non-UTF-8 note would replace bytes, and the next append would write the damage back
+  if (!isUtf8(buf)) throw new MemoryError(`${p} isn't valid UTF-8 text, so githippo won't read or rewrite it (that would replace the bytes it can't decode). Convert it to UTF-8 first.`);
+  return buf.toString("utf8");
+};
 
 export class GitHubMemoryStore {
   constructor({ token, repo, branch = "main", root = "memory", source = "githippo", fetchImpl = fetch }) {
@@ -133,7 +139,7 @@ export class GitHubMemoryStore {
     let n = 0;
     for (const { name, body } of untar(gunzipSync(Buffer.from(await res.arrayBuffer())))) {
       if (!name.endsWith(".md")) continue;
-      this.blobs.set(blobSha(body), body.toString("utf8"));
+      if (isUtf8(body)) this.blobs.set(blobSha(body), body.toString("utf8")); // a non-UTF-8 note isn't cached: reading it through the API reports it
       n++;
     }
     return n;
@@ -159,7 +165,7 @@ export class GitHubMemoryStore {
     if (data.encoding === "none" || (data.size > 0 && !data.content)) {
       throw new MemoryError(`${p} is ${data.size} bytes, too large to read through the GitHub API (1 MB limit), so githippo won't edit it. Split the note, or use a local vault.`);
     }
-    return { path: p, content: b64decode(data.content || ""), version: data.sha };
+    return { path: p, content: b64decode(data.content || "", p), version: data.sha };
   }
 
   /** Lists memory files with their blob SHA (used for incremental indexing). */
