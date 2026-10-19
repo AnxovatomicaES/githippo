@@ -29,9 +29,13 @@ export function parseFrontmatter(content) {
   const meta = {};
   const lines = m[1].split("\n").slice(0, 200);
   for (let i = 0; i < lines.length; i++) {
-    const kv = lines[i].match(/^([A-Za-z_][\w-]{0,40}):[ \t]*(.{0,2000})$/);
+    // "key:" then the value. Split by hand: `:[ \t]*(.{0,2000})$` backtracked through a long run of spaces once per position
+    // when the value was over the limit (60 KB of spaces: 0.75 s on a CI machine)
+    const km = lines[i].match(/^([A-Za-z_][\w-]{0,40}):/);
+    const raw = km ? lines[i].slice(km[0].length).replace(/^[ \t]+/, "") : "";
     // __proto__ / constructor / prototype would rewrite the object's prototype; they're not metadata
-    if (!kv || ["__proto__", "constructor", "prototype"].includes(kv[1])) continue;
+    if (!km || raw.length > 2000 || ["__proto__", "constructor", "prototype"].includes(km[1])) continue;
+    const kv = [lines[i], km[1], raw];
     if (kv[2].trim() === "") {
       // Obsidian writes lists as a block: "aliases:\n  - a\n  - b"
       const items = [];
