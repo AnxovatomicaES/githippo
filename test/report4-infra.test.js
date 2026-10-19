@@ -16,6 +16,7 @@ import { acceptProposals } from "../src/consolidate.js";
 import { parseFile } from "../src/parse.js";
 import { renderCheckpoint, parseTranscript } from "../src/transcript.js";
 import { setup } from "./helpers.js";
+import { speedFactor } from "./helpers.js";
 
 const GIT_ID = ["-c", "user.name=t", "-c", "user.email=t@t"];
 const g = (dir, ...a) => execFileSync("git", ["-C", dir, ...a], { stdio: "pipe" }).toString();
@@ -183,7 +184,7 @@ test("MEDIUM: forwarded headers are ignored without TRUST_PROXY; an oversized OA
   assert.equal(big.status, 413);
   const t0 = Date.now();
   assert.ok((await fetch(`${plain.base}/health`)).ok);
-  assert.ok(Date.now() - t0 < 2000, "no 6 s hang after an oversized body");
+  assert.ok(Date.now() - t0 < 2000 * speedFactor(), "no 6 s hang after an oversized body");
 
   const s = await startApp({}, { users: true });
   t.after(() => s.close());

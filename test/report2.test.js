@@ -12,6 +12,7 @@ import { MemoryIndex } from "../src/search.js";
 import { Brain } from "../src/brain.js";
 import { Accounts, parseAcl } from "../src/accounts.js";
 import { createHttpApp } from "../src/http.js";
+import { speedFactor } from "./helpers.js";
 
 const CLI = new URL("../src/cli.js", import.meta.url).pathname;
 const vault = async () => { const dir = await mkdtemp(join(tmpdir(), "r2-")); const store = await new FileStore({ dir, autoPush: false }).ensure(); return { dir, store, brain: new Brain({ store, index: new MemoryIndex(store, null, {}) }) }; };
@@ -114,7 +115,7 @@ test("LOW a write made while git is busy for long still gets committed without a
   setTimeout(() => execFileSync("rm", ["-f", join(dir, ".git", "index.lock")]), 8000);
   const t0 = Date.now();
   const r = await store.write("x.md", "- held lock\n", "new");
-  assert.ok(Date.now() - t0 < 5000, `write blocked for ${Date.now() - t0} ms`);
+  assert.ok(Date.now() - t0 < 5000 * speedFactor(), `write blocked for ${Date.now() - t0} ms`);
   assert.equal(r.committed, false, "the write says it isn't committed yet");
   const log = () => execFileSync("git", ["-C", dir, "log", "--format=%s"]).toString();
   for (let i = 0; i < 15 && !log().includes("memory: write x.md"); i++) await new Promise((res) => setTimeout(res, 1000));

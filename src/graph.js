@@ -26,6 +26,18 @@ function linksOf(f) {
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * Does a sentence start at `pos`: the very start of the text, or ". " / "! " / "? " (any whitespace) right before it?
+ * Same answer as testing /(^|[.!?]\s+)$/ on text.slice(0, pos), without copying and rescanning the whole prefix for every
+ * match (that made mentions() quadratic: 1.5 s on 64 KB of repeated names).
+ */
+export function startsSentence(text, pos) {
+  if (pos === 0) return true;
+  let i = pos;
+  while (i > 0 && /\s/.test(text[i - 1])) i--;
+  return i < pos && i > 0 && ".!?".includes(text[i - 1]);
+}
+
 export class KnowledgeGraph {
   constructor(files = []) {
     this.nodes = new Map(); // id -> node
@@ -176,7 +188,7 @@ export class KnowledgeGraph {
         for (const { id, proper, oneWordCommon } of hits) {
           if (exclude.includes(id)) continue;
           if (visible && !visible(this.nodes.get(id).path)) continue; // never reveal a note the caller can't read
-          if (proper && oneWordCommon && /(^|[.!?]\s+)$/.test(text.slice(0, pos))) continue; // B6
+          if (proper && oneWordCommon && startsSentence(text, pos)) continue; // B6
           const prev = found.get(id);
           if (!prev || span.length > prev.match.length) found.set(id, { id, match: span, pos });
         }

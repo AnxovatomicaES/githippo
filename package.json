@@ -9,7 +9,8 @@
   "scripts": {
     "test": "node --test --test-timeout=60000 test/*.test.js",
     "start": "node src/cli.js http",
-    "bench": "node src/cli.js bench"
+    "bench": "node src/cli.js bench",
+    "fuzz": "node --test --test-timeout=900000 fuzz/fuzz.test.js"
   },
   "keywords": [
     "mcp",

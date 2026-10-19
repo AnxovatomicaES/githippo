@@ -1,0 +1,32 @@
+name: fuzz
+# Deep fuzzing with a fresh random seed every night. A failure prints its seed:
+#   FUZZ_SEED=<seed> FUZZ_ITERATIONS=<k> npm run fuzz
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Seed (blank = this run's id)"
+        required: false
+      iterations:
+        description: "Iteration multiplier"
+        default: "5"
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Fuzz
+        env:
+          FUZZ_SEED: ${{ inputs.seed || github.run_id }}
+          FUZZ_ITERATIONS: ${{ inputs.iterations || '5' }}
+        run: |
+          echo "seed=$FUZZ_SEED iterations=$FUZZ_ITERATIONS"
+          npm run fuzz

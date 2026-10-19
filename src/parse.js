@@ -59,7 +59,7 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
     // facts that came from web pages, files or tool output are marked so Claude treats them as data
     const text = raw
       .split("\n")
-      .map((l) => (/<!--\+\S+ src:external-->/.test(l) ? l.replace(/^(\s*[-*]\s+)/, "$1[external] ") : l))
+      .map((l) => (/<!--\+\d{4}-\d{2}-\d{2} src:external-->/.test(l) ? l.replace(/^(\s*[-*]\s+)/, "$1[external] ") : l))
       .join("\n")
       .replace(/\s*<!--[^]{0,300}?-->/g, "")
       .trim();

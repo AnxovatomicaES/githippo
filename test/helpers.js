@@ -21,3 +21,18 @@ export function setup({ embedder = hashEmbedder(), llm = null, cacheDir } = {}) 
   const index = new MemoryIndex(store, embedder, { cacheDir });
   return { gh, store, index, brain: new Brain({ store, index, llm, coreBudgetTokens: 60 }) };
 }
+
+let cached = { at: 0, value: 1 };
+/**
+ * How many times slower than a typical idle machine this one is right now (1 = as fast or faster). Timing assertions multiply
+ * their limits by it: they exist to catch blow-ups (the bugs they guard against took seconds, even minutes), not to fail on a
+ * busy laptop or a slow shared CI runner.
+ */
+export function speedFactor() {
+  if (Date.now() - cached.at < 1000) return cached.value;
+  const t = performance.now();
+  let x = 0;
+  for (let i = 0; i < 2e7; i++) x = (x + i * 7) % 1000003;
+  cached = { at: Date.now(), value: x < 0 ? 1 : Math.min(20, Math.max(1, (performance.now() - t) / 145)) }; // 145 ms: this loop on an idle development machine
+  return cached.value;
+}

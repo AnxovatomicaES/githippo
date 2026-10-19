@@ -1,5 +1,5 @@
 // Seeded generators for the fuzz tests. Everything is deterministic from the seed, so a failure is reproducible:
-//   FUZZ_SEED=123 FUZZ_ITERATIONS=5 node --test test/fuzz.test.js
+//   FUZZ_SEED=123 FUZZ_ITERATIONS=5 node --test fuzz/fuzz.test.js
 export function rng(seed) {
   let a = seed >>> 0;
   const next = () => {

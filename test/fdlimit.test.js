@@ -3,15 +3,16 @@
 // Found while measuring scale: 30,000 notes on disk, 19,980 indexed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const SRC = new URL("../src/", import.meta.url).pathname;
 
-test("a vault larger than the file-descriptor limit is indexed completely", async () => {
+test("a vault larger than the file-descriptor limit is indexed completely", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "fd-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   await mkdir(join(dir, "memory/notes"), { recursive: true });
   const N = 800;
   for (let i = 0; i < N; i++) await writeFile(join(dir, `memory/notes/n${i}.md`), `---\nname: n${i}\n---\n\n- note ${i} about topic ${i % 50}\n`);
@@ -29,9 +30,10 @@ test("a vault larger than the file-descriptor limit is indexed completely", asyn
   assert.deepEqual(JSON.parse(out.trim().split("\n").pop()), { indexed: N, listed: N });
 });
 
-test("a real read error is thrown, never reported as a missing note", async () => {
+test("a real read error is thrown, never reported as a missing note", async (t) => {
   const { FileStore } = await import("../src/filestore.js");
   const dir = await mkdtemp(join(tmpdir(), "fd2-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   await mkdir(join(dir, "memory/x.md"), { recursive: true }); // a directory where a note should be → EISDIR → null (not a note)
   const store = new FileStore({ dir, autoPush: false });
   assert.equal(await store.read("x.md"), null);

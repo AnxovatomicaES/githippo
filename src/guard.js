@@ -183,7 +183,13 @@ function* cardMatches(norm) {
   }
 }
 
-function* ruleMatches(norm) {
+// A redaction marker is opaque text we wrote ourselves, never a secret. Its colon, next to the surrounding text, could read as
+// "scheme://user:password@host" ("…https://[redacted:payment_card]{{x@@"), so redacted output re-triggered the guard and a
+// second redaction changed it again. Blank markers out (same length, so every position still lines up).
+const MARKER = /\[redacted:[a-z_0-9]+\]/g;
+
+function* ruleMatches(rawNorm) {
+  const norm = rawNorm.replace(MARKER, (m) => " ".repeat(m.length));
   yield* cardMatches(norm);
   for (const { kind, re, check } of COMPILED) {
     const rx = new RegExp(re.source, re.flags); // own lastIndex

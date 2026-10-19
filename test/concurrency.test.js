@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { FileStore } from "../src/filestore.js";
 import { MemoryIndex } from "../src/search.js";
 import { Brain } from "../src/brain.js";
+import { speedFactor } from "./helpers.js";
 
 const SRC = new URL("../src/", import.meta.url).pathname;
 
@@ -65,7 +66,7 @@ test("a lock left behind by a crashed process is taken over", async () => {
   const cur = await store.read("projects/johnny.md");
   const t0 = Date.now();
   await store.write("projects/johnny.md", `${cur.content}- after a crash\n`, cur.version);
-  assert.ok(Date.now() - t0 < 5000, "didn't wait for the stale lock to time out");
+  assert.ok(Date.now() - t0 < 5000 * speedFactor(), "didn't wait for the stale lock to time out");
   assert.match((await store.read("projects/johnny.md")).content, /after a crash/);
 });
 

@@ -1,12 +1,13 @@
 // Seeded fuzzing of every public entry point, checking invariants (not just "didn't crash").
-// Reproduce a failure:  FUZZ_SEED=<seed> FUZZ_ITERATIONS=1 node --test test/fuzz.test.js
-// Longer run:           npm run fuzz
+// Not part of `npm test` (each file there gets 60 s; this one takes 25-40 s alone and far longer on a busy CI runner).
+// Run it with:          npm run fuzz            (FUZZ_SEED=<n> FUZZ_ITERATIONS=<k> to reproduce or go deeper)
+// Reproduce a failure:  FUZZ_SEED=<seed> FUZZ_ITERATIONS=1 node --test fuzz/fuzz.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";
 import { spawnSync, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -210,9 +211,10 @@ test(`memory-tool backend: hostile paths and random operations stay inside the v
 });
 
 // ---------------------------------------------------------------------------------------------
-test(`hooks: hostile payloads never hang, throw internally or write outside the vault (seed ${SEED})`, slow, async () => {
+test(`hooks: hostile payloads never hang, throw internally or write outside the vault (seed ${SEED})`, slow, async (t) => {
   const r = rng(SEED + 3);
   const parent = await mkdtemp(join(tmpdir(), "fzh-"));
+  t.after(() => rm(parent, { recursive: true, force: true })); // holds a 30 MB transcript
   const home = join(parent, "home");
   const env = { PATH: process.env.PATH, HOME: home, GITHIPPO_HOME: home, VAULT_DIR: join(home, "vault"), STORE: "local", EMBEDDINGS: "none" };
   const tdir = join(parent, "transcripts");

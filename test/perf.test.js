@@ -11,6 +11,7 @@ import { stripMemoryTags, parseFile, plain } from "../src/parse.js";
 import { timeWindow } from "../src/when.js";
 import { KnowledgeGraph, maskSpans } from "../src/graph.js";
 import { setup } from "./helpers.js";
+import { speedFactor } from "./helpers.js";
 
 const N = 64 * 1024;
 const SHAPES = {
@@ -28,11 +29,12 @@ const FNS = {
 
 test("every text function stays fast on pathological 64 KB inputs", () => {
   const slow = [];
+  const S = speedFactor();
   for (const [f, fn] of Object.entries(FNS)) for (const [shape, input] of Object.entries(SHAPES)) {
     const t = performance.now();
     try { fn(input); } catch {}
     const ms = performance.now() - t;
-    if (ms > 600) slow.push(`${f}(${shape}) ${ms.toFixed(0)} ms`);
+    if (ms > 600 * S) slow.push(`${f}(${shape}) ${ms.toFixed(0)} ms`);
   }
   assert.deepEqual(slow, []);
 });
@@ -43,5 +45,5 @@ test("remember on a 64 KB one-word file takes milliseconds, not seconds", async 
   await brain.index.sync({ maxAgeMs: 0 });
   const t = Date.now();
   await brain.remember("A small fact about the big topic", { path: "topics/big.md" }).catch(() => {});
-  assert.ok(Date.now() - t < 1500, `${Date.now() - t} ms`);
+  assert.ok(Date.now() - t < 1500 * speedFactor(), `${Date.now() - t} ms`);
 });

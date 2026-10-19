@@ -176,3 +176,14 @@ test("M: huge relative times, alias takeover, History placement, BOM, scope boun
   await brain.index.sync({ maxAgeMs: 0 });
   assert.equal((await brain.recall("legacy zebra", { mode: "brief", scope: "projects" })).hits.length, 0);
 });
+
+test("fuzz finding: a redaction marker never makes redacted text look sensitive again, and redaction is idempotent", () => {
+  // found by seed 424: "[redacted:payment_card]" (a colon!) between "https://" and "@@" read as scheme://user:pass@host
+  const x = `cPostgres 16handleRefundhttps://example.com/ahttps://4111 1111 1111 1111{{${"[".repeat(60)}lll3handleRefund@@`;
+  assert.ok(scan(x).some((f) => f.kind === "payment_card"));
+  const once = redact(x).text;
+  assert.deepEqual(scan(once), [], "the redacted text is clean");
+  assert.equal(redact(once).text, once, "redacting twice changes nothing");
+  assert.ok(scan("[redacted:iban] 4111 1111 1111 1111").length, "a real card next to a marker is still caught");
+  assert.ok(scan("4111 1111 1111 1111 [redacted:x]").length, "writing a marker yourself hides nothing");
+});

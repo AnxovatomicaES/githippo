@@ -15,3 +15,5 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: node src/cli.js bench
+      - name: Fuzz (fixed seed, light)
+        run: npm run fuzz

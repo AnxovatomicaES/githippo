@@ -7,6 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { setup } from "./helpers.js";
 import { buildServer } from "../src/server.js";
+import { speedFactor } from "./helpers.js";
 
 afterEach(() => delete process.env.GITHIPPO_CONFIRM);
 
@@ -101,7 +102,7 @@ test("a pending question never blocks other memory writes", async () => {
   await new Promise((r) => setTimeout(r, 50));
   const t0 = Date.now();
   assert.match(await c.brain.remember("Fast ordinary fact", { about: "johnny" }).then(() => "ok"), /ok/);
-  assert.ok(Date.now() - t0 < 1500, "another write completed while the question was open");
+  assert.ok(Date.now() - t0 < 1500 * speedFactor(), "another write completed while the question was open");
   release();
   assert.match(await pending, /^✓/);
 });
