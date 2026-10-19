@@ -62,3 +62,36 @@ What it does **not** show: paraphrases (keyword mode has no way to bridge "the l
 
 This benchmark found a real bug: with usage learning on (the default), rank-1 accuracy on the needle questions fell from 100% to about 35% after a few dozen queries, because the usage boost was applied after rank fusion, where scores differ by 1 to 3% from one rank to the next. It is now applied to the raw scores (see the README), and `test/report6-ranking.test.js` guards it.
 
+
+## A/B pilot: does an answer need the memory, and what does finding it cost?
+
+`eval/ab-setup.js`, `eval/ab-recall.js` and `eval/ab-score.js` run a small A/B on the same synthetic vault as the scale test (150 notes, seed 11). 12 questions: 6 **needle** ("What technology did we decide to use for the necocumu rollout?") and 6 **preference** ("What does Mei Zoveku prefer to use for communicating, and over what?"). Each question went to a fresh Claude Haiku subagent, one question per agent, in one of four arms. An answer counts as right when it contains the expected phrase (case-insensitive); the answers are kept in a file the agents never saw.
+
+| arm | what the agent could do |
+|---|---|
+| A | nothing: no notes, answer from knowledge |
+| B | githippo recall only (`eval/ab-recall.js`, keyword index) |
+| C | read the whole memory in one file (about 7 thousand tokens at 150 notes) |
+| D | search the note files itself with Grep, Glob, Read or `grep` |
+
+| arm | correct | accuracy (95% Wilson interval) | mean tokens per question | mean tool calls |
+|---|---|---|---|---|
+| A | 0/12 | 0% (0-24%) | 68,056 | 1 |
+| B | 12/12 | 100% (76-100%) | 69,436 | 2.3 |
+| C | 12/12 | 100% (76-100%) | 85,185 | 2 |
+| D | 12/12 | 100% (76-100%) | 71,947 | 3.7 |
+
+About 68 thousand tokens of every figure is the fixed overhead of starting a subagent (arm A pays only that), so the cost of finding the answer is the difference from A: **recall +1.4k, searching files +3.9k, reading everything +17.1k**.
+
+What this shows: at 150 notes, recall found every planted fact and cost the least of the arms that could look (2.3 tool calls, against 3.7 for searching files; reading one file takes 2). Reading everything cost about 12 times as much as recall for the same accuracy, and that gap grows with the vault (see the scale table above).
+
+What it does **not** show, and the reasons not to read more into it:
+- **A is a sanity check, not a result.** The facts are invented, so no model can know them: 0% is the expected value, and it only proves the questions can't be answered without the notes. Whether memory improves answers about real work is still not measured.
+- **B, C and D are tied.** 12 of 12 each; with 12 questions the interval is 76-100%, so a difference of one or two answers would be invisible. The token and tool-call gaps are one run each, with no repeats.
+- **The questions are the easy case.** Full names and rare codenames; a file search finds them as well as recall does. Paraphrases ("the language I prefer" for "TypeScript") are not tested; the LongMemEval table at the top is where that is measured.
+- **B is a proxy for the MCP tool.** The agent ran a script that calls the same recall code over an in-memory keyword index, not the MCP server, so B does not pay the tool schema that `githippo bench` measures (about 790 tokens per turn). Add that to B for a fair comparison in a real session.
+- **Restrictions were given as instructions** ("use only this command"), not enforced; the tool-call counts suggest they were followed.
+- **One small model, one seed, one vault, synthetic notes.** A "preference" note can also be self-referential (the generator can write "design docs over design docs"); the scorer accepts it by containment.
+- Subagent token counts include the agent's own start-up, so only differences between arms mean anything.
+
+To repeat it: `node eval/ab-setup.js --size 150 --questions 12 --seed 11 --out <dir>`, give each question to a fresh agent per arm with the file paths above, save each answer as `<dir>/answers/<arm>-<qid>.txt`, put the token and tool counts in `<dir>/usage.json` as `{"<arm>-<qid>": {"tokens": n, "tools": n}}`, then `node eval/ab-score.js <dir>`. A fairer next step needs an API key and many more questions: paraphrased ones, a bigger vault, several seeds, and the real MCP server.
