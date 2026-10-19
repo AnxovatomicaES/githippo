@@ -5,7 +5,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "command -v githippo >/dev/null 2>&1 && exec githippo serve || exec npx -y github:AnxovatomicaES/githippo#v3.9.2 serve"
+        "command -v githippo >/dev/null 2>&1 && exec githippo serve || exec npx -y github:AnxovatomicaES/githippo#v3.9.3 serve"
       ]
     }
   }
