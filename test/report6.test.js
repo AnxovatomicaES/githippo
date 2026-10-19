@@ -76,3 +76,31 @@ test("the lazy imports behave: serve over stdio, precompact and session-end hook
   assert.equal((await client.listTools()).tools.length, 8);
   await client.close();
 });
+
+// Windows-style paths, checked on every platform (the Windows CI job is informational only; see docs/platforms.md)
+test("hooks understand Windows paths: project name, changed files, steering", async () => {
+  const home = await mkdtemp(join(tmpdir(), "r6w-"));
+  const script = `process.env.GITHIPPO_HOME = ${JSON.stringify(home)};
+    const h = await import(${JSON.stringify(pathToFileURL(join(SRC, "hooks.js")).href)});
+    const win = "C:\\\\Users\\\\me\\\\My App";
+    const ck = ["## Files changed", "- C:\\\\Users\\\\me\\\\app\\\\src\\\\a.js (2 edits)", "- /home/me/app/b.js", "- C:/Users/me/app/c.js"].join("\\n");
+    console.log(JSON.stringify({
+      seg: [h.lastSegment("C:\\\\Users\\\\me\\\\app"), h.lastSegment("/home/me/app/"), h.lastSegment("D:/work/proj"), h.lastSegment("")],
+      keyWin: h.projectKey("C:\\\\Users\\\\me\\\\app").split("-")[0],
+      keyPosix: h.projectKey("/home/me/app").split("-")[0],
+      keyDiffers: h.projectKey("C:\\\\a\\\\app") !== h.projectKey("C:\\\\b\\\\app"),
+      files: h.checkpointFiles(ck, "C:\\\\Users\\\\me\\\\app"),
+      filesPosix: h.checkpointFiles(ck, "/home/me/app"),
+      steer: h.steering({ todos: [], files: new Map([["C:\\\\Users\\\\me\\\\app\\\\src\\\\a.js", 2]]), errors: [], prompts: [] }),
+    }));`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], { env: { PATH: process.env.PATH, HOME: home }, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.seg, ["app", "app", "proj", ""]);
+  assert.equal(out.keyWin, "app", "a Windows cwd is named by its last folder, not by the whole path");
+  assert.equal(out.keyPosix, "app");
+  assert.ok(out.keyDiffers, "two folders called app still get different keys");
+  assert.deepEqual(out.files, ["C:\\Users\\me\\app\\src\\a.js"]);
+  assert.deepEqual(out.filesPosix, ["/home/me/app/b.js"]);
+  assert.match(out.steer, /Files changed: src\/a\.js/);
+});

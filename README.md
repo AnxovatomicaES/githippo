@@ -154,6 +154,8 @@ And in time: the hooks run before every prompt and the status line runs constant
 
 ## Setup
 
+Platforms: Linux and macOS are tested in CI on every change; Windows is not supported yet (what fails and why is in [docs/platforms.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/platforms.md)), and WSL should behave like Linux.
+
 **Claude Code** (full experience: hooks + MCP)
 
 ```bash

@@ -16,9 +16,14 @@ const CK_DIR = join(HOME_DIR, "checkpoints");
 const STATE_DIR = join(HOME_DIR, "state");
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 const safeId = (s) => String(s || "unknown").replace(/[^\w-]/g, "").slice(0, 64);
+/** Last folder of a path written with either separator: a Windows cwd ("C:\\Users\\me\\app") has no "/" to split on. */
+export const lastSegment = (p) => String(p || "").split(/[\\/]/).filter(Boolean).pop() || "";
+// "- /abs/path (2 edits)" or "- C:\abs\path" lines of a checkpoint's "Files changed" section
+const CHECKPOINT_FILE = /^- ((?:\/|[A-Za-z]:[\\/])[^\s(]+)/gm;
+export const checkpointFiles = (ck, cwd) => [...ck.matchAll(CHECKPOINT_FILE)].map((m) => m[1]).filter((f) => f.startsWith(cwd));
 /** B22: checkpoints are keyed by project folder name + a hash of the full path, so ~/a/app and ~/b/app never mix. */
 export const projectKey = (cwd) => {
-  const name = safeId(String(cwd || "").split("/").filter(Boolean).pop() || "unknown");
+  const name = safeId(lastSegment(cwd) || "unknown");
   return `${name}-${createHash("sha1").update(String(cwd || "")).digest("hex").slice(0, 6)}`;
 };
 
@@ -51,7 +56,7 @@ export function drift(ck, cwd) {
   const was = fm(ck, "branch");
   const now = branchOf(cwd);
   if (was && now && was !== now) out.push(`branch changed: ${was} → ${now}`);
-  const files = [...ck.matchAll(/^- (\/[^\s(]+)/gm)].map((m) => m[1]).filter((f) => f.startsWith(cwd));
+  const files = checkpointFiles(ck, cwd);
   const gone = files.filter((f) => !existsSyncSafe(f));
   if (gone.length) out.push(`no longer exist: ${gone.slice(0, 4).map((f) => f.slice(cwd.length + 1)).join(", ")}`);
   return out.length ? `Since this was saved: ${out.join(" · ")}.` : "";
@@ -109,7 +114,7 @@ export function steering(t) {
   const lines = ["githippo: keep these in the compaction summary:"];
   const open = (t.todos || []).filter((x) => x.status !== "completed").slice(0, 6);
   if (open.length) lines.push(`- Open tasks: ${open.map((x) => `${defang(String(x.content))}${x.status === "in_progress" ? " (in progress)" : ""}`).join("; ")}`);
-  const files = [...t.files].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([f]) => f.split("/").slice(-2).join("/"));
+  const files = [...t.files].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([f]) => f.split(/[\\/]/).slice(-2).join("/"));
   if (files.length) lines.push(`- Files changed: ${files.join(", ")}`);
   if (t.errors?.length) lines.push(`- Unresolved errors: ${t.errors.slice(-2).map((e) => defang(e.slice(0, 120))).join(" | ")}`);
   if (t.prompts.length) lines.push(`- Latest user request: ${defang(t.prompts.at(-1).replace(/\s+/g, " ").slice(0, 200))}`);
@@ -143,7 +148,7 @@ const withoutSummary = (md) => md.split("\n## Compaction summary\n")[0];
 
 /** SessionStart: after compaction/resume, inject the checkpoint itself (not a reminder to read it). */
 export async function sessionStart(input) {
-  const project = input.cwd ? input.cwd.split("/").filter(Boolean).pop() : "";
+  const project = input.cwd ? lastSegment(input.cwd) : "";
   const key = input.cwd ? projectKey(input.cwd) : "";
   const branch = branchOf(input.cwd);
   const read = (f) => readFile(join(CK_DIR, f), "utf8").catch(() => null);

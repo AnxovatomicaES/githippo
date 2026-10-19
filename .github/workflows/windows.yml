@@ -1,0 +1,19 @@
+name: windows
+# Informational, not a merge gate. githippo does not support Windows yet: the suite still assumes POSIX in places (shell scripts as fake
+# `npm` and `claude`, file modes, `ulimit`, ssh signing). This runs the suite weekly and on demand so progress is visible and a regression
+# in the parts that do work is noticed. See docs/platforms.md for the current state.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 4 * * 1"
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
