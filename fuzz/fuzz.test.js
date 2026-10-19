@@ -3,6 +3,7 @@
 // Run it with:          npm run fuzz            (FUZZ_SEED=<n> FUZZ_ITERATIONS=<k> to reproduce or go deeper)
 // Reproduce a failure:  FUZZ_SEED=<seed> FUZZ_ITERATIONS=1 node --test fuzz/fuzz.test.js
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import net from "node:net";
 import { spawnSync, execFileSync } from "node:child_process";
@@ -30,7 +31,7 @@ import { importReferenceMemory } from "../src/importer.js";
 import { createHttpApp } from "../src/http.js";
 import { Accounts } from "../src/accounts.js";
 
-const CLI = new URL("../src/cli.js", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 const slow = { timeout: 240_000 };
 const silent = async (fn) => {
   const orig = console.error;

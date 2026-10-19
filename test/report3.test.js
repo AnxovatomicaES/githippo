@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { FileStore } from "../src/filestore.js";
 import { MemoryIndex } from "../src/search.js";
 import { Brain, matchLine } from "../src/brain.js";
@@ -22,8 +22,8 @@ import { steering } from "../src/hooks.js";
 import { createEmbedder } from "../src/embed.js";
 import { check } from "../scripts/versions.mjs";
 
-const CLI = new URL("../src/cli.js", import.meta.url).pathname;
-const SRC = new URL("../src/", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const vault = async () => {
   const dir = await mkdtemp(join(tmpdir(), "r3-"));
   const store = await new FileStore({ dir, autoPush: false }).ensure();
@@ -260,8 +260,8 @@ test("an install path with spaces and non-ASCII characters works (embedding work
   const base = await mkdtemp(join(tmpdir(), "sp ace é "));
   await mkdir(join(base, "gh"));
   await cp(SRC, join(base, "gh/src"), { recursive: true });
-  await cp(new URL("../package.json", import.meta.url).pathname, join(base, "gh/package.json"));
-  await symlink(new URL("../node_modules", import.meta.url).pathname, join(base, "gh/node_modules"));
+  await cp(fileURLToPath(new URL("../package.json", import.meta.url)), join(base, "gh/package.json"));
+  await symlink(fileURLToPath(new URL("../node_modules", import.meta.url)), join(base, "gh/node_modules"));
   await writeFile(join(base, "gh/t.mjs"), 'import { localEmbedder } from "./src/embed.js"; const e = localEmbedder("x"); const v = await e.embed(["hi"]); console.log("embedded", v[0].length); e.stop();');
   const r = run([join(base, "gh/t.mjs")], { GITHIPPO_EMBED_IMPL: "hash", GITHIPPO_HOME: join(base, "home") }, { cwd: join(base, "gh") });
   assert.match(r.stdout, /embedded 256/, r.stderr.slice(0, 200));

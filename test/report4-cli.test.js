@@ -6,15 +6,15 @@ import { mkdtemp, writeFile, readFile, mkdir, chmod, stat } from "node:fs/promis
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { FileStore } from "../src/filestore.js";
 import { InMemoryStore } from "../src/memstore.js";
 import { MemoryIndex } from "../src/search.js";
 import { Brain } from "../src/brain.js";
 import { importReferenceMemory } from "../src/importer.js";
 
-const CLI = new URL("../src/cli.js", import.meta.url).pathname;
-const SRC = new URL("../src/", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const box = async () => {
   const home = await mkdtemp(join(tmpdir(), "r4c-"));
   await mkdir(join(home, ".claude"), { recursive: true });

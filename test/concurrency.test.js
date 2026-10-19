@@ -1,6 +1,7 @@
 // Regression: parallel remember calls on the same entity lost ~95% of facts (ENOENT on temp-file rename and
 // unsynchronised read-check-write). Reported by an external MCP test suite.
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { mkdtemp, readdir, writeFile, utimes, mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -11,7 +12,7 @@ import { MemoryIndex } from "../src/search.js";
 import { Brain } from "../src/brain.js";
 import { speedFactor } from "./helpers.js";
 
-const SRC = new URL("../src/", import.meta.url).pathname;
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
 async function vault() {
   const dir = await mkdtemp(join(tmpdir(), "conc-"));

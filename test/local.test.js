@@ -1,5 +1,6 @@
 // Local vault (no GitHub needed) + one-command setup.
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -11,7 +12,7 @@ import { MemoryIndex } from "../src/search.js";
 import { hashEmbedder } from "../src/embed.js";
 import { Brain } from "../src/brain.js";
 
-const CLI = new URL("../src/cli.js", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 const vault = async () => {
   const dir = await mkdtemp(join(tmpdir(), "vault-"));
   const store = await new FileStore({ dir, autoPush: false }).ensure();

@@ -1,5 +1,6 @@
 // Regressions for the second external test report (one test per finding).
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtemp, writeFile } from "node:fs/promises";
@@ -14,7 +15,7 @@ import { Accounts, parseAcl } from "../src/accounts.js";
 import { createHttpApp } from "../src/http.js";
 import { speedFactor } from "./helpers.js";
 
-const CLI = new URL("../src/cli.js", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 const vault = async () => { const dir = await mkdtemp(join(tmpdir(), "r2-")); const store = await new FileStore({ dir, autoPush: false }).ensure(); return { dir, store, brain: new Brain({ store, index: new MemoryIndex(store, null, {}) }) }; };
 const cli = (args, env = {}) => { try { return { code: 0, out: execFileSync("node", [CLI, ...args], { env: { ...process.env, ...env }, stdio: "pipe" }).toString() }; } catch (e) { return { code: e.status, out: String(e.stdout), err: String(e.stderr) }; } };
 
