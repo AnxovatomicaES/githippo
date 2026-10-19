@@ -168,25 +168,52 @@ export function renderCheckpoint(t, { sessionId = "", budgetTokens = 900 } = {})
   ];
   const section = (title, lines) => lines.length && out.push(`## ${title}`, ...lines, "");
 
-  if (t.prompts.length) {
-    section("Goal", [`- ${clip(oneLine(t.prompts[0]), 400)}`]);
-    const recent = t.prompts.slice(1).slice(-4);
-    section("Latest requests", recent.map((p) => `- ${clip(oneLine(p), 240)}`));
-  }
-  if (t.todos?.length) {
-    const mark = { completed: "x", in_progress: "~", pending: " " };
-    section("Tasks", t.todos.filter((td) => td && typeof td === "object").map((td) => `- [${Object.hasOwn(mark, td.status) ? mark[td.status] : " "}] ${safe(td.content ?? "", 160)}`));
-  }
-  const files = [...t.files].sort((a, b) => b[1] - a[1]).slice(0, 15);
-  section("Files changed", files.map(([f, n]) => `- ${safe(f, 160)}${n > 1 ? ` (${n} edits)` : ""}`));
-  section("Recent errors", [...new Set(t.errors || [])].slice(-4).map((e) => `- ${safe(e, 200)}`));
-  section("Recent commands", [...new Set(t.commands)].slice(-5).map((c) => `- \`${safe(c, 120).replace(/`/g, "'")}\``));
-  if (t.lastAssistant) section("Where it stopped", [`- ${clip(oneLine(t.lastAssistant), 600)}`]);
-  if (t.priorSummary) section("Earlier summary", [`- ${clip(oneLine(t.priorSummary), 500)}`]);
-
-  let text = out.join("\n");
   const max = budgetTokens * 4;
-  if (text.length > max) text = `${text.slice(0, max - 20)}\n- …(truncated)\n`;
+  const header = out.slice();
+  // A checkpoint has a hard size budget, and a big session (the only kind that compacts) overflows it. Cutting the text at the limit dropped the
+  // LAST sections first: "Where it stopped", the errors and the commands, which are what a resumed session needs most. So the sections are built at
+  // decreasing detail until the whole fits: lowest-value detail goes first (the old summary, commands, older requests, completed tasks), the goal and
+  // where it stopped last, and nothing is ever cut mid-section. A small session fits at the first level and renders exactly as before.
+  const LEVELS = [
+    { goal: 400, req: 4, reqLen: 240, tasks: "all", taskLen: 160, files: 15, fileLen: 160, errors: 4, errLen: 200, commands: 5, cmdLen: 120, stop: 600, summary: 500 },
+    { goal: 400, req: 4, reqLen: 200, tasks: "all", taskLen: 120, files: 12, fileLen: 140, errors: 3, errLen: 160, commands: 3, cmdLen: 110, stop: 600, summary: 0 },
+    { goal: 300, req: 3, reqLen: 160, tasks: "open", taskLen: 120, files: 10, fileLen: 120, errors: 2, errLen: 150, commands: 2, cmdLen: 100, stop: 600, summary: 0 },
+    { goal: 250, req: 2, reqLen: 120, tasks: "open8", taskLen: 90, files: 6, fileLen: 100, errors: 1, errLen: 120, commands: 0, cmdLen: 0, stop: 500, summary: 0 },
+    { goal: 200, req: 1, reqLen: 100, tasks: "open5", taskLen: 70, files: 4, fileLen: 80, errors: 1, errLen: 100, commands: 0, cmdLen: 0, stop: 400, summary: 0 },
+  ];
+  const build = (c) => {
+    out.length = 0;
+    out.push(...header);
+    if (t.prompts.length) {
+      section("Goal", [`- ${clip(oneLine(t.prompts[0]), c.goal)}`]);
+      const recent = t.prompts.slice(1).slice(-c.req);
+      section("Latest requests", recent.map((p) => `- ${clip(oneLine(p), c.reqLen)}`));
+    }
+    if (t.todos?.length) {
+      const mark = { completed: "x", in_progress: "~", pending: " " };
+      const all = t.todos.filter((td) => td && typeof td === "object");
+      const open = all.filter((td) => td.status !== "completed");
+      const keep = c.tasks === "all" ? all : open.slice(0, c.tasks === "open" ? open.length : Number(c.tasks.slice(4)));
+      const lines = keep.map((td) => `- [${Object.hasOwn(mark, td.status) ? mark[td.status] : " "}] ${safe(td.content ?? "", c.taskLen)}`);
+      if (keep.length < all.length) lines.push(`- (+${all.length - keep.length} not shown, ${all.length - open.length} of the ${all.length} are done)`);
+      section("Tasks", lines);
+    }
+    const files = [...t.files].sort((a, b) => b[1] - a[1]).slice(0, c.files);
+    // a path is clipped from the left: its end is the file name, the part worth keeping
+    const tail = (f) => (oneLine(f).length > c.fileLen ? `…${oneLine(f).slice(-(c.fileLen - 1))}` : f);
+    section("Files changed", files.map(([f, n]) => `- ${safe(tail(f), 400)}${n > 1 ? ` (${n} edits)` : ""}`));
+    section("Recent errors", [...new Set(t.errors || [])].slice(-c.errors).map((e) => `- ${safe(e, c.errLen)}`));
+    section("Recent commands", c.commands ? [...new Set(t.commands)].slice(-c.commands).map((x) => `- \`${safe(x, c.cmdLen).replace(/`/g, "'")}\``) : []);
+    if (t.lastAssistant) section("Where it stopped", [`- ${clip(oneLine(t.lastAssistant), c.stop)}`]);
+    if (t.priorSummary && c.summary) section("Earlier summary", [`- ${clip(oneLine(t.priorSummary), c.summary)}`]);
+    return out.join("\n");
+  };
+  let text = "";
+  for (const level of LEVELS) {
+    text = build(level);
+    if (text.length <= max) break;
+  }
+  if (text.length > max) text = `${text.slice(0, max - 20)}\n- …(truncated)\n`; // only if even the smallest level doesn't fit (a tiny budget)
   return { project, text };
 }
 
