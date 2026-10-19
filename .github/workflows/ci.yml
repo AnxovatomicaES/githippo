@@ -2,10 +2,16 @@ name: ci
 on: [push, pull_request]
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false # one platform failing must not hide the others
       matrix:
+        os: [ubuntu-latest]
         node: [20, 22, 24]
+        include:
+          # the developer's platform and the one most strangers use: run the same suite on one Node version each
+          - { os: macos-latest, node: 22 }
+          - { os: windows-latest, node: 22 }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
