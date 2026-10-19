@@ -3,6 +3,8 @@ import { slugify } from "./brain.js";
 //   {"type":"entity","name":"John_Smith","entityType":"person","observations":["Speaks fluent Spanish"]}
 //   {"type":"relation","from":"John_Smith","to":"Anthropic","relationType":"works_at"}
 // Every fact goes through remember(): the secrets guard and dedupe apply, so re-running is safe.
+// own keys only: an entityType of "constructor" must not pick up Object.prototype's function as a folder name
+const folderOf = (type) => (Object.hasOwn(FOLDER, String(type || "").toLowerCase()) ? FOLDER[String(type).toLowerCase()] : "topics");
 const FOLDER = { person: "people", people: "people", project: "projects", organization: "orgs", organisation: "orgs", company: "orgs", decision: "decisions" };
 const slug = (s) => slugify(String(s));
 const title = (s) => String(s).replace(/_/g, " ").trim();
@@ -24,7 +26,7 @@ export async function importReferenceMemory(brain, jsonl) {
   }
   const pathOf = (name) => {
     const e = entities.get(name);
-    return `${FOLDER[String(e?.entityType || "").toLowerCase()] || "topics"}/${slug(name)}.md`;
+    return `${folderOf(e?.entityType)}/${slug(name)}.md`;
   };
   const r = { entities: entities.size, facts: 0, relations: 0, duplicates: 0, blocked: 0, rejected: 0, skippedLines: bad, reasons: [] };
   const save = async (fact, path, about, kind) => {
@@ -45,7 +47,7 @@ export async function importReferenceMemory(brain, jsonl) {
   };
   for (const e of entities.values()) {
     const path = pathOf(e.name);
-    const kind = FOLDER[String(e.entityType || "").toLowerCase()] === "people" ? "person" : "topic";
+    const kind = folderOf(e.entityType) === "people" ? "person" : "topic";
     const obs = (Array.isArray(e.observations) ? e.observations : []).filter((x) => typeof x === "string" && x.trim());
     if (!obs.length) obs.push(`${title(e.name)} (${e.entityType || "entity"})`);
     for (const o of obs) if (await save(o, path, title(e.name), kind)) r.facts++;

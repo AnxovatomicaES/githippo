@@ -266,6 +266,20 @@ export function scan(text) {
  * was (the previous version returned the normalised copy: "4.1.1" became "4 1 1", accents and emoji changed).
  */
 export function redact(text) {
+  // Redacting one thing can leave two others next to each other ("passwd```" … "=======" once a card number between them is blanked), so
+  // a single pass isn't always final. Repeat until nothing is left to find: markers never match, so this ends, and redact(redact(x)) == redact(x).
+  let out = String(text);
+  let count = 0;
+  for (let pass = 0; pass < 4; pass++) {
+    const r = redactOnce(out);
+    if (!r.count) break;
+    out = r.text;
+    count += r.count;
+  }
+  return { text: out, count };
+}
+
+function redactOnce(text) {
   const src = String(text);
   const { norm, spans } = normalizeWithMap(src);
   const found = [...ruleMatches(norm)].sort((a, b) => a.start - b.start || b.end - a.end);

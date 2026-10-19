@@ -120,7 +120,9 @@ export function createHttpApp(brain, { secret, key, accounts = new Accounts({ ow
 
     // Every request runs as its user: their ACL, their core memory, commits attributed to them.
     const acl = new Acl(user);
-    const view = brain.forUser(acl.isAdmin && user.id === "owner" ? null : acl);
+    // The unrestricted view is for the single-owner server only. In a multi-user vault even an account called "owner" gets its ACL view:
+    // a catch-all rule never opens another user's folder, and read-only carve-outs (isAdmin ignores them) must still apply.
+    const view = brain.forUser(!accounts.multiUser && acl.isAdmin && user.id === "owner" ? null : acl);
     // Instructions (which carry core memory) are only sent in the initialize response: load core then, fresh.
     if (calls.some((c) => c.method === "initialize")) await view.loadCore().catch(() => {});
     const server = buildServer(view);

@@ -203,9 +203,28 @@ export class Brain {
     if (!acl || acl === ALLOW_ALL) return this;
     const view = Object.create(this);
     view.acl = acl;
-    view.store = new AclStore(this.store, acl);
+    view.store = new AclStore(this.store, acl, { filterIndex: (content) => view.filterIndex(content) });
     view.core = "";
     return view;
+  }
+
+  /**
+   * index.md is the table of contents: a line per note with its title and description. Someone who can read index.md but not a note
+   * must not learn from it what that note is called or about, so lines linking to notes this view can't read are left out of what it sees.
+   */
+  async filterIndex(content) {
+    await this.index.sync(); // the graph must know every note the TOC links to (cached: cheap when nothing changed)
+    return String(content)
+      .split("\n")
+      .filter((line) => {
+        for (const m of line.matchAll(/\[\[([^\[\]|]+)(?:\|[^\]]*)?\]\]/g)) {
+          const id = this.graph.resolve(m[1]);
+          const node = id && this.graph.nodes.get(id);
+          if (node && !this.acl.canRead(node.path)) return false;
+        }
+        return true;
+      })
+      .join("\n");
   }
 
   get user() {
@@ -218,6 +237,11 @@ export class Brain {
 
   get graph() {
     return this.index.graph;
+  }
+
+  /** For KnowledgeGraph.resolve: may this caller read this note? A getter, so a per-user view (Object.create(brain)) gets ITS acl, not the base brain's. */
+  get visibleNode() {
+    return (node) => !!node && this.acl.canRead(node.path);
   }
 
   get t() {
@@ -294,7 +318,7 @@ export class Brain {
         hits: hits.map((h) => ({ ref: `${h.path}:${h.line}`, text: plain(h.text.split("\n").find((l) => l.trim()) || "").slice(0, 110), cost: approxTokens(plain(h.text)), via: h.signals.graph })),
       };
     }
-    const entityId = this.graph.resolve(query);
+    const entityId = this.graph.resolve(query, this.visibleNode);
     const cap = budget * 4;
     const sections = new Map();
     let used = 0;
@@ -350,15 +374,34 @@ export class Brain {
       return { path: np, reason: "explicit", ...(create ? { create } : {}) };
     }
     if (about) {
-      let id = this.graph.resolve(about);
+      // A note the caller can't read doesn't exist as far as they're concerned: routing to it would answer "denied" where an unknown name
+      // answers "saved", and that difference tells them the hidden note exists. So resolution only sees notes they can read.
+      let id = this.graph.resolve(about, this.visibleNode);
       if (id && SYSTEM_PATH.test(this.graph.nodes.get(id).path)) id = null;
-      // A note the caller can't read doesn't exist as far as they're concerned. Routing to it would answer "denied" where an
-      // unknown name answers "saved", and that difference tells them the hidden note exists.
-      if (id && !this.acl.canRead(this.graph.nodes.get(id).path)) id = null;
+      // In a team vault, any user with write access can create a note named like someone else's: its own name beats an alias, and the next
+      // fact about that person would be filed in a note the squatter reads. A name two notes claim is ambiguous: the fact waits in the inbox.
+      if (id && this.acl.user) {
+        const rivals = this.graph.claimants(about.trim().toLowerCase().replace(/\.md$/, "")).filter((c) => this.visibleNode(this.graph.nodes.get(c)));
+        if (rivals.length > 1) {
+          const where = rivals.map((c) => this.graph.nodes.get(c).path).sort().join(", ");
+          return { path: this.acl.home("inbox.md"), reason: `ambiguous name "${oneLine(about)}" (${where}): saved to your inbox, say which one with path=`, create: { title: "Inbox", kind: "inbox" } };
+        }
+      }
       if (id) return { path: this.graph.nodes.get(id).path, reason: `entity:${id}` };
       return { path: `${KIND_FOLDER[kind] || "topics"}/${entitySlug(about)}.md`, reason: "new entity", create: { title: about, kind: kind || "topic" } };
     }
-    const mentioned = this.graph.mentions(fact).map((m) => m.id).filter((id) => this.acl.canRead(this.graph.nodes.get(id).path));
+    const mentions = this.graph.mentions(fact).filter((m) => this.visibleNode(this.graph.nodes.get(m.id)));
+    const mentioned = mentions.map((m) => m.id);
+    if (this.acl.user) {
+      // the same squatting problem as `about`: one phrase in the fact that two readable notes both claim (see above)
+      const bySpan = new Map();
+      for (const m of mentions) bySpan.set(`${m.pos}:${m.match}`, (bySpan.get(`${m.pos}:${m.match}`) || new Set()).add(m.id));
+      const clash = [...bySpan.entries()].find(([, ids]) => ids.size > 1);
+      if (clash) {
+        const where = [...clash[1]].map((c) => this.graph.nodes.get(c).path).sort().join(", ");
+        return { path: this.acl.home("inbox.md"), reason: `ambiguous name "${clash[0].split(":").slice(1).join(":")}" (${where}): saved to your inbox, say which one with about= or path=`, create: { title: "Inbox", kind: "inbox" } };
+      }
+    }
     const hits = await this.search(fact, { k: 5, expand: false });
     if (mentioned.length) {
       const best = hits.find((h) => mentioned.includes(this.graph.idOf(h.path)));
@@ -420,7 +463,7 @@ export class Brain {
         try {
           return await fn();
         } catch (e) {
-          if (attempt >= 5 || !(e instanceof MemoryError) || !/Version conflict|already exists|sha|409/.test(e.message)) throw e;
+          if (attempt >= 5 || !(e instanceof MemoryError) || !/Version conflict|already exists|\bsha\b|409/.test(e.message)) throw e;
           await new Promise((r) => setTimeout(r, 20 * 2 ** attempt + Math.random() * 30));
           await this.index.sync({ maxAgeMs: 0 });
         }
@@ -869,14 +912,14 @@ export class Brain {
   // ---------- graph & time ----------
   async neighbors(entity, depth = 1) {
     await this.index.sync();
-    const r = this.graph.neighbors(entity, Math.min(depth, 3));
+    const r = this.graph.neighbors(entity, Math.min(depth, 3), this.visibleNode);
     if (!r || !this.acl.canRead(r.entity.path)) throw new MemoryError(`No entity "${entity}". Try recall.`);
     const visible = new Set([r.entity.id, ...r.nodes.filter((n) => this.acl.canRead(n.path)).map((n) => n.id)]);
     return { ...r, nodes: r.nodes.filter((n) => visible.has(n.id)), relations: r.relations.filter((x) => visible.has(x.from) && visible.has(x.to)) };
   }
 
   resolvePath(entity) {
-    const id = this.graph.resolve(entity);
+    const id = this.graph.resolve(entity, this.visibleNode);
     // same rule as chooseTarget: an unreadable note resolves like a name that doesn't exist (no "denied" vs "empty" oracle)
     return id && this.acl.canRead(this.graph.nodes.get(id).path) ? this.graph.nodes.get(id).path : normalizePath(entity.endsWith(".md") ? entity : `${entity}.md`);
   }

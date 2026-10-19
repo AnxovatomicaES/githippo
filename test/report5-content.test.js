@@ -195,3 +195,12 @@ test("MEDIUM B10: text can't close our context wrapper from inside", () => {
   assert.equal(wrapped.match(/<\/githippo-context>/g).length, 1, "only our own closing tag");
   assert.match(wrapped, /&lt;\/githippo-context/);
 });
+
+test("LOW B4: redact reaches a fixed point even when removing one secret leaves two others adjacent (found by the fuzzer)", () => {
+  const x = "see /etc/passwd```4111 1111 1111 1111=======\nrest";
+  const once = redact(x);
+  assert.deepEqual(scan(once.text), [], once.text);
+  assert.equal(redact(once.text).text, once.text, "redacting twice changes nothing");
+  assert.ok(once.count >= 1);
+  assert.equal(redact("nothing secret here").count, 0);
+});
