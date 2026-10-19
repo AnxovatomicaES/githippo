@@ -32,6 +32,13 @@ import { HOME_DIR } from "./config.js";
 // The local embedding runtime is ~500 MB, so it is NOT part of the install. It's fetched once, in the
 // background, into ~/.githippo/runtime; until it's there, recall quietly runs on keyword search.
 export const RUNTIME_DIR = join(HOME_DIR, "runtime");
+
+/**
+ * The environment for child processes that don't need our credentials. applyFileConfig() copies config.json keys (GITHUB_TOKEN,
+ * ANTHROPIC_API_KEY, MCP_SECRET…) into process.env for the rest of the program; `npm i` (and the install scripts of everything
+ * it fetches) and the embedding worker must not inherit them.
+ */
+export const cleanEnv = (env = process.env) => Object.fromEntries(Object.entries(env).filter(([k]) => !/TOKEN|SECRET|API_?KEY|PASSWORD|CREDENTIAL/i.test(k)));
 export const RUNTIME_PKG = "@huggingface/transformers@4.3.1";
 
 export async function importTransformers() {
@@ -47,7 +54,7 @@ export async function importTransformers() {
 }
 
 /** Starts a detached one-time install of the embedding runtime. Never blocks, never runs twice at once. */
-export function ensureRuntime({ wait = false } = {}) {
+export function ensureRuntime({ wait = false, force = false } = {}) {
   mkdirSync(RUNTIME_DIR, { recursive: true });
   const lock = join(RUNTIME_DIR, ".installing");
   const alive = (pid) => {
@@ -101,10 +108,29 @@ export function ensureRuntime({ wait = false } = {}) {
       unlinkSync(lock);
     } catch {}
   };
+  // A failed install (offline, no npm, a registry error) used to be retried on every embed attempt, i.e. every recall. A
+  // failure is stamped when we see npm exit badly (the server, which stays alive, always does; a short-lived command may
+  // exit before npm does and then just retries next time). We hold the lock, so nothing is installing: inside the hour, back
+  // off and let the log say why. `githippo warm` passes force to try again on purpose.
+  const failedFile = join(RUNTIME_DIR, ".failed");
+  if (!force) {
+    try {
+      if (Date.now() - Number(readFileSync(failedFile, "utf8")) < 60 * 60_000) {
+        release();
+        return wait ? Promise.resolve(false) : null;
+      }
+    } catch {}
+  }
+  const failed = () => {
+    try {
+      writeFileSync(failedFile, String(Date.now()));
+    } catch {}
+  };
   if (!existsSync(join(RUNTIME_DIR, "package.json"))) writeFileSync(join(RUNTIME_DIR, "package.json"), '{"private":true}\n');
   const log = openSync(join(RUNTIME_DIR, "install.log"), "a");
   const child = spawn("npm", ["i", "--no-audit", "--no-fund", "--loglevel=error", "--prefix", RUNTIME_DIR, RUNTIME_PKG], {
     detached: !wait,
+    env: cleanEnv(),
     stdio: ["ignore", log, log],
     shell: process.platform === "win32",
   });
@@ -113,7 +139,15 @@ export function ensureRuntime({ wait = false } = {}) {
     try {
       writeFileSync(join(RUNTIME_DIR, "install.log"), `could not run npm: ${e.message}\n`, { flag: "a" });
     } catch {}
+    failed();
     release();
+  });
+  child.on("exit", (code) => {
+    if (code === 0) {
+      try {
+        unlinkSync(failedFile);
+      } catch {}
+    } else failed();
   });
   if (child.pid) {
     try {
@@ -158,7 +192,7 @@ export function localEmbedder(model = DEFAULT_LOCAL_MODEL, { impl } = {}) {
   };
   const start = () => {
     child = fork(fileURLToPath(new URL("./embed-worker.js", import.meta.url)), [], {
-      env: { ...process.env, GITHIPPO_EMBED_MODEL: model, ...(impl ? { GITHIPPO_EMBED_IMPL: impl } : {}) },
+      env: { ...cleanEnv(), GITHIPPO_EMBED_MODEL: model, ...(impl ? { GITHIPPO_EMBED_IMPL: impl } : {}) },
       stdio: ["ignore", "ignore", "inherit", "ipc"],
     });
     const me = child;

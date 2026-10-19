@@ -4,12 +4,12 @@ import { mkdir, readFile, writeFile, copyFile, chmod } from "node:fs/promises";
 import { existsSync, openSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildServer, createBrain, instructions, VERSION } from "./server.js";
-import { loadConfig, applyFileConfig, CONFIG_FILE, HOME_DIR } from "./config.js";
+import { loadConfig, applyFileConfig, CONFIG_FILE, HOME_DIR, claudeDir, expandHome } from "./config.js";
+import { gitEnv } from "./filestore.js";
 import { fileURLToPath } from "node:url";
 import { preCompact, postCompact, sessionEnd, sessionStart, promptRecall, readStdin, cleanupOld, statusLine } from "./hooks.js";
 import { createHttpApp } from "./http.js";
@@ -23,9 +23,9 @@ applyFileConfig();
 const timeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
 
 /** B26: a missing or bad config is a one-line instruction, not a stack trace. */
-function brainOrExit(source) {
+function brainOrExit(source, env = process.env) {
   try {
-    return createBrain(process.env, { source });
+    return createBrain(env, { source });
   } catch (e) {
     console.error(`githippo is not configured: ${e.message}\nRun \`githippo install\` (or set GITHUB_TOKEN and MEMORY_REPO).`);
     process.exit(1);
@@ -240,7 +240,7 @@ async function install() {
     console.log(`\n✓ config → ${CONFIG_FILE} (chmod 600). Hooks and MCP come from the Claude Code plugin.\n`);
     return;
   }
-  const settingsPath = join(homedir(), ".claude", "settings.json");
+  const settingsPath = join(claudeDir(), "settings.json");
   let settings;
   try {
     settings = JSON.parse(await readFile(settingsPath, "utf8").catch(() => "{}"));
@@ -255,7 +255,7 @@ async function install() {
     process.exit(1);
   }
   await backupOnce(settingsPath);
-  await mkdir(join(homedir(), ".claude"), { recursive: true });
+  await mkdir(claudeDir(), { recursive: true });
   await writeFile(settingsPath, JSON.stringify(settings, null, 2));
   console.log(`\n✓ config → ${CONFIG_FILE} (chmod 600)\n${viaPlugin ? "✓ hooks and MCP: from the githippo plugin (not added a second time)" : `✓ hooks → ${settingsPath} (original backed up once)`}\n✓ status line: ${applied.statusLine ? "added" : "kept your existing status line"}\n${viaPlugin ? "" : `✓ MCP: ${registerMcp()}\n`}\n\nNext:\n  githippo init     # seed the repo\n  githippo doctor   # verify\n`);
 }
@@ -285,7 +285,7 @@ function applyHooks(settings, { hooks = true } = {}) {
 
 /** True when the githippo Claude Code plugin is installed: it already provides the hooks and the MCP server. */
 async function pluginInstalled() {
-  return /githippo/i.test(await readFile(join(homedir(), ".claude", "plugins", "installed_plugins.json"), "utf8").catch(() => ""));
+  return /githippo/i.test(await readFile(join(claudeDir(), "plugins", "installed_plugins.json"), "utf8").catch(() => ""));
 }
 
 /** Keeps the FIRST backup only: later runs would otherwise overwrite your original with an already-modified file. */
@@ -296,7 +296,7 @@ async function backupOnce(path) {
 
 /** Removes githippo's hooks, status line and MCP registration; the memory itself is left alone. */
 async function uninstall() {
-  const settingsPath = join(homedir(), ".claude", "settings.json");
+  const settingsPath = join(claudeDir(), "settings.json");
   let removed = 0;
   let settings = null;
   try {
@@ -374,8 +374,11 @@ async function setup() {
   const cfg = loadConfig();
   const file = { ...JSON.parse(await readFile(CONFIG_FILE, "utf8").catch(() => "{}")) };
   if (!file.STORE) file.STORE = cfg.STORE;
-  file.EMBEDDINGS ??= "local";
-  await mkdir(HOME_DIR, { recursive: true });
+  // keep what the user chose in the environment: hooks run without the MCP server's env, so anything not saved here is lost
+  file.EMBEDDINGS ??= cfg.EMBEDDINGS || "local";
+  if (process.env.VAULT_DIR && !file.VAULT_DIR) file.VAULT_DIR = resolve(expandHome(process.env.VAULT_DIR));
+  await mkdir(HOME_DIR, { recursive: true, mode: 0o700 });
+  await chmod(HOME_DIR, 0o700).catch(() => {}); // the vault and checkpoints are personal: not readable by other local users
   await writeFile(CONFIG_FILE, JSON.stringify(file, null, 2), { mode: 0o600 });
   await chmod(CONFIG_FILE, 0o600);
 
@@ -384,8 +387,8 @@ async function setup() {
   await seed(brain.store, () => {});
   say(`✓ memory vault   ${file.STORE === "github" ? `github.com/${cfg.MEMORY_REPO}` : loadConfig().VAULT_DIR}`);
 
-  const settingsPath = join(homedir(), ".claude", "settings.json");
-  if (existsSync(join(homedir(), ".claude")) || commandExists("claude")) {
+  const settingsPath = join(claudeDir(), "settings.json");
+  if (existsSync(claudeDir()) || commandExists("claude")) {
     const r = await wireClaudeCode(settingsPath);
     if (r.error) {
       say(`✗ Claude Code    not set up: ${r.error}. Fix that file, then run githippo setup again.`);
@@ -433,7 +436,7 @@ async function wireClaudeCode(settingsPath) {
   const applied = applyHooks(settings, { hooks: !viaPlugin });
   if (applied.error) return { mcp: "skipped", statusLine: false, error: `${settingsPath}: ${applied.error}` };
   await backupOnce(settingsPath);
-  await mkdir(join(homedir(), ".claude"), { recursive: true });
+  await mkdir(claudeDir(), { recursive: true });
   await writeFile(settingsPath, JSON.stringify(settings, null, 2));
   return { mcp: viaPlugin ? "from the githippo plugin (not added twice)" : commandExists("claude") ? registerMcp() : "not registered (claude CLI not found)", statusLine: applied.statusLine, viaPlugin };
 }
@@ -442,7 +445,12 @@ async function wireClaudeCode(settingsPath) {
 async function syncToGitHub(name) {
   const cfg = loadConfig();
   const dir = cfg.VAULT_DIR;
-  const git = (...a) => execFileSync("git", ["-C", dir, ...a], { stdio: "pipe" }).toString().trim();
+  const git = (...a) => execFileSync("git", ["-C", dir, ...a], { stdio: "pipe", env: gitEnv() }).toString().trim();
+  // `git -C dir` finds an enclosing repository when the vault has none of its own, and would push THAT one
+  if (!existsSync(join(dir, ".git"))) {
+    process.exitCode = 1;
+    return `✗ backup         ${dir} isn't a git repository yet: run githippo setup (or githippo init) first`;
+  }
   let linked = "";
   try {
     linked = git("remote");
@@ -484,6 +492,12 @@ async function sync() {
   const hasRemote = brain.store.git ? !!(await brain.store.git(["remote"])).out : false;
   if (!hasRemote) return console.log("· no remote; run githippo sync --github to back up to a private repo");
   const pulled = brain.store.pull ? await brain.store.pull() : true;
+  // the same rule as the background push: memory never goes to a repository anyone can read
+  const url = (await brain.store.git(["remote", "get-url", "origin"])).out;
+  if (process.env.GITHIPPO_ALLOW_PUBLIC_BACKUP !== "1" && (await remoteVisibility(url)) === "public") {
+    process.exitCode = 1;
+    return console.error(`✗ not pushed: ${publicBackupMessage(url)}`);
+  }
   const pushed = await brain.store.git(["push", "-q", "origin", "HEAD"], 30_000);
   if (!pulled || !pushed.ok) {
     process.exitCode = 1;
@@ -551,7 +565,7 @@ async function consolidateCmd() {
   let file = rest.includes("--transcript") ? rest[rest.indexOf("--transcript") + 1] : null;
   if (!file) {
     const { readdirSync, statSync } = await import("node:fs");
-    const root = join(homedir(), ".claude", "projects");
+    const root = join(claudeDir(), "projects");
     const all = readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).flatMap((d) => readdirSync(join(root, d.name)).filter((f) => f.endsWith(".jsonl")).map((f) => join(root, d.name, f)));
     file = all.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
   }
@@ -628,7 +642,7 @@ async function warm() {
   try {
     await importTransformers();
   } catch {
-    const ok = await ensureRuntime({ wait: true });
+    const ok = await ensureRuntime({ wait: true, force: true });
     if (!ok) {
       console.error("✗ couldn't install the embedding runtime; keyword search still works. See ~/.githippo/runtime/install.log");
       process.exit(1);
@@ -675,7 +689,8 @@ async function doctor() {
     ok(repo.permissions?.push !== false, "token can write");
   }
   }
-  const brain = brainOrExit("doctor");
+  // the index check below would start the embedding install by itself when the runtime is missing; doctor only looks
+  const brain = brainOrExit("doctor", sem.startsWith("ready") || mode === "none" ? process.env : { ...process.env, EMBEDDINGS: "none" });
   const t0 = Date.now();
   await brain.index.sync({ maxAgeMs: 0 }).then(
     () => ok(true, `indexed ${brain.index.files.size} files, ${brain.index.chunks?.length || 0} chunks in ${Date.now() - t0} ms (${brain.index.embedder?.id || "keyword only"})`),
@@ -683,8 +698,8 @@ async function doctor() {
   );
   await brain.loadCore();
   ok(true, `core memory ~${Math.ceil(brain.core.length / 4)}/${cfg.CORE_BUDGET_TOKENS} tokens`);
-  const settings = await readFile(join(homedir(), ".claude", "settings.json"), "utf8").catch(() => "");
-  const plugin = await readFile(join(homedir(), ".claude", "plugins", "installed_plugins.json"), "utf8").catch(() => "");
+  const settings = await readFile(join(claudeDir(), "settings.json"), "utf8").catch(() => "");
+  const plugin = await readFile(join(claudeDir(), "plugins", "installed_plugins.json"), "utf8").catch(() => "");
   ok(settings.includes("githippo hook precompact") || plugin.includes("githippo"), "Claude Code hooks installed (settings or plugin)");
 }
 

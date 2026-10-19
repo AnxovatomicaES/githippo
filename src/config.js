@@ -7,6 +7,8 @@ import { join } from "node:path";
 // B11: "~/…" in env or config means the home directory, not a folder literally named "~".
 export const expandHome = (p) => (typeof p === "string" && /^~(?=$|\/)/.test(p) ? join(homedir(), p.slice(1)) : p);
 export const HOME_DIR = expandHome(process.env.GITHIPPO_HOME) || join(homedir(), ".githippo");
+/** Claude Code's config folder: it honours CLAUDE_CONFIG_DIR, so hooks written to ~/.claude would never be read. */
+export const claudeDir = () => expandHome(process.env.CLAUDE_CONFIG_DIR) || join(homedir(), ".claude");
 export const CONFIG_FILE = join(HOME_DIR, "config.json");
 
 const KEYS = [

@@ -154,6 +154,11 @@ export class GitHubMemoryStore {
     const data = await this.api("GET", `/contents/${this.enc(p)}?ref=${encodeURIComponent(ref)}`);
     if (!data) return null;
     if (Array.isArray(data) || data.type !== "file") throw new MemoryError(`${p} is not a file.`);
+    // The contents API returns an empty body for files over 1 MB. Treating that as "empty note" would let append() replace
+    // the whole note with one line, so refuse instead.
+    if (data.encoding === "none" || (data.size > 0 && !data.content)) {
+      throw new MemoryError(`${p} is ${data.size} bytes, too large to read through the GitHub API (1 MB limit), so githippo won't edit it. Split the note, or use a local vault.`);
+    }
     return { path: p, content: b64decode(data.content || ""), version: data.sha };
   }
 

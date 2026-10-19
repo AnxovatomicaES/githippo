@@ -2,13 +2,13 @@
 // No GitHub account, repo or token needed. Versions are git blob SHAs, the same values the GitHub API
 // uses, so a vault can move between local and remote without any conversion. If a git remote is set,
 // commits are pushed in the background with the user's existing git credentials (gh, SSH, keychain).
-import { mkdir, open as openFile, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open as openFile, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { KeyedMutex, withFileLock } from "./lock.js";
-import { join, dirname } from "node:path";
+import { join, dirname, sep } from "node:path";
 import { MemoryError, MAX_FILE_BYTES, normalizePath, sameVersion } from "./store.js";
 
 /** The real git directory (in a linked worktree, .git is a FILE pointing elsewhere), or null if this isn't a repository. */
@@ -40,9 +40,18 @@ export const blobSha = (content) => {
   return createHash("sha1").update(`blob ${buf.length}\0`).update(buf).digest("hex");
 };
 
+/**
+ * Environment for every git process githippo starts. Note paths come from users and models, so they are literal
+ * (a `[s]ecret` in a path must not glob onto a note the caller can't read); nothing may stop to ask for a password on
+ * a terminal nobody is watching (the MCP server pushes in the background); ssh must fail instead of prompting.
+ */
+export const gitEnv = (env = process.env) => ({ ...env, GIT_LITERAL_PATHSPECS: "1", GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: env.GIT_SSH_COMMAND || "ssh -o BatchMode=yes" });
+/** Vault commits are made by githippo, not by whatever signing or hook setup the user's global git config has (GIT_SIGN=1 opts in to signing). */
+const COMMIT_AS_GITHIPPO = ["-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "-c", "commit.gpgsign=false"];
+
 const run = (cwd, args, timeout = 10_000) =>
   new Promise((resolve) =>
-    execFile("git", ["-C", cwd, ...args], { timeout, maxBuffer: 32 << 20 }, (err, stdout, stderr) =>
+    execFile("git", ["-C", cwd, ...args], { timeout, maxBuffer: 32 << 20, env: gitEnv() }, (err, stdout, stderr) =>
       resolve({ ok: !err, raw: String(stdout), out: String(stdout).trim(), err: String(stderr).trim() }),
     ),
   );
@@ -79,6 +88,22 @@ export class FileStore {
     return join(this.base, p);
   }
 
+  /**
+   * False when `f` is a symlink or resolves outside the vault. A collaborator (or a compromised remote) can push a
+   * symlink named like a note; without this, recall would read whatever it points at, and a write would go through it.
+   * Missing files and errors count as inside: the caller's own read or write reports those.
+   */
+  async inside(f) {
+    try {
+      if ((await lstat(f)).isSymbolicLink()) return false;
+      this.realBase ??= await realpath(this.base);
+      const real = await realpath(f);
+      return real === this.realBase || real.startsWith(this.realBase + sep);
+    } catch {
+      return true;
+    }
+  }
+
   async git(args, timeout) {
     return run(this.dir, args, timeout);
   }
@@ -93,9 +118,13 @@ export class FileStore {
     if (!existsSync(join(this.dir, ".git"))) {
       const r = await this.git(["init", "-q", "-b", "main"]);
       if (r.ok) {
-        await writeFile(join(this.dir, ".gitignore"), ".obsidian/workspace*\n.DS_Store\n*.tmp\n");
+        // an existing .gitignore (an Obsidian vault being adopted) is added to, never replaced
+        const ignorePath = join(this.dir, ".gitignore");
+        const have = existsSync(ignorePath) ? readFileSync(ignorePath, "utf8") : "";
+        const want = [".obsidian/workspace*", ".DS_Store", "*.tmp"].filter((l) => !have.split("\n").includes(l));
+        if (want.length) await writeFile(ignorePath, `${have}${have && !have.endsWith("\n") ? "\n" : ""}${want.join("\n")}\n`);
         await this.git(["add", ".gitignore"]);
-        await this.git(["-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "commit", "-q", "-m", "githippo: new memory vault"]);
+        await this.git([...COMMIT_AS_GITHIPPO, "commit", "-q", "--no-verify", "-m", "githippo: new memory vault"]);
         this.gitOk = undefined;
       }
     }
@@ -123,6 +152,7 @@ export class FileStore {
       return r.ok ? { path: p, content: r.raw, version: blobSha(r.raw) } : null;
     }
     const f = this.abs(p);
+    if (!(await this.inside(f))) return null; // a symlink is not a note
     let content;
     for (let attempt = 0; ; attempt++) {
       try {
@@ -152,7 +182,7 @@ export class FileStore {
         return;
       }
       for (const e of entries) {
-        if (e.name.startsWith(".")) continue;
+        if (e.name.startsWith(".") || e.isSymbolicLink()) continue; // symlinks are never notes (and one to a FIFO would hang the listing)
         const r = rel ? `${rel}/${e.name}` : e.name;
         if (e.isDirectory()) await walk(join(dir, e.name), r);
         else if (e.name.endsWith(".md") && r.startsWith(prefix)) {
@@ -221,7 +251,7 @@ export class FileStore {
           continue;
         }
         // GIT_SIGN=1: sign with the user's own git identity and signing key (GPG or SSH), so tampering is detectable
-        const sign = process.env.GIT_SIGN === "1" ? ["commit", "-q", "-S"] : ["-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "commit", "-q"];
+        const sign = process.env.GIT_SIGN === "1" ? ["commit", "-q", "-S"] : [...COMMIT_AS_GITHIPPO, "commit", "-q", "--no-verify"];
         const c = await this.git([...sign, "-m", `${summary}\n\nMemory-Op: ${op}\nMemory-Source: ${this.source}`, "--", scope]);
         if (c.ok || /nothing to commit|no changes added/i.test(c.out + c.err)) {
           this.pendingCommit = false;
@@ -250,7 +280,7 @@ export class FileStore {
     if (tries > 60) return;
     this.commitRetry = setTimeout(async () => {
       const add = await this.git(["add", "-A", "--", this.root || "."]);
-      const c = add.ok ? await this.git(["-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "commit", "-q", "-m", `${summary}\n\nMemory-Op: ${op}\nMemory-Source: ${this.source}`, "--", this.root || "."]) : add;
+      const c = add.ok ? await this.git([...COMMIT_AS_GITHIPPO, "commit", "-q", "--no-verify", "-m", `${summary}\n\nMemory-Op: ${op}\nMemory-Source: ${this.source}`, "--", this.root || "."]) : add;
       if (c.ok || /nothing to commit/i.test(c.out + c.err)) this.pendingCommit = false;
       else this.scheduleCommitRetry(summary, op, tries + 1);
     }, 2000);
@@ -291,6 +321,7 @@ export class FileStore {
     }
     const f = this.abs(p);
     await mkdir(dirname(f), { recursive: true });
+    if (!(await this.inside(dirname(f)))) throw new MemoryError(`${p} is behind a symbolic link; githippo won't write through it.`);
     // atomic + crash-safe: unique temp name, data flushed to disk, then rename over the original
     const tmp = `${f}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
     const fh = await openFile(tmp, "w");
@@ -372,6 +403,8 @@ export class FileStore {
 
   /** Pull other devices' changes (no-op without a remote). */
   async pull() {
+    // a vault folder inside someone else's repository has no .git of its own: git would find the OUTER one and pull it
+    if (!(await this.hasGit())) return false;
     const remote = await this.git(["remote"]);
     if (!remote.ok || !remote.out) return false;
     // Never touch an operation we didn't start: your own unfinished merge or rebase (and the edits you resolved by hand)
@@ -382,7 +415,7 @@ export class FileStore {
       return false;
     }
     const branch = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"])).out || "main";
-    const r = await this.git(["pull", "-q", "--rebase", "--autostash", "origin", branch], 30_000);
+    const r = await this.git([...COMMIT_AS_GITHIPPO, "pull", "-q", "--rebase", "--autostash", "origin", branch], 30_000);
     const started = this.busyState(); // a rebase or merge that THIS pull started and couldn't finish
     if (!r.ok || started) {
       if (started === "rebase") await this.git(["rebase", "--abort"]);
