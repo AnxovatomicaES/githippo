@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // githippo CLI: setup | sync | serve | http | hook <event> | statusline | install | init | doctor | demo | warm | bench
 import { mkdir, readFile, writeFile, copyFile, chmod } from "node:fs/promises";
-import { existsSync, openSync } from "node:fs";
+import { existsSync, openSync, realpathSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { execFileSync } from "node:child_process";
-import { join, resolve } from "node:path";
+import { join, resolve, delimiter, isAbsolute } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { VERSION } from "./version.js";
 // Start-up cost matters here: Claude Code runs `githippo hook prompt` before every prompt and `githippo statusline` constantly, and
@@ -125,32 +125,148 @@ async function statusline() {
 const HOOK_TIMEOUTS = { PreCompact: 20, PostCompact: 15, SessionEnd: 20, SessionStart: 10, UserPromptSubmit: 5 };
 
 const HOOKS = {
-  PreCompact: "githippo hook precompact",
-  PostCompact: "githippo hook postcompact",
-  SessionEnd: "githippo hook session-end",
-  SessionStart: "githippo hook session-start",
-  UserPromptSubmit: "githippo hook prompt",
+  PreCompact: "hook precompact",
+  PostCompact: "hook postcompact",
+  SessionEnd: "hook session-end",
+  SessionStart: "hook session-start",
+  UserPromptSubmit: "hook prompt",
 };
+
+// What Claude Code runs. The paths are absolute so a hook or the MCP server still starts when `githippo` isn't on the PATH of whatever
+// launched Claude Code (Claude Desktop, an IDE and a GUI-started terminal usually have a shorter PATH than your shell). The launcher tries
+// the pinned node and script, then `node` on the PATH (a version manager moved node), then `githippo` on the PATH, and exits 0 without a
+// word when none runs (githippo was uninstalled): a hook must never break a session. Paths are arguments, so they need no quoting inside.
+const LAUNCHER = "githippo-launch";
+const LAUNCH_SH = 'n=$1; c=$2; shift 2; if [ -f "$c" ]; then if [ -x "$n" ]; then exec "$n" "$c" "$@"; fi; if command -v node >/dev/null 2>&1; then exec node "$c" "$@"; fi; fi; if command -v githippo >/dev/null 2>&1; then exec githippo "$@"; fi; exit 0';
+const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+
+/** The CLI this process runs from, as an absolute real path; null for a throw-away copy (the npx cache) or when it can't be resolved. */
+function selfPath() {
+  try {
+    const p = realpathSync(fileURLToPath(import.meta.url));
+    return /[\\/]_npx[\\/]/.test(p) ? null : p;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The node to pin. process.execPath is the real binary, which a package manager puts in a versioned folder (Homebrew's
+ * Cellar/node/25.8.1_1/bin/node) that an upgrade deletes; the same binary reached through a PATH entry (/opt/homebrew/bin/node) survives it.
+ */
+function stableNode() {
+  try {
+    const real = realpathSync(process.execPath);
+    for (const dir of String(process.env.PATH || "").split(delimiter)) {
+      if (!dir || !isAbsolute(dir)) continue;
+      const p = join(dir, "node");
+      try {
+        if (realpathSync(p) === real) return p;
+      } catch {}
+    }
+  } catch {}
+  return process.execPath;
+}
+
+/** argv for `githippo <args>` through the launcher; null on Windows or without a stable path (then the bare PATH form is used). */
+function launchArgv(args) {
+  const cli = selfPath();
+  return cli && process.platform !== "win32" ? ["sh", "-c", LAUNCH_SH, LAUNCHER, stableNode(), cli, ...args.split(" ")] : null;
+}
+
+/** The shell command line to put in settings.json for `githippo <args>`. */
+function hookCommand(args) {
+  const a = launchArgv(args);
+  if (a) return `sh -c ${shq(LAUNCH_SH)} ${LAUNCHER} ${shq(a[4])} ${shq(a[5])} ${args}`;
+  // no pinned path: the old form, which still works wherever githippo is on the PATH
+  return process.platform === "win32" ? `githippo ${args}` : `sh -c 'command -v githippo >/dev/null 2>&1 || exit 0; exec githippo ${args}'`;
+}
+
+/** True for a hook or status-line command githippo wrote, in this form or any earlier one. */
+const ours = (cmd) => typeof cmd === "string" && /githippo/.test(cmd) && /(?:\bhook (?:precompact|postcompact|session-end|session-start|prompt)|\bstatusline)['"]?\s*$/.test(cmd);
+
+/** Splits a command line the way sh does for the quoting hookCommand writes ('…' with '\'' for a quote). */
+function shellWords(s) {
+  const out = [];
+  let cur = "";
+  let has = false;
+  for (let i = 0; i < s.length; ) {
+    const ch = s[i];
+    if (ch === "'") {
+      const j = s.indexOf("'", i + 1);
+      if (j < 0) return null;
+      cur += s.slice(i + 1, j);
+      has = true;
+      i = j + 1;
+    } else if (ch === "\\" && i + 1 < s.length) {
+      cur += s[i + 1];
+      has = true;
+      i += 2;
+    } else if (/\s/.test(ch)) {
+      if (has) out.push(cur), (cur = ""), (has = false);
+      i++;
+    } else {
+      cur += ch;
+      has = true;
+      i++;
+    }
+  }
+  if (has) out.push(cur);
+  return out;
+}
+
+/** The pinned { node, cli } inside a launcher command, or null for the bare form. */
+function launchTarget(cmd) {
+  const w = typeof cmd === "string" ? shellWords(cmd) : null;
+  const i = w ? w.indexOf(LAUNCHER) : -1;
+  return i >= 0 && w.length >= i + 3 ? { node: w[i + 1], cli: w[i + 2] } : null;
+}
+
+/** The MCP server entry as `claude mcp add-json` takes it, pinned like the hooks; null when there is no pinned form. */
+function mcpEntry() {
+  const a = launchArgv("serve");
+  return a ? { type: "stdio", command: "/bin/sh", args: a.slice(1) } : null; // /bin/sh by path: the point is not to depend on the PATH
+}
 
 /**
  * Register the MCP server with alwaysLoad (lesson from token-savior: without it, Claude Code may hide the
  * tools behind ToolSearch and the model never calls them). Falls back cleanly on CLIs that reject the key.
+ * An entry an earlier setup wrote (command `githippo`, nothing else configured) is moved to the pinned form;
+ * one you customised, or already pinned, is left alone.
  */
 function registerMcp() {
   const run = (json) => execFileSync("claude", ["mcp", "add-json", "githippo", JSON.stringify(json), "--scope", "user"], { stdio: "pipe" });
+  const bare = { type: "stdio", command: "githippo", args: ["serve"] };
+  let had = null;
   try {
-    execFileSync("claude", ["mcp", "get", "githippo"], { stdio: "pipe" });
-    return "already registered";
+    had = execFileSync("claude", ["mcp", "get", "githippo"], { stdio: "pipe" }).toString();
   } catch {}
-  const base = { type: "stdio", command: "githippo", args: ["serve"] };
+  let moved = false;
+  if (had !== null) {
+    const isBare = /^\s*Command:\s*githippo\s*$/m.test(had) && /^\s*Args:\s*serve\s*$/m.test(had) && !/^\s*Environment:/m.test(had);
+    if (!isBare || !mcpEntry()) return "already registered";
+    try {
+      execFileSync("claude", ["mcp", "remove", "githippo", "--scope", "user"], { stdio: "pipe" });
+    } catch {
+      return "already registered";
+    }
+    moved = true;
+  }
+  const base = mcpEntry() || bare;
+  const pinned = base !== bare ? ", pinned path" : "";
   try {
     run({ ...base, alwaysLoad: true });
-    return "registered (alwaysLoad)";
+    return `${moved ? "updated" : "registered"} (alwaysLoad${pinned})`;
   } catch {
     try {
       run(base);
-      return "registered (this Claude Code version ignores alwaysLoad)";
+      return `${moved ? "updated" : "registered"} (this Claude Code version ignores alwaysLoad${pinned})`;
     } catch (e) {
+      if (moved) {
+        try {
+          run(bare); // never leave an install without its MCP server because the move failed
+        } catch {}
+      }
       return `not registered (${String(e.message).split("\n")[0]}); run: claude mcp add githippo --scope user -- githippo serve`;
     }
   }
@@ -264,27 +380,38 @@ async function install() {
   console.log(`\n✓ config → ${CONFIG_FILE} (chmod 600)\n${viaPlugin ? "✓ hooks and MCP: from the githippo plugin (not added a second time)" : `✓ hooks → ${settingsPath} (original backed up once)`}\n✓ status line: ${applied.statusLine ? "added" : "kept your existing status line"}\n${viaPlugin ? "" : `✓ MCP: ${registerMcp()}\n`}\n\nNext:\n  githippo init     # seed the repo\n  githippo doctor   # verify\n`);
 }
 
-// A hook command that does nothing if githippo has been uninstalled (instead of failing on every Claude Code event).
-const hookCommand = (c) => (process.platform === "win32" ? c : `sh -c 'command -v githippo >/dev/null 2>&1 || exit 0; exec ${c}'`);
-
-/** Adds githippo's hooks and status line to a parsed settings.json. Refuses shapes it doesn't understand instead of mangling them. */
+/**
+ * Adds githippo's hooks and status line to a parsed settings.json, and brings an entry an earlier setup wrote (the bare `githippo` form,
+ * or a pinned path that has since moved) up to date: running setup again converges, it never duplicates. `migrated` counts those.
+ * Refuses shapes it doesn't understand instead of mangling them.
+ */
 function applyHooks(settings, { hooks = true } = {}) {
   const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
   if (!isObj(settings)) return { error: "it must contain a JSON object" };
   if (settings.hooks !== undefined && !isObj(settings.hooks)) return { error: '"hooks" isn\'t an object' };
   for (const event of Object.keys(HOOKS)) if (settings.hooks?.[event] !== undefined && !Array.isArray(settings.hooks[event])) return { error: `hooks.${event} isn't a list` };
   if (hooks) settings.hooks ??= {};
-  for (const [event, command] of hooks ? Object.entries(HOOKS) : []) {
+  let migrated = 0;
+  const pinnable = !!launchArgv("serve"); // without a stable path (npx, Windows) the bare form is all there is, and an existing pinned entry is better than it
+  const refresh = (h, want, timeout) => {
+    if (h.command === want || (!pinnable && h.command.includes(LAUNCHER))) return;
+    if (timeout && !h.command.includes(LAUNCHER)) h.timeout = timeout; // an entry from before pinning also gets the current timeout
+    h.command = want;
+    migrated++;
+  };
+  for (const [event, args] of hooks ? Object.entries(HOOKS) : []) {
     settings.hooks[event] ??= [];
-    const has = settings.hooks[event].some((g) => Array.isArray(g?.hooks) && g.hooks.some((h) => typeof h?.command === "string" && h.command.includes("githippo hook")));
-    if (!has) settings.hooks[event].push({ ...(event === "SessionStart" ? { matcher: "startup|resume|compact|fork" } : {}), hooks: [{ type: "command", command: hookCommand(command), timeout: HOOK_TIMEOUTS[event] }] });
+    const want = hookCommand(args);
+    const mine = settings.hooks[event].flatMap((g) => (Array.isArray(g?.hooks) ? g.hooks : [])).filter((h) => ours(h?.command));
+    if (!mine.length) settings.hooks[event].push({ ...(event === "SessionStart" ? { matcher: "startup|resume|compact|fork" } : {}), hooks: [{ type: "command", command: want, timeout: HOOK_TIMEOUTS[event] }] });
+    else for (const h of mine) refresh(h, want, HOOK_TIMEOUTS[event]);
   }
   let statusLine = false;
   if (!settings.statusLine) {
-    settings.statusLine = { type: "command", command: hookCommand("githippo statusline") };
+    settings.statusLine = { type: "command", command: hookCommand("statusline") };
     statusLine = true;
-  }
-  return { statusLine };
+  } else if (isObj(settings.statusLine) && ours(settings.statusLine.command)) refresh(settings.statusLine, hookCommand("statusline"));
+  return { statusLine, migrated };
 }
 
 /** True when the githippo Claude Code plugin is installed: it already provides the hooks and the MCP server. */
@@ -308,7 +435,7 @@ async function uninstall() {
   } catch (e) {
     if (e.code !== "ENOENT") return console.error(`✗ ${settingsPath} isn't valid JSON; fix it first (nothing was changed).`), process.exit(1);
   }
-  const mine = (h) => typeof h?.command === "string" && (h.command.includes("githippo hook") || h.command.includes("githippo statusline"));
+  const mine = (h) => ours(h?.command);
   if (settings && typeof settings.hooks === "object" && settings.hooks && !Array.isArray(settings.hooks)) {
     for (const [event, groups] of Object.entries(settings.hooks)) {
       if (!Array.isArray(groups)) continue;
@@ -397,7 +524,7 @@ async function setup() {
     if (r.error) {
       say(`✗ Claude Code    not set up: ${r.error}. Fix that file, then run githippo setup again.`);
       process.exitCode = 1;
-    } else say(`✓ Claude Code    ${r.viaPlugin ? "hooks come from the githippo plugin" : "hooks"}${r.statusLine ? " + status line" : ""} · MCP ${r.mcp}`);
+    } else say(`✓ Claude Code    ${r.viaPlugin ? "hooks come from the githippo plugin" : "hooks"}${r.migrated ? ` (${r.migrated} existing entr${r.migrated === 1 ? "y" : "ies"} updated)` : ""}${r.statusLine ? " + status line" : ""} · MCP ${r.mcp}`);
   } else {
     say("· Claude Code    not found (add the MCP server to your client: command `githippo serve`)");
   }
@@ -442,7 +569,7 @@ async function wireClaudeCode(settingsPath) {
   await backupOnce(settingsPath);
   await mkdir(claudeDir(), { recursive: true });
   await writeFile(settingsPath, JSON.stringify(settings, null, 2));
-  return { mcp: viaPlugin ? "from the githippo plugin (not added twice)" : commandExists("claude") ? registerMcp() : "not registered (claude CLI not found)", statusLine: applied.statusLine, viaPlugin };
+  return { mcp: viaPlugin ? "from the githippo plugin (not added twice)" : commandExists("claude") ? registerMcp() : "not registered (claude CLI not found)", statusLine: applied.statusLine, viaPlugin, migrated: applied.migrated };
 }
 
 /** Backs the local vault up to a private GitHub repo using the user's own gh login. No token is stored. */
@@ -703,9 +830,19 @@ async function doctor() {
   );
   await brain.loadCore();
   ok(true, `core memory ~${Math.ceil(brain.core.length / 4)}/${cfg.CORE_BUDGET_TOKENS} tokens`);
-  const settings = await readFile(join(claudeDir(), "settings.json"), "utf8").catch(() => "");
+  let parsed = {};
+  try {
+    parsed = JSON.parse(await readFile(join(claudeDir(), "settings.json"), "utf8"));
+  } catch {}
   const plugin = await readFile(join(claudeDir(), "plugins", "installed_plugins.json"), "utf8").catch(() => "");
-  ok(settings.includes("githippo hook precompact") || plugin.includes("githippo"), "Claude Code hooks installed (settings or plugin)");
+  const entries = [...Object.values(parsed?.hooks && typeof parsed.hooks === "object" ? parsed.hooks : {}).flat().flatMap((g) => (Array.isArray(g?.hooks) ? g.hooks : [])).map((h) => h?.command), parsed?.statusLine?.command].filter(ours);
+  const pinned = entries.map(launchTarget).filter(Boolean);
+  const bareCount = entries.length - pinned.length;
+  const gone = pinned.find((t) => !existsSync(t.cli));
+  if (!entries.length) ok(plugin.includes("githippo"), "Claude Code hooks installed (settings or plugin)");
+  else if (gone) ok(false, `Claude Code hooks point at ${gone.cli}, which no longer exists (moved or reinstalled): run githippo setup`);
+  else if (!pinned.length) ok(commandExists("githippo"), commandExists("githippo") ? "Claude Code hooks installed (they call githippo from PATH, which Claude Desktop or an IDE may not have: run githippo setup to pin the path)" : "Claude Code hooks call githippo, which isn't on PATH here: run githippo setup");
+  else ok(true, `Claude Code hooks installed, pinned to ${pinned[0].cli}${bareCount ? ` (${bareCount} entr${bareCount === 1 ? "y" : "ies"} still call githippo from PATH: run githippo setup)` : ""}`);
 }
 
 /** Try githippo in 30 seconds: no repo, no token (idea from agentmemory's demo). */
