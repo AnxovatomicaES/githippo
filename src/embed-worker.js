@@ -1,6 +1,6 @@
 // Child process that holds the embedding model. The parent kills it when idle, so the operating system
 // reclaims all of its memory (an in-process "unload" only gave back ~140 of ~480 MB, measured in CI).
-import { importTransformers, hashEmbedder, RUNTIME_DIR } from "./embed.js";
+import { importTransformers, hashEmbedder, settingsFor, RUNTIME_DIR } from "./embed.js";
 import { loadStaticModel } from "./static-embed.js";
 
 const model = process.env.GITHIPPO_EMBED_MODEL;
@@ -8,9 +8,27 @@ let extractor;
 const load = async () => {
   if (process.env.GITHIPPO_EMBED_IMPL === "hash") return (extractor ??= hashEmbedder());
   if (process.env.GITHIPPO_EMBED_IMPL === "static") return (extractor ??= await loadStaticModel(model, { runtimeDir: RUNTIME_DIR, importTransformers }));
+  const cfg = settingsFor(model);
+  if (!extractor && cfg.sentenceEmbedding) {
+    // the graph pools and projects itself (EmbeddingGemma): tokenize, run, read sentence_embedding
+    const { AutoModel, AutoTokenizer } = await importTransformers();
+    const tokenizer = await AutoTokenizer.from_pretrained(model);
+    const net = await AutoModel.from_pretrained(model, { dtype: cfg.dtype || "q8" });
+    extractor = {
+      async embed(texts) {
+        const out = [];
+        for (let i = 0; i < texts.length; i += 16) {
+          const inputs = await tokenizer(texts.slice(i, i + 16), { padding: true, truncation: true, max_length: 512 });
+          const { sentence_embedding } = await net(inputs);
+          out.push(...sentence_embedding.tolist());
+        }
+        return out;
+      },
+    };
+  }
   if (!extractor) {
     const { pipeline } = await importTransformers();
-    const pipe = await pipeline("feature-extraction", model, { dtype: "q8" });
+    const pipe = await pipeline("feature-extraction", model, { dtype: cfg.dtype || "q8" });
     extractor = {
       async embed(texts) {
         const out = [];
