@@ -48,6 +48,26 @@ export function salientDiffers(a, b, ignore = new Set()) {
   return [...salient(a)].filter(keep).some((t) => !tb.has(t)) || [...salient(b)].filter(keep).some((t) => !ta.has(t));
 }
 
+/**
+ * True when each side has a content word the other lacks: "prefers DARK mode in the editor" against "prefers LIGHT mode in the editor". Neither keyword
+ * overlap nor embeddings can tell a synonym ("hosted on" / "runs on") from an alternative or an opposite (dark/light, weekly/monthly, read/write,
+ * automatically/manually, avoid/use), and the two mistakes are not equal: calling a changed fact a duplicate drops it silently, while calling a
+ * reworded fact new only adds a near-duplicate that is flagged (maybe_supersedes) and that `maintain` reports. So a pair like this is never a duplicate.
+ * A fact that merely ADDS words to another ("… in the editor") is still a duplicate of the shorter one, as before. `ignore`: the entity's own name.
+ */
+export function substitutes(a, b, ignore = new Set()) {
+  // counts, not sets: "refreshes every HOUR … full day" against "refreshes every DAY … full day" has the same set of words plus one
+  const count = (x) => {
+    const m = new Map();
+    for (const t of tokenize(plain(x))) if (!ignore.has(t)) m.set(t, (m.get(t) || 0) + 1);
+    return m;
+  };
+  const ca = count(a);
+  const cb = count(b);
+  const more = (x, y) => [...x].some(([t, n]) => n > (y.get(t) || 0));
+  return more(ca, cb) && more(cb, ca);
+}
+
 export const approxTokens = (s) => Math.ceil(s.length / 4);
 // B3: names with no Latin letters ("王伟") still get a stable, valid file name.
 export const slugify = (s) =>
@@ -525,7 +545,7 @@ export class Brain {
     // The same fact can be true of two entities ("prefers RFCs" for Sam and for Priya): a duplicate only
     // counts in the note it's going to, unless it's headed for the inbox (then any note already knowing it wins).
     const toInbox = /(^|\/)inbox\.md$/.test(target.path);
-    const dup = scored.find((s) => s.sim >= this.t.dup && (toInbox || s.path === target.path) && !salientDiffers(clean, s.line, s.path === target.path ? own : undefined));
+    const dup = scored.find((s) => s.sim >= this.t.dup && (toInbox || s.path === target.path) && !salientDiffers(clean, s.line, s.path === target.path ? own : undefined) && !substitutes(clean, s.line, s.path === target.path ? own : undefined));
     if (dup) return { status: "duplicate", path: dup.path, existing: plain(dup.line) };
     const related = scored.filter((s) => s.sim >= this.t.related).slice(0, 2);
 
@@ -807,7 +827,7 @@ export class Brain {
     for (let i = 0; i < all.length; i++) {
       for (let j = i + 1; j < all.length; j++) {
         const sim = vecs ? cosine(vecs[i], vecs[j]) : jaccard(all[i].line, all[j].line);
-        const differs = salientDiffers(all[i].line, all[j].line);
+        const differs = salientDiffers(all[i].line, all[j].line) || substitutes(all[i].line, all[j].line);
         if (sim >= this.t.dup && !differs) duplicates.push({ a: all[i], b: all[j], sim: +sim.toFixed(3) });
         else if (sim >= this.t.conflict && differs) conflicts.push({ a: all[i], b: all[j], sim: +sim.toFixed(3) });
       }
