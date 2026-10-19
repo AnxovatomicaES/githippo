@@ -2,13 +2,14 @@
 // of file descriptors, silently skipped the rest (FileStore.read turned EMFILE into "no such file").
 // Found while measuring scale: 30,000 notes on disk, 19,980 indexed.
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const SRC = new URL("../src/", import.meta.url).pathname;
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
 test("a vault larger than the file-descriptor limit is indexed completely", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "fd-"));

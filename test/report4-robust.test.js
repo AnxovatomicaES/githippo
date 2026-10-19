@@ -6,7 +6,7 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { FileStore } from "../src/filestore.js";
 import { InMemoryStore } from "../src/memstore.js";
 import { MemoryIndex } from "../src/search.js";
@@ -19,7 +19,7 @@ import { parseFile } from "../src/parse.js";
 import { KnowledgeGraph, startsSentence } from "../src/graph.js";
 import { speedFactor } from "./helpers.js";
 
-const SRC = new URL("../src/", import.meta.url).pathname;
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const CLI = join(SRC, "cli.js");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

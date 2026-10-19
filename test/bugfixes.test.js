@@ -1,5 +1,6 @@
 // Regression tests for the v3.1.3 bug hunt. Each test is named after the bug it pins down.
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, readdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
@@ -17,7 +18,7 @@ const { loadConfig } = await import("../src/config.js");
 const { parseTranscript, parseTranscriptFile } = await import("../src/transcript.js");
 const hooks = await import("../src/hooks.js");
 const { createHttpApp } = await import("../src/http.js");
-const CLI = new URL("../src/cli.js", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 const L = (o) => JSON.stringify(o);
 
 test("B1 recall refs point at content, not blank lines", () => {
