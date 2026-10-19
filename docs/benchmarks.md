@@ -20,13 +20,29 @@ What this does and doesn't tell you: the set is small, hand-written by the autho
 
 The 12 paraphrases in the table at the top are easy to match by accident: several share a word with the note ("invoices", "customer", "database"), and the vault has 19 notes. `node eval/paraphrase.js` (or `npm run bench:paraphrase`) runs a set built to remove that: 119 notes in five domains (an engineering team, sales, personal life, a research lab, a small business), each with two English questions about different facts and one Spanish question. Every English query was checked after stemming (`violations()` in [`eval/paraphrase.js`](../eval/paraphrase.js), guarded by `test/paraphrase.test.js`): it shares **no content word with its note** except the entity's own name, so keyword search has nothing to match on and only meaning can find the note. Notes and queries were written by five Claude Sonnet 5.5 subagents (one domain each) from a fixed brief; of the queries for the 119 kept notes, 9 failed the check and were dropped, and one note was dropped for repeating another note's path. Local, no API key, about 4 seconds with the model. Hit@k is over the files recall returns for the query.
 
-| 348 queries over 119 notes | keyword + graph | + paraphrase-multilingual-MiniLM-L12-v2 (the default local model) |
-|---|---|---|
-| English paraphrases (229) | 24.9% hit@1 · 55.9% hit@5 · MRR 0.375 | 42.4% hit@1 · 65.5% hit@5 · MRR 0.530 |
-| Spanish questions (119) | 44.5% hit@1 · 54.6% hit@5 · MRR 0.488 | 70.6% hit@1 · 84.9% hit@5 · MRR 0.772 |
-| **All** | **31.6% hit@1 · 55.5% hit@5 · MRR 0.413** | **52.0% hit@1 · 72.1% hit@5 · MRR 0.613** |
+| 348 queries over 119 notes | keyword + graph | + paraphrase-multilingual-MiniLM-L12-v2 (the default local model) | + EmbeddingGemma-300M, q4 (opt-in) |
+|---|---|---|---|
+| English paraphrases (229) | 24.9% hit@1 · 55.9% hit@5 · MRR 0.375 | 42.4% hit@1 · 65.5% hit@5 · MRR 0.530 | 50.2% hit@1 · 69.0% hit@5 · MRR 0.588 |
+| Spanish questions (119) | 44.5% hit@1 · 54.6% hit@5 · MRR 0.488 | 70.6% hit@1 · 84.9% hit@5 · MRR 0.772 | 82.4% hit@1 · 97.5% hit@5 · MRR 0.894 |
+| **All** | **31.6% hit@1 · 55.5% hit@5 · MRR 0.413** | **52.0% hit@1 · 72.1% hit@5 · MRR 0.613** | **61.2% hit@1 · 78.7% hit@5 · MRR 0.692** |
 
-What it shows: when a question shares no words with the note, the right note is first for about a quarter of English questions with keyword search and for about two in five with the default model, and it is missing from the top five for a third. That is much lower than the 100% hit@5 of the paraphrase row at the top, which is why the top row should not be read as "paraphrases are solved". The weakest domain is small-business notes (42.6% hit@1 with the model, 27.9% without), where many notes share the same shape (terms, schedules, limits); with keyword search sales is nearly as weak.
+What it shows: when a question shares no words with the note, the right note is first for about a quarter of English questions with keyword search, two in five with the default model and one in two with EmbeddingGemma; with the default model it is missing from the top five for a third. That is much lower than the 100% hit@5 of the paraphrase row at the top, which is why the top row should not be read as "paraphrases are solved". The weakest domain is small-business notes (42.6% hit@1 with the model, 27.9% without), where many notes share the same shape (terms, schedules, limits); with keyword search sales is nearly as weak.
+
+**EmbeddingGemma, what it costs.** Google's EmbeddingGemma-300M (2025; 768 dimensions, a 2,048-token window against MiniLM's 128, 100+ languages) is supported as an opt-in (`LOCAL_EMBED_MODEL=onnx-community/embeddinggemma-300m-ONNX`, see [configuration](configuration.md)); it is not the default. Measured on the same laptop (192 chunks of 700 characters, a single run each, so read the ratios, not the digits):
+
+| | MiniLM (default) | EmbeddingGemma q4 |
+|---|---|---|
+| Download | 129 MB | 209 MB |
+| Indexing | 116 chunks/s | 23 chunks/s (5× slower) |
+| One query | 3 ms | 13 ms |
+| Worker memory | 878 MB | 741 MB |
+| In-repo eval, all 52 queries | 78.8% hit@1 · 100% hit@5 · MRR 0.884 | 80.8% · 100% · 0.898 |
+| In-repo filing, held-out | 66.7% of 12 | 66.7% of 12 |
+| In-repo duplicate / update / new | 81.8% of 11 | 72.7% of 11 |
+
+Keeping the first 256 of the 768 dimensions (Matryoshka truncation, `GITHIPPO_EMBED_DIMS=256`) gives 60.6% hit@1 · 77.0% hit@5 on all queries (English unchanged at 51.1% · 68.1%, Spanish hit@5 94.1%): a third of the vector storage for 1.7 points of hit@5. At 512 it is 59.5% · 78.7%, at 128 it is 59.2% · 75.9%.
+
+Why it is not the default yet: a vault of a few thousand chunks takes minutes to index instead of seconds (in the background; keyword search works meanwhile), changing the default re-embeds everyone's vault, the Gemma licence is not an open-source one, and the LongMemEval sample has not been run with it (that needs the dataset downloaded). The duplicate/update/new row is the one place it is worse. It is calibrated on the same sentence pairs as MiniLM ([calibration](calibration.md)).
 
 Read it carefully:
 - **Spanish scores higher than English with keyword search (44.5% against 24.9%)** because a Spanish question usually contains the entity's name or a technical term that is the same in both languages ("Redis", "Atlas"); only the English questions were checked for shared words. Treat the Spanish rows as "across languages, names allowed", not as pure paraphrase.

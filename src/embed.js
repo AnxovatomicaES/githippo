@@ -16,10 +16,28 @@ export const PROFILES = {
   //  potion-multilingual-128M: duplicates 0.90-1.00, updated 0.47-0.91, same topic 0.22-0.71, unrelated -0.14-0.05
   "minishlab/potion-base-8M": { dup: 0.95, related: 0.5, conflict: 0.8, strong: 0.35, floor: 0.15, calibrated: true },
   "minishlab/potion-multilingual-128M": { dup: 0.93, related: 0.5, conflict: 0.8, strong: 0.4, floor: 0.15, calibrated: true },
+  // EmbeddingGemma (eval/calibrate.js, same pairs as docs/calibration.md): duplicates 0.88-0.99, updated 0.76-0.96, same topic 0.46-0.66, unrelated 0.19-0.34.
+  // Its scores sit in a higher band than MiniLM's, so thresholds go in the gaps between the groups: related above the same-topic maximum, dup just
+  // under the lowest duplicate (updated pairs overlap it; the salient-token check separates them). The floor is NOT above the unrelated maximum:
+  // a Spanish question about an English note scores 0.25-0.5, and floors of 0.3 and 0.4 cut Spanish hit@5 on eval/paraphrase.js from 97% to 87% and 77%
+  // (the floor filters little anyway: both models return ~6 notes for an off-topic question).
+  "onnx-community/embeddinggemma-300m-ONNX": { dup: 0.87, related: 0.7, conflict: 0.85, strong: 0.52, floor: 0.2, calibrated: true },
   hash: { dup: 0.93, related: 0.7, conflict: 0.7, strong: 0.45, floor: 0.3, calibrated: false }, // offline/test stand-in
   default: { dup: 0.92, related: 0.6, conflict: 0.82, strong: 0.45, floor: 0.3, calibrated: false },
 };
 export const DEFAULT_LOCAL_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+
+/**
+ * How to run a local model: the prompt prefixes it was trained with (a query and a document are embedded differently), the precision to
+ * load, and whether its ONNX graph already pools and projects (`sentenceEmbedding`: read `sentence_embedding`, which the pipeline's plain mean
+ * pooling would skip). A model that isn't listed gets plain mean pooling at q8 with no prefix.
+ */
+export const MODEL_SETTINGS = {
+  "onnx-community/embeddinggemma-300m-ONNX": { dtype: "q4", query: "task: search result | query: ", document: "title: none | text: ", sentenceEmbedding: true, matryoshka: true },
+};
+/** The vector length to keep (GITHIPPO_EMBED_DIMS), only for a model trained so that its first dimensions carry the meaning (Matryoshka); undefined keeps them all. */
+export const dimsFor = (model) => (settingsFor(model).matryoshka ? Number(process.env.GITHIPPO_EMBED_DIMS) || undefined : undefined);
+export const settingsFor = (model) => MODEL_SETTINGS[model] || (/e5/i.test(model) ? { query: "query: ", document: "passage: " } : {});
 export const DEFAULT_STATIC_MODEL = "minishlab/potion-multilingual-128M";
 
 import { fork, spawn } from "node:child_process";
@@ -180,7 +198,7 @@ const normalize = (v) => {
  * query restarts it (model cached on disk). If the child dies, the next call starts a new one.
  */
 export function localEmbedder(model = DEFAULT_LOCAL_MODEL, { impl } = {}) {
-  const prefix = (kind) => (/e5/i.test(model) ? (kind === "query" ? "query: " : "passage: ") : "");
+  const prefix = (kind) => settingsFor(model)[kind === "query" ? "query" : "document"] || "";
   const idleMs = Number(process.env.EMBED_IDLE_MS || 600_000);
   let child = null;
   let seq = 0;
@@ -228,14 +246,15 @@ export function localEmbedder(model = DEFAULT_LOCAL_MODEL, { impl } = {}) {
     });
   };
   return {
-    id: `${impl || "local"}:${model}`,
+    id: `${impl || "local"}:${model}${dimsFor(model) ? `@${dimsFor(model)}` : ""}`, // a different length is a different index: its cached vectors can't be reused
     get loaded() {
       return !!child;
     },
     profile: PROFILES[model] || PROFILES.default,
     async embed(texts, kind = "document") {
       const r = await call({ texts: texts.map((t) => prefix(kind) + t), kind });
-      return r.vecs.map(normalize);
+      const d = dimsFor(model);
+      return r.vecs.map((v) => normalize(d ? v.slice(0, d) : v)); // truncate, then re-normalise (what the model card prescribes)
     },
     async rerank(query, texts) {
       return (await call({ type: "rerank", query, texts })).scores;
