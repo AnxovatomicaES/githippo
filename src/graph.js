@@ -80,11 +80,36 @@ export class KnowledgeGraph {
     }
   }
 
-  resolve(name) {
+  /** Every note that has this name (file name, title, alias…), not just the one that won `lookup`. */
+  claimants(key) {
+    if (!this.nameIndex) {
+      this.nameIndex = new Map();
+      for (const node of this.nodes.values()) {
+        for (const n of node.names) {
+          const k = n.trim().toLowerCase();
+          if (!this.nameIndex.has(k)) this.nameIndex.set(k, []);
+          if (!this.nameIndex.get(k).includes(node.id)) this.nameIndex.get(k).push(node.id);
+        }
+      }
+    }
+    return this.nameIndex.get(key) || [];
+  }
+
+  /**
+   * `visible(node)` limits resolution to notes the caller may read, so a note they can't read resolves like a name that doesn't exist: it can't
+   * win a name over one they can, and it can't make a fuzzy match "ambiguous" (which would tell them it exists).
+   */
+  resolve(name, visible = null) {
     if (!name) return null;
     const key = name.trim().toLowerCase().replace(/\.md$/, "");
+    const ok = (id) => !visible || visible(this.nodes.get(id));
     const exact = this.lookup.get(key) || this.lookup.get(key.split("/").pop());
-    if (exact) return exact;
+    if (exact && ok(exact)) return exact;
+    if (exact) {
+      // the winner is hidden from this caller: a note they CAN read that has the same name (an alias) is still theirs to resolve to
+      const seen = this.claimants(key).filter(ok);
+      if (seen.length === 1) return seen[0];
+    }
     // Fuzzy: a unique entity whose name contains the query as whole words ("Hersh" -> "Hersh Oberoi").
     // Through a word index: scanning every node for every unresolved link made each graph rebuild quadratic, and a vault
     // with a few thousand broken links took seconds per write.
@@ -101,7 +126,7 @@ export class KnowledgeGraph {
     const hits = new Set();
     for (const id of candidates) {
       // the words must all be in ONE of the note's names, as before (the index only narrows the candidates)
-      if (this.nodes.get(id).names.some((n) => {
+      if (ok(id) && this.nodes.get(id).names.some((n) => {
         const nw = n.toLowerCase().split(/[\s_-]+/);
         return words.every((w) => nw.includes(w));
       })) hits.add(id);
@@ -131,8 +156,8 @@ export class KnowledgeGraph {
     }
   }
 
-  neighbors(id, depth = 1) {
-    const start = this.resolve(id);
+  neighbors(id, depth = 1, visible = null) {
+    const start = this.resolve(id, visible);
     if (!start) return null;
     const seen = new Map([[start, 0]]);
     const relations = [];

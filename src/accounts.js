@@ -57,8 +57,10 @@ export function canonAclPath(path) {
   for (const seg of p.split("/")) if (seg === "." || seg === ".." || seg !== seg.trim()) return null;
   return p;
 }
-// macOS and Windows filesystems treat Users/ and users/ as the same folder, and Unicode forms as the same name
-const fold = (s) => s.normalize("NFC").toLowerCase();
+// macOS and Windows filesystems treat Users/ and users/ as the same folder, and Unicode forms as the same name. Their case folding is the
+// Unicode FULL one (ſ is s, ß is ss, ﬁ is fi), which toLowerCase() alone is not: "uſers/bob" opened bob's folder while the ACL saw
+// a different name. Going up and back down folds all of those the same way (and over-folds a few letters, which only ever denies more).
+const fold = (s) => s.normalize("NFC").toUpperCase().toLowerCase();
 
 export const ruleMatches = (rulePath, p) => rulePath === "" || (rulePath.endsWith("/") ? p.startsWith(rulePath) : p === rulePath);
 
@@ -209,10 +211,24 @@ export function parseAcl(spec) {
 
 /** A store view that enforces an ACL and attributes every commit to the user. */
 export class AclStore {
-  constructor(store, acl) {
+  constructor(store, acl, { filterIndex = null } = {}) {
     this.base = store;
     this.acl = acl;
     this.repo = store.repo;
+    this.filterIndex = filterIndex; // async (content) => the part of index.md this user may see
+  }
+
+  /**
+   * A write to index.md by someone who can't see all of it must not drop the lines they can't see (they were handed a filtered copy).
+   * `next` is the content the write would leave behind.
+   */
+  async guardIndex(p, next) {
+    if (!this.filterIndex || p !== "index.md") return;
+    const cur = await this.base.read(p);
+    if (!cur) return;
+    const shown = new Set((await this.filterIndex(cur.content)).split("\n"));
+    const kept = new Set(String(next).split("\n"));
+    if (cur.content.split("\n").some((l) => l.trim() && !shown.has(l) && !kept.has(l))) this.deny(p, "write");
   }
 
   deny(path, what) {
@@ -227,7 +243,12 @@ export class AclStore {
   async read(path, ref) {
     const p = this.canon(path);
     if (!this.acl.canRead(p)) this.deny(p, "read");
-    return this.base.read(p, ref);
+    const f = await this.base.read(p, ref);
+    if (f && this.filterIndex && p === "index.md") {
+      const content = await this.filterIndex(f.content);
+      if (content !== f.content) return { ...f, content };
+    }
+    return f;
   }
 
   async list(prefix = "") {
@@ -243,6 +264,7 @@ export class AclStore {
   async write(path, content, v, op = "write") {
     const p = this.canon(path);
     if (!this.acl.canWrite(p)) this.deny(p, "write");
+    await this.guardIndex(p, content);
     return this.base.write(p, content, v, this.op(op));
   }
 
@@ -255,12 +277,14 @@ export class AclStore {
   async replace(path, a, b, v) {
     const p = this.canon(path);
     if (!this.acl.canWrite(p)) this.deny(p, "write");
+    if (this.filterIndex && p === "index.md") await this.guardIndex(p, ((await this.base.read(p))?.content || "").replace(a, () => b));
     return this.base.replace(p, a, b, v);
   }
 
   async delete(path, v) {
     const p = this.canon(path);
     if (!this.acl.canWrite(p)) this.deny(p, "write");
+    await this.guardIndex(p, "");
     return this.base.delete(p, v);
   }
 

@@ -76,6 +76,8 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
     if (!stateFile || saveTimer) return;
     saveTimer = setTimeout(() => {
       saveTimer = null;
+      stateMtime = 0;
+      reloadState(); // another server sharing this file may have recorded spent tokens since we last looked: merge before writing, never replace
       const t = now();
       for (const m of [usedRefresh, revokedFamilies, usedCodes]) for (const [k, exp] of m) if (exp < t) m.delete(k);
       try {
@@ -262,7 +264,7 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
         const user = t && accounts.get(t.sub);
         if (!t || !user || accounts.version(user) !== t.uv || (b.client_id && b.client_id !== t.cid) || revokedFamilies.has(t.fid)) return oauthError(res, 400, "invalid_grant", "refresh token is invalid, expired or revoked"), true;
         if (usedRefresh.has(t.jti)) {
-          revokeFamily(t.fid, t.exp); // an old refresh token was presented again: it was copied
+          revokeFamily(t.fid, now() + REFRESH_TTL); // an old refresh token was presented again: it was copied. Keep the revocation for as long as any token of the family could live: the reused token's own expiry is earlier than the newest one's
           return oauthError(res, 400, "invalid_grant", "refresh token was already used; every token from this sign-in has been revoked, sign in again"), true;
         }
         usedRefresh.set(t.jti, t.exp); // rotate: this one is now spent
@@ -308,5 +310,5 @@ function page(res, status, title, text) {
 
 function loginPage(res, client, host, reqToken, multiUser, error = "") {
   res.writeHead(error ? 401 : 200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https: http://localhost:* http://127.0.0.1:*" });
-  res.end(`<!doctype html><title>Connect to githippo</title>${STYLE}<main><h1>🦛 Connect ${esc(client)}</h1><p>${esc(client)} (${esc(host)}) wants to read and write your githippo memory.</p>${error ? `<p class="err">${esc(error)}</p>` : ""}<form method="post" action="/authorize"><input type="hidden" name="req" value="${esc(reqToken)}">${multiUser ? `<label for="u">Username</label><input id="u" name="username" autocomplete="username" required autofocus>` : ""}<label for="p">${multiUser ? "Password" : "Access secret (MCP_SECRET)"}</label><input id="p" name="password" type="password" autocomplete="current-password" required ${multiUser ? "" : "autofocus"}><div class="row"><button name="action" value="deny" formnovalidate>Deny</button><button class="go" name="action" value="allow">Allow</button></div></form></main>`);
+  res.end(`<!doctype html><title>Connect to githippo</title>${STYLE}<main><h1>🦛 Connect ${esc(client)}</h1><p>${esc(client)} wants to read and write your githippo memory, and will send you to <b>${esc(host)}</b> afterwards. Anyone can register an app under any name: only continue if you just started this connection yourself, and that address is the one you expect.</p>${error ? `<p class="err">${esc(error)}</p>` : ""}<form method="post" action="/authorize"><input type="hidden" name="req" value="${esc(reqToken)}">${multiUser ? `<label for="u">Username</label><input id="u" name="username" autocomplete="username" required autofocus>` : ""}<label for="p">${multiUser ? "Password" : "Access secret (MCP_SECRET)"}</label><input id="p" name="password" type="password" autocomplete="current-password" required ${multiUser ? "" : "autofocus"}><div class="row"><button name="action" value="deny" formnovalidate>Deny</button><button class="go" name="action" value="allow">Allow</button></div></form></main>`);
 }

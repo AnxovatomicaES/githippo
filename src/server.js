@@ -187,8 +187,12 @@ export function buildServer(brain) {
       };
       if (op === "list") return { text: fmt.list(await store.list(path || "")) };
       if (op === "read") {
-        const ps = paths || [need(path, "path")];
-        return { text: fmt.read(await Promise.all(ps.map(async (p) => (await store.read(p)) ?? { path: p, missing: true }))) };
+        // bounded: `paths` repeated thousands of times used to turn a 47 KB request into a 175 MB reply
+        const ps = [...new Set(paths || [need(path, "path")])];
+        if (ps.length > 20) throw new MemoryError("Read at most 20 files at a time.");
+        const text = fmt.read(await Promise.all(ps.map(async (p) => (await store.read(p)) ?? { path: p, missing: true })));
+        if (text.length > 400_000) throw new MemoryError("Those files are too big to return at once (over 400 KB): read fewer of them.");
+        return { text };
       }
       if (/[\u0000]/.test(content || "") || /[\u0000]/.test(nu || "")) throw new MemoryError("Content contains NUL bytes; memory files are text.");
       if (op !== "read" && op !== "list" && /(^|\/)core\.md$/i.test(normalizePath(need(path, "path")))) {

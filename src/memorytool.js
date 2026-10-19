@@ -61,7 +61,12 @@ export function createMemoryTool(brain) {
       throw new MemoryToolError(`Error: ${e.message}`);
     }
   };
+  /** core.md is the always-trusted block: it has one door (remember pin=true, which asks the user), so files named core.md can't be reached from here. */
+  const notCore = (stored) => {
+    if (/(^|\/)core\.md$/i.test(stored)) throw new MemoryToolError("Error: core.md is pinned memory; add to it with the remember tool (pin=true), not through the memory tool.");
+  };
   const write = async (rel, content, version, op) => {
+    notCore(storeName(rel));
     try {
       assertSafe(content);
     } catch (e) {
@@ -148,6 +153,7 @@ export function createMemoryTool(brain) {
       await assertUnambiguous(rel, input.path);
       const targets = file ? [{ path: storeName(rel), version: file.version }] : await listUnder(rel);
       if (!targets.length) throw new MemoryToolError(`Error: The path ${input.path} does not exist`);
+      for (const f of targets) notCore(f.path);
       for (const f of targets) {
         await store.delete(f.path, f.version);
         index.remove(f.path);
@@ -166,6 +172,10 @@ export function createMemoryTool(brain) {
       const file = await findFile(from);
       const moves = file ? [{ src: storeName(from), dst: storeName(to), file }] : (await listUnder(from)).map((f) => ({ src: f.path, dst: `${to}${f.path.slice(from.length)}` }));
       if (!moves.length) throw new MemoryToolError(`Error: The path ${input.old_path} does not exist`);
+      for (const m of moves) {
+        notCore(m.src);
+        notCore(m.dst);
+      }
       for (const m of moves) {
         const cur = m.file || (await store.read(m.src));
         const r = await store.write(m.dst, cur.content, "new", "memory-tool rename");
