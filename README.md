@@ -87,57 +87,26 @@ Recall also learns what you actually use: memory that keeps being handed to Clau
 
 Wrap anything in `<private>…</private>` and it never reaches memory. An opening tag that is never closed makes everything after it private, and `remember` refuses the fact and tells you why, rather than silently keeping the part you meant to hide. Turn hooks off without editing files: `GITHIPPO_HOOK_PROFILE=minimal` or `GITHIPPO_DISABLED_HOOKS=prompt,steer`.
 
-## Quality, measured
+## Quality, measured (and what isn't)
 
-A labelled benchmark ships in [`eval/`](https://github.com/AnxovatomicaES/githippo/tree/main/eval): a 19-file working memory (people, projects, decisions; some notes in Spanish) and 52 queries labelled with the file that should come back, plus filing and duplicate/update cases. CI runs it on every change to the code and posts the results to [issue #3](https://github.com/AnxovatomicaES/githippo/issues/3); a quality floor fails the build if keyword retrieval regresses. Reproduce it with `githippo eval`.
+Retrieval, on a small labelled set (52 queries) and on LongMemEval-S (500 questions, retrieval only, no LLM):
 
-| Queries (52) | Keyword + graph | + local model |
+| | keyword + graph | + local model |
 |---|---|---|
-| Exact terms, code identifiers, names, graph hops (21) | 100% hit@1 | 100% hit@1 |
-| Paraphrases (12) | 50% hit@1 · 67% hit@5 | 58% hit@1 · 100% hit@5 |
-| Spanish ↔ English (13) | 15% hit@1 · 23% hit@5 | 54% hit@1 · 100% hit@5 |
-| French, German, Portuguese, Italian → English (6) | 17% hit@5 | 100% hit@1 |
-| **All** | **58% hit@1 · 64% hit@5 · MRR 0.60** | **79% hit@1 · 100% hit@5 · MRR 0.89** |
-| Filing a new fact in the right file (12, held out) | 67%, none in a wrong file | 67%, none in a wrong file |
-| Duplicate vs update vs new fact (11) | 91% | 82% |
+| In-repo set: hit@5 | 64% | 100% |
+| In-repo set: MRR | 0.60 | 0.89 |
+| LongMemEval-S: R@5 | 96.2% (all 500) | 98.0% (100-question sample) |
 
-hit@k: the right file is among the first k results. Recall puts several results in context, so with the model the right memory reached Claude in all 52 cases; every miss at rank 1 was at rank 2.
+Reproduce the first with `githippo eval`. Method, per-language breakdown, filing and duplicate accuracy, memory use and scale numbers are in [docs/benchmarks.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/benchmarks.md). The set is small, hand-written by the author and in-domain: a regression guard and a rough guide, not a leaderboard.
 
-What this does and doesn't tell you: the set is small, hand-written by the author, and in-domain, so treat it as a regression guard and a rough guide, not a leaderboard number. Filing is the weakest area. It's deliberately cautious: when the evidence is a tie it parks the fact in the inbox (visible, one move away) rather than guessing, so a third of held-out facts wait in the inbox but none go to a wrong file. Filing rules were tuned on a separate development set (90% there, 2 of 20 in a wrong file) and the held-out number is reported as measured; it went down from 75% when the rules changed, in exchange for no wrong-file errors. Thresholds were calibrated on separate sentence pairs ([docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md)), not tuned on this set.
-
-### Public benchmark: LongMemEval-S
-
-[LongMemEval](https://arxiv.org/abs/2410.10813) (ICLR 2025) is a public long-term-memory benchmark: 500 questions, each with about 48 past chat sessions to search. githippo runs it with the same retrieval protocol [agentmemory publishes](https://github.com/rohitg00/agentmemory/blob/main/benchmark/LONGMEMEVAL.md) (fresh index per question, recall_any@K over sessions, retrieval only, no LLM), on a pinned dataset revision, weekly in CI ([`eval/longmemeval.js`](https://github.com/AnxovatomicaES/githippo/blob/main/eval/longmemeval.js), results in [#3](https://github.com/AnxovatomicaES/githippo/issues/3)).
-
-| LongMemEval-S, 500 questions | R@5 | R@10 | R@20 | MRR |
-|---|---|---|---|---|
-| githippo, keyword + graph (no model) | **96.2%** | 98.4% | 99.2% | 91.5 |
-| same, sessions shuffled (sanity check) | 96.2% | 98.4% | 99.2% | 91.5 |
-| ablation: chunks only, no document-level evidence | 96.0% | 98.0% | 99.2% | 90.4 |
-| ablation: whole-session documents instead of chunks | 97.4% | 98.2% | 99.6% | 91.1 |
-| *for reference: agentmemory BM25 / BM25 + vectors (their published numbers, all 500)* | *86.2% / 95.2%* | *94.6% / 98.6%* | | |
-
-The local model is too slow on CI hardware for all 500 questions (about 46 chunks a second, so 2+ hours), so it runs on an evenly spaced 100-question sample that keeps the question-type mix, next to keyword search on the same 100:
-
-| LongMemEval-S, same 100 questions | R@5 | R@10 | R@20 | MRR |
-|---|---|---|---|---|
-| githippo, keyword + graph | 97.0% | 98.0% | 98.0% | 92.6 |
-| githippo, + local multilingual model | **98.0%** | **99.0%** | **100%** | **95.3** |
-
-The model helps where keyword search is weakest: preference questions go from 83% to 100% at R@10. This first sampled run predates the check that confirms every question got semantic results; later runs in #3 include it.
-
-Read it carefully: this is retrieval recall, not the official LongMemEval QA score (which needs an LLM to answer and a judge). Shuffling the sessions changes nothing, so the score isn't an ordering artifact. githippo's keyword search scores well above agentmemory's published keyword number under the same protocol; the difference is in tokenization and ranking details we haven't isolated, so treat cross-project comparisons as indicative and reproduce them yourself. Whole sessions beat ~700-character chunks on R@5 here, which led to one design change: githippo now also ranks whole notes and fuses that with chunk evidence (best MRR of the variants, chunk-level references kept). That change was evaluated on this benchmark, so LongMemEval is no longer fully held out for it; the in-repo eval didn't change.
-
-**Resources** (measured in CI, Linux): githippo itself uses about 50 MB. The local model runs in a separate process that uses about 520 MB while you're using it and exits after 10 idle minutes (`EMBED_IDLE_MS`), so an idle githippo is back to about 50 MB. Without the model (`EMBEDDINGS=none`) it never goes above about 100 MB. The model embeds about 46 chunks a second on a 4-core CI machine (batch size and thread count make no difference), so the first semantic index of a 5,000-note vault takes a few minutes; it happens once in the background, vectors are cached on disk, and keyword search works in the meantime.
-
-**Scale** (local vault, keyword index, measured on Linux): 5,000 notes: cold index 1.3 s, query 23 ms, `remember` 0.06–0.1 s, 149 MB RAM. 20,000 notes: 4.7 s, 41 ms, 0.17–0.2 s, 315 MB. 50,000 notes: 12.4 s, 78 ms, 0.5–0.7 s, 541 MB. A write re-tokenises only the note it touches (an inverted index with incremental add/remove), queries pick the top results from postings, and the semantic vector cache is a binary file: 77 MB, written in 0.14 s and loaded in 0.09 s at 50,000 chunks of 384 dimensions (it was 162 MB of JSON with a 6 s write that blocked the server). The trade-off: cold start is about 50% slower than the old full-scan index (12 s vs 8 s at 50,000 notes). Ranking is unchanged: LongMemEval gives identical numbers before and after. A personal memory rarely passes a few thousand notes; a database isn't needed at these sizes.
+**Not measured yet, and it is the number that matters most:** whether answers get better, or sessions cheaper, with githippo than without it. `eval/qa.js` and `eval/behavior.js` are built to measure exactly that and need an `ANTHROPIC_API_KEY`; they have not been run. Until they are, read "saves tokens" as: it adds a bounded cost to every turn (below) and pays that back only when a recalled fact replaces re-explaining or re-discovering something. If you run them, post the results in [issue #3](https://github.com/AnxovatomicaES/githippo/issues/3).
 
 ## Should you use githippo?
 
 - **Claude's built-in memory** is the zero-setup choice. Use githippo if you want the memory as files you can read, diff, edit in Obsidian and back up yourself, the same memory across Claude Code, Claude Desktop, claude.ai and other MCP clients, or memory that survives Claude Code's context compaction.
 - **[basic-memory](https://github.com/basicmachines-co/basic-memory)** is the closest alternative: also Markdown and Obsidian-friendly, more mature, Python, AGPL. githippo differs in git history and time travel, the compaction hooks, OAuth team vaults with folder permissions, and a secrets guard.
 - **[mem0](https://github.com/mem0ai/mem0)** and other hosted services extract facts with an LLM and store them in their cloud, with nothing to run. githippo never calls an LLM to save a fact and keeps everything in a repo you own.
-- **It's young.** githippo is a single-maintainer project with a few weeks of history. The benchmark, 200+ tests, a seeded fuzzer that runs nightly, four rounds of outside review (every finding reproduced first, then fixed with a regression test) and the release notes are there so you can judge it, but expect rough edges.
+- **It's new.** githippo is a single-maintainer project (first commit October 2026) that strangers have not yet run at scale. The benchmark, 200+ tests, a seeded fuzzer that runs nightly, four rounds of outside review (every finding reproduced first, then fixed with a regression test) and the release notes are there so you can judge it, but expect rough edges.
 
 ## Claude-native features (opt-in, measured)
 
@@ -165,6 +134,8 @@ The last three cost API credits per run, which is why they're opt-in and why the
 | Typical recall response | ~190 tok (JSON) | **~117 tok** pack / **~47 tok** brief |
 
 How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, compact text responses instead of pretty JSON, wikilinks rendered as plain words, frontmatter stripped, 8-char version handles, History/index/sessions/core excluded from recall by default, and token budgets on every pack.
+
+What that costs per turn, worst case: tool schemas ~790 + instructions ~200 + core memory up to 400 (`CORE_BUDGET_TOKENS`) is about 1,400 tokens, plus up to 300 on prompts where the per-prompt hook finds a confident match, plus whatever `recall` returns (about 47 for `mode=brief`, up to 1,000 for a pack by default). The schemas, instructions and core are a stable prefix, so a client that uses prompt caching pays less than the raw count. githippo does not save tokens by existing: it saves them when a recalled fact replaces re-explaining or re-discovering something.
 
 ## Tools
 
@@ -256,32 +227,13 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 
 Note names can contain spaces, accents and any script (`my notes.md`, `café.md`, `笔记.md`), so a vault synced from Obsidian works as it is. Only names that are unsafe everywhere are refused (control characters, `\ < > : " | ? *`, hidden names). Frontmatter is treated as untrusted: odd values (`title: []`, huge fields, `__proto__`) can't break search, and a single unreadable note is skipped with a warning instead of taking memory down. Notes containing unresolved git conflict markers are never indexed or written to, and githippo refuses to write while a merge or rebase is unfinished.
 
-Configuration precedence is one rule everywhere: environment variable, then `~/.githippo/config.json`, then the default.
-
 ## Configuration
 
-| Variable | Default | |
-|---|---|---|
-| `VAULT_DIR` | `~/.githippo/vault` | local memory vault (a git repo) |
-| `STORE` | `local` | `github` reads/writes via the GitHub API instead (used by the remote server) |
-| `GITHUB_TOKEN`, `MEMORY_REPO` | | only for `STORE=github` / remote mode |
-| `MCP_SECRET` | | remote mode, 24+ chars: owner login and OAuth signing key |
-| `PUBLIC_URL` | | remote mode: the server's public https URL (OAuth issuer) |
-| `TRUST_PROXY` | | remote mode: set to `1` behind a reverse proxy (Render, nginx…). Rate limits then use the right-most `X-Forwarded-For` entry, the address your proxy appended. Without it, `X-Forwarded-For`, `-Host` and `-Proto` are ignored, because any client can forge them |
-| `OAUTH_STATE_FILE` | `~/.githippo/oauth-state.json` | remote mode: remembers spent login codes, spent refresh tokens and revoked sign-ins across restarts, and servers sharing the file pick up each other's entries (on a host with no persistent disk, a restart forgets them; the Render blueprint attaches one) |
-| `USERS_JSON` | | remote multi-user: contents of `githippo users` file |
-| `EMBEDDINGS` | `local` | `local` (paraphrase-multilingual-MiniLM-L12-v2 in a separate process: ~520 MB while in use, exits after `EMBED_IDLE_MS`, default 10 min); `static` (Model2Vec lookup-table embeddings, `STATIC_EMBED_MODEL=minishlab/potion-base-8M` is ~100× faster at ~200 MB with about the same LongMemEval score, but English-only); `voyage`, or `none` (keyword only). Choice and thresholds are measured in [docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md) |
-| `MEMORY_ROOT` / `MEMORY_BRANCH` | `memory` / `main` | |
-| `CORE_BUDGET_TOKENS` | `400` | hard cap for pinned memory |
-| `MEMORY_STYLE` | `plain` | `terse` removes padding (articles, filler) from recalled memory and core before Claude reads it; files on disk are never changed. Rules from [caveman](https://github.com/JuliusBrussee/caveman), limited to deletions that can't change meaning: negations, numbers, names, code, URLs and paths always survive. Measured saving is small (about 3% on terse notes, 10% on wordy ones), and caveman's own cited research found compressing what a model reads can hurt answers, so it's off by default |
-| `GITHIPPO_CONFIRM` | `auto` | `auto` asks for confirmation on external-source facts, pins and removals when the client supports MCP elicitation; `strict` refuses them without it; `off` never asks |
-| `PROMPT_RECALL` | `1` | `0` turns off the per-prompt hook |
-| `ANTHROPIC_API_KEY` | | paid model calls: `maintain rewrite=`, `consolidate`, `contextualize` and the `llm-eval` benchmarks (nothing else uses it) |
-| `VOYAGE_API_KEY` | | for `EMBEDDINGS=voyage` |
+One rule everywhere: environment variable, then `~/.githippo/config.json`, then the default. The ones most people touch: `VAULT_DIR` (default `~/.githippo/vault`), `EMBEDDINGS` (`local`, `static`, `voyage` or `none`), `GITHIPPO_CONFIRM` (`auto`, `strict` or `off`) and `PROMPT_RECALL=0` (turn off the per-prompt hook). Everything else, including the remote-server and team-vault variables, is in [docs/configuration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/configuration.md).
 
 ## Security model, honestly
 
-- **Your files, your data.** githippo has no backend. Memory lives in a folder on your machine; backup goes to a **private** repo you own (`doctor` warns if it isn't private).
+- **Your files, your data.** githippo has no backend. Memory lives in a folder on your machine; backup goes to a **private** repo you own. githippo asks GitHub anonymously whether the backup remote is publicly readable: `githippo doctor` fails if it is, `githippo sync` won't push to it and the background push refuses (override on purpose with `GITHIPPO_ALLOW_PUBLIC_BACKUP=1`). It can only check GitHub remotes; on another host, check the repository's visibility yourself.
 - **No stored token for local use.** Sync uses git's existing login (GitHub CLI, SSH or keychain). Only the remote server needs a token: make it fine-grained, one repo, Contents read/write only.
 - **Remote auth is OAuth 2.1** (PKCE S256 only, dynamic client registration, single-use codes, tokens bound to the `/mcp` resource and to the user's current password and ACL). Refresh tokens rotate: each works once, and presenting a spent one (a sign it was copied) revokes everything from that sign-in, access tokens included; reusing an authorization code does the same. Signing is stateless (HMAC), so restarts don't log anyone out. The old secret-in-URL (`/mcp/<secret>`) is off unless `LEGACY_SECRET_URL=1`, because URLs end up in proxy logs. The server answers malformed requests with 400 instead of dying, validates every body, throttles repeated failed logins, caps and counts JSON-RPC batches per call, and rate-limits by socket address.
 - **The guard is a backstop, not DLP.** It catches common secret and ID formats. `forget` removes a line from the current file, but git history keeps it; purging needs a history rewrite.
@@ -290,7 +242,7 @@ Configuration precedence is one rule everywhere: environment variable, then `~/.
 - **Outside text stays data.** Facts from web pages, files or tool output are marked `[external]` and keep that mark through moves, rewrites and consolidation. Text that reads like instructions aimed at an AI is refused, and checkpoints neutralise it and can't be made to forge sections.
 - **Git state is respected.** githippo won't touch a merge or rebase you started, never commits conflict markers, and treats bisect, a detached HEAD or a linked worktree as "busy" and says so.
 - **Hooks never break your session.** Every failure path exits 0 with a short timeout, and (on macOS and Linux) a hook that finds githippo uninstalled does nothing.
-- **Known limits.** The `.mcpb` bundle is not code-signed yet, and a deleted fact lives on in git history until you rewrite it.
+- **Known limits.** The `.mcpb` bundle is not code-signed yet, a deleted fact lives on in git history until you rewrite it, and the benefit to answer quality is not yet measured (see above).
 
 ## Develop
 
