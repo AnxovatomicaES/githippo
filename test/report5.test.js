@@ -297,7 +297,7 @@ test("MEDIUM C9: hooks and settings go where Claude Code reads them (CLAUDE_CONF
   await mkdir(cc);
   const r = cli(["setup"], { ...env, CLAUDE_CONFIG_DIR: cc, STORE: "local", VAULT_DIR: join(home, "vault") });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(await readFile(join(cc, "settings.json"), "utf8"), /githippo hook precompact/);
+  assert.match(await readFile(join(cc, "settings.json"), "utf8"), /githippo[^"]*hook precompact/);
   assert.equal(existsSync(join(home, ".claude", "settings.json")), false, "nothing was written to ~/.claude");
   assert.equal(JSON.parse(await readFile(join(cc, "settings.json"), "utf8")).hooks.UserPromptSubmit[0].hooks[0].timeout, 5, "the per-prompt hook gets a short timeout");
 });

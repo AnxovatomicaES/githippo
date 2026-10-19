@@ -73,14 +73,16 @@ test("settings.json: odd shapes are refused untouched, the first backup is kept,
   assert.equal(after.theme, "dark");
   assert.ok(after.hooks.PreCompact.some((g) => g.hooks.some((h) => h.command === "my-own-hook")), "your own hook is kept");
   const cmds = Object.values(after.hooks).flat().flatMap((g) => g.hooks.map((h) => h.command));
-  assert.ok(cmds.filter((c) => c.includes("githippo hook")).every((c) => c.includes("command -v githippo")), "every githippo hook is a no-op when githippo isn't installed");
+  const ours = cmds.filter((c) => c.includes("githippo") && /hook [a-z-]+$/.test(c));
+  assert.equal(ours.length, 5, "all five hooks are there");
+  assert.ok(ours.every((c) => /exit 0/.test(c)), "every githippo hook ends quietly when there is nothing to run");
   assert.equal(await readFile(`${settings}.githippo-backup`, "utf8"), original, "the backup is your original");
   assert.equal(install().status, 0); // a second run must not replace the backup with the already-modified file
   assert.equal(await readFile(`${settings}.githippo-backup`, "utf8"), original);
-  assert.equal(Object.values(JSON.parse(await readFile(settings, "utf8")).hooks).flat().flatMap((g) => g.hooks).filter((h) => h.command.includes("githippo hook precompact")).length, 1, "no duplicate hooks");
-  // the wrapped command really does nothing (and exits 0) when githippo isn't on PATH
-  const cmd = after.hooks.SessionEnd.flatMap((g) => g.hooks).find((h) => h.command.includes("githippo hook")).command;
-  const noop = spawnSync("sh", ["-c", cmd], { env: { PATH: "/usr/bin:/bin" }, encoding: "utf8", input: "{}" });
+  assert.equal(Object.values(JSON.parse(await readFile(settings, "utf8")).hooks).flat().flatMap((g) => g.hooks).filter((h) => h.command.includes("githippo") && /hook precompact$/.test(h.command)).length, 1, "no duplicate hooks");
+  // the command exits 0 quietly (test/pinned-path.test.js covers what it does when githippo is missing from the PATH); the environment is the box's, never your real home
+  const cmd = after.hooks.SessionEnd.flatMap((g) => g.hooks).find((h) => h.command.includes("githippo")).command;
+  const noop = spawnSync("sh", ["-c", cmd], { env: { PATH: "/usr/bin:/bin", HOME: home, GITHIPPO_HOME: env.GITHIPPO_HOME, EMBEDDINGS: "none" }, encoding: "utf8", input: "{}" });
   assert.equal(noop.status, 0);
   assert.equal(noop.stderr, "");
   const un = run(["uninstall"], env);
