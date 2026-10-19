@@ -403,7 +403,7 @@ async function sessionText(path) {
  */
 async function consolidateCmd() {
   const { createLLM } = await import("./llm.js");
-  const { openPullRequest } = await import("./consolidate.js");
+  const { openPullRequest, proposalSummary } = await import("./consolidate.js");
   const cfg = loadConfig();
   const llm = createLLM(process.env);
   if (!llm) return console.error("consolidate needs ANTHROPIC_API_KEY (it uses a small model to review the session)."), process.exit(1);
@@ -421,15 +421,7 @@ async function consolidateCmd() {
   const results = await runConsolidation({ llm, sessionText: await sessionText(file), brain, vaultDir: cfg.VAULT_DIR, root: cfg.MEMORY_ROOT ?? "memory", pendingDir: join(HOME_DIR, "pending") });
   if (!results.length) return console.log("No changes proposed.");
   for (const r of results) {
-    let summary = [
-      `${r.applied.length} proposed change(s) from a session, made by ${llm.model}. Review and merge, or close to discard.`,
-      ...r.applied.map((a) => `- ${a.op.op}: ${a.op.fact || `${a.op.old} → ${a.op.new}`} (${a.path})`),
-      ...(r.contradictions.length ? ["", "Possible contradictions to look at:", ...r.contradictions.map((x) => `- ${x.a} ↔ ${x.b}: ${x.note || ""}`)] : []),
-      // rejected facts are shown by kind and reason only: a fact that was refused for containing a secret must not
-      // reappear word for word in a pull request body
-      ...(r.rejected.length ? ["", `Not proposed (${r.rejected.length}):`, ...r.rejected.map((x) => `- ${String(x?.op?.op ?? "change")}: ${String(x.reason).slice(0, 160)}`)] : []),
-    ].join("\n");
-    summary = (await import("./guard.js")).redact(summary).text; // and whatever the model wrote is redacted before it is printed or posted
+    const summary = proposalSummary(r, llm.model);
     if (!r.applied.length) {
       console.log(`No changes proposed.${r.rejected.length ? `\n${summary}` : ""}`);
       continue;

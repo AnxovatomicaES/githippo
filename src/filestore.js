@@ -143,6 +143,7 @@ export class FileStore {
 
   async list(prefix = "") {
     const out = [];
+    const skipped = [];
     const walk = async (dir, rel) => {
       let entries;
       try {
@@ -156,17 +157,34 @@ export class FileStore {
         if (e.isDirectory()) await walk(join(dir, e.name), r);
         else if (e.name.endsWith(".md") && r.startsWith(prefix)) {
           const full = join(dir, e.name);
-          const st = await stat(full);
-          let m = this.meta.get(r);
-          if (!m || m.mtimeMs !== st.mtimeMs || m.size !== st.size) {
-            m = { mtimeMs: st.mtimeMs, size: st.size, sha: blobSha(await readFile(full, "utf8")) };
-            this.meta.set(r, m);
+          // A file can vanish or be replaced between readdir and stat (an editor's temp-file save, a sync tool, a git
+          // checkout, a deletion). That used to throw out of the whole listing, failing every recall and write.
+          for (let attempt = 0; ; attempt++) {
+            try {
+              const st = await stat(full);
+              let m = this.meta.get(r);
+              if (!m || m.mtimeMs !== st.mtimeMs || m.size !== st.size) {
+                m = { mtimeMs: st.mtimeMs, size: st.size, sha: blobSha(await readFile(full, "utf8")) };
+                this.meta.set(r, m);
+              }
+              out.push({ path: r, size: st.size, version: m.sha });
+              break;
+            } catch (err) {
+              if (["ENOENT", "ENOTDIR", "EISDIR"].includes(err.code)) break; // gone already: not part of the vault any more
+              if (["EMFILE", "ENFILE"].includes(err.code) && attempt < 10) {
+                await new Promise((res) => setTimeout(res, 20 * (attempt + 1)));
+                continue;
+              }
+              if (["EMFILE", "ENFILE"].includes(err.code)) throw err;
+              skipped.push(`${r}: ${err.code || err.message}`); // unreadable (permissions…): skipped and reported, never fatal
+              break;
+            }
           }
-          out.push({ path: r, size: st.size, version: m.sha });
         }
       }
     };
     await walk(this.base, "");
+    if (skipped.length) console.error(`[githippo] ${skipped.length} note(s) couldn't be read and were skipped: ${skipped.slice(0, 3).join(" | ")}`);
     return out.sort((a, b) => a.path.localeCompare(b.path));
   }
 

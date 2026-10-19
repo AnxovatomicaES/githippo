@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { FileStore, gitBusyState } from "./filestore.js";
+import { redact } from "./guard.js";
 import { MemoryIndex } from "./search.js";
 import { Brain } from "./brain.js";
 import { factLines, plain } from "./parse.js";
@@ -172,4 +173,19 @@ export async function runConsolidation({ llm, sessionText, brain, vaultDir, root
     rmSync(b.file, { force: true });
   }
   return results;
+}
+
+/**
+ * The text printed after a review and posted as a pull-request body. A fact that was refused (it held a secret, or read
+ * like an instruction) is listed by kind and reason only, never word for word, and the whole text is redacted because
+ * part of it is whatever the model wrote.
+ */
+export function proposalSummary(r, model = "the model") {
+  const lines = [
+    `${r.applied.length} proposed change(s) from a session, made by ${model}. Review and merge, or close to discard.`,
+    ...r.applied.map((a) => `- ${a.op.op}: ${a.op.fact || `${a.op.old} → ${a.op.new}`} (${a.path})`),
+    ...(r.contradictions.length ? ["", "Possible contradictions to look at:", ...r.contradictions.map((x) => `- ${x.a} ↔ ${x.b}: ${x.note || ""}`)] : []),
+    ...(r.rejected.length ? ["", `Not proposed (${r.rejected.length}):`, ...r.rejected.map((x) => `- ${String(x?.op?.op ?? "change")}: ${String(x.reason).slice(0, 160)}`)] : []),
+  ];
+  return redact(lines.join("\n")).text;
 }
