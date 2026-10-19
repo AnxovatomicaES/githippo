@@ -3,7 +3,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 #   … | sh -s -- --github        also back up to a private GitHub repo (uses your gh login)
 set -e
-VERSION="v3.9.2"
+VERSION="v3.9.3"
 
 if ! command -v node >/dev/null 2>&1; then
   echo "githippo needs Node.js 20 or newer."
