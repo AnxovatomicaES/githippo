@@ -10,6 +10,9 @@ import { KeyedMutex, withFileLock } from "./lock.js";
 import { join, dirname } from "node:path";
 import { MemoryError, MAX_FILE_BYTES, normalizePath, sameVersion } from "./store.js";
 
+/** An unresolved merge/rebase leaves these in a file; their contents are not facts. */
+export const hasConflictMarkers = (c) => /^<{7}( |$)/m.test(c) && /^={7}$/m.test(c) && /^>{7}( |$)/m.test(c);
+
 export const blobSha = (content) => {
   const buf = Buffer.from(content, "utf8");
   return createHash("sha1").update(`blob ${buf.length}\0`).update(buf).digest("hex");
@@ -220,10 +223,13 @@ export class FileStore {
   }
 
   async _write(p, content, ifVersion, op) {
+    const busy = this.busyState();
+    if (busy) throw new MemoryError(`The vault has an unfinished git ${busy}. Finish or abort it (git ${busy} --abort) before saving memory.`);
     if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) {
       throw new MemoryError(`${p} would exceed ${MAX_FILE_BYTES} bytes. Run maintain or split it.`);
     }
     const current = await this.read(p);
+    if (current && hasConflictMarkers(current.content)) throw new MemoryError(`${p} contains unresolved git conflict markers (<<<<<<<). Resolve them first.`);
     if (ifVersion === "new" && current) throw new MemoryError(`${p} already exists. Read it and pass its version.`, { current });
     if (ifVersion !== "new") {
       if (!current) throw new MemoryError(`${p} does not exist. Use if_version "new".`);
@@ -285,7 +291,8 @@ export class FileStore {
   async history(path, limit = 20) {
     if (!(await this.hasGit())) return [];
     const r = await this.git(["log", `-n${Math.min(limit, 100)}`, "--format=%H%x09%cI%x09%s", "--", this.relPath(path)]);
-    return r.ok && r.out ? r.out.split("\n").map((l) => { const [commit, date, message] = l.split("\t"); return { commit, date, message }; }) : [];
+    // %cI is the committer's local time with an offset; callers get UTC ("…Z") so timestamps compare and display unambiguously
+    return r.ok && r.out ? r.out.split("\n").map((l) => { const [commit, date, message] = l.split("\t"); return { commit, date: new Date(date).toISOString(), message }; }) : [];
   }
 
   async at(path, isoDate) {
@@ -298,7 +305,7 @@ export class FileStore {
     if (!r.ok || !r.out) return { path: p, existed: false, as_of };
     const [commit, committed_at] = r.out.split("\t");
     const file = await this.git(["show", `${commit}:${this.relPath(p)}`]);
-    return file.ok ? { path: p, existed: true, as_of, commit, committed_at, content: file.raw } : { path: p, existed: false, as_of };
+    return file.ok ? { path: p, existed: true, as_of, commit, committed_at: new Date(committed_at).toISOString(), content: file.raw } : { path: p, existed: false, as_of };
   }
 
   async activeDays(sinceIso) {
@@ -311,7 +318,27 @@ export class FileStore {
   async pull() {
     const remote = await this.git(["remote"]);
     if (!remote.ok || !remote.out) return false;
-    const r = await this.git(["pull", "-q", "--rebase", "--autostash", "origin", "main"], 30_000);
-    return r.ok;
+    const branch = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"])).out || "main";
+    const r = await this.git(["pull", "-q", "--rebase", "--autostash", "origin", branch], 30_000);
+    if (r.ok) return true;
+    // conflicting remote changes: leave nothing half-done (a rebase in progress puts markers in memory files)
+    await this.git(["rebase", "--abort"]);
+    await this.git(["merge", "--abort"]);
+    console.error(`[githippo] sync with the remote failed and was rolled back (${r.err.split("\n")[0].slice(0, 100)}). Resolve it with git in ${this.dir}.`);
+    return false;
+  }
+
+  /** Name of an unfinished git operation (merge, rebase…) in the vault, or null. */
+  busyState() {
+    const g = join(this.dir, ".git");
+    try {
+      if (!statSync(g).isDirectory()) return null;
+    } catch {
+      return null;
+    }
+    for (const [f, name] of [["MERGE_HEAD", "merge"], ["rebase-merge", "rebase"], ["rebase-apply", "rebase"], ["CHERRY_PICK_HEAD", "cherry-pick"], ["REVERT_HEAD", "revert"]]) {
+      if (existsSync(join(g, f))) return name;
+    }
+    return null;
   }
 }

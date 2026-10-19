@@ -62,7 +62,7 @@ const RULES = [
   { kind: "jwt", re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
   { kind: "password_assignment", re: /\b(?:password|passwd|pwd|contraseña|secret)\s*[:=]\s*\S{6,}/gi },
   { kind: "iban", re: /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){2,7}(?:\s?[A-Z0-9]{1,4})?\b/g, check: ibanValid },
-  { kind: "payment_card", re: /\b(?:\d[ -]?){13,19}\b/g, check: (m) => luhn(m.replace(/\D/g, "")) && m.replace(/\D/g, "").length >= 13 },
+  { kind: "payment_card", re: /\b\d(?:[ -]?\d){12,18}\b/g, check: (m) => luhn(m.replace(/\D/g, "")) && m.replace(/\D/g, "").length >= 13 },
   { kind: "spanish_dni_nie", re: /\b[XYZ]?\d{7,8}[A-Z]\b/g, check: dniValid },
   { kind: "uk_nino", re: /\b[A-Z]{2}\s?\d{2}\s?\d{2}\s?\d{2}\s?[A-D]\b/g, check: ninoValid },
   { kind: "french_nir", re: /\b[12]\s?\d{2}\s?\d{2}\s?(?:\d{2}|2A|2B)\s?\d{3}\s?\d{3}\s?\d{2}\b/gi, check: nirValid },
@@ -76,45 +76,113 @@ const RULES = [
  */
 // ID numbers can be typed in any case; API keys and tokens are case-exact formats.
 const CASE_INSENSITIVE = new Set(["iban", "payment_card", "spanish_dni_nie", "uk_nino", "french_nir", "us_ssn"]);
+const COMPILED = RULES.map((r) => ({ ...r, re: CASE_INSENSITIVE.has(r.kind) && !r.re.flags.includes("i") ? new RegExp(r.re.source, `${r.re.flags}i`) : r.re }));
 
-export function normalizeForScan(text) {
-  return String(text)
-    .normalize("NFKC")
-    .replace(/[\p{Cf}\u00ad]/gu, "")
-    .replace(/(\d)[.\u2010-\u2015\u2212](?=\d)/g, "$1 ");
+// Letters that look like Latin ones (Cyrillic, Greek): "ЕS91 …" must still read as an IBAN. Scanning only.
+const CONFUSABLES = Object.fromEntries(
+  [..."АA ВB ЕE КK МM НH ОO РP СC ТT ХX аa еe оo рp сc уy хx іi јj ѕs ΑA ΒB ΕE ΖZ ΗH ΙI ΚK ΜM ΝN ΟO ΡP ΤT ΥY ΧX οo νv ιi".split(" ")].map(([a, b]) => [a, b]),
+);
+const SEP = /[\s._/\u2010-\u2015\u2212]/;
+
+/** Digit value of any Unicode decimal digit (Arabic-Indic, Devanagari, math bold…): digits come in runs of ten. */
+function digitValue(ch) {
+  const cp = ch.codePointAt(0);
+  let start = cp;
+  while (start > 0 && /\p{Nd}/u.test(String.fromCodePoint(start - 1))) start--;
+  return (cp - start) % 10;
+}
+
+/**
+ * The text as the guard reads it: compatibility-normalised, invisible and combining characters dropped, any
+ * script's digits turned into 0-9, lookalike letters folded to Latin, and separators between digits (space,
+ * newline, dot, underscore, slash, any dash) collapsed to one space. `spans[i]` is the [start, end) of the
+ * ORIGINAL text that produced normalised character i, so a match can be replaced without touching anything else.
+ */
+export function normalizeWithMap(text) {
+  const src = String(text);
+  const out = [];
+  const spans = [];
+  let at = 0;
+  for (const ch of src) {
+    const start = at;
+    at += ch.length;
+    if (/[\p{Cf}\p{M}\u00ad]/u.test(ch)) continue;
+    for (let c of ch.normalize("NFKC")) {
+      if (/\p{Nd}/u.test(c) && !/[0-9]/.test(c)) c = String(digitValue(c));
+      c = CONFUSABLES[c] || c;
+      for (let u = 0; u < c.length; u++) {
+        out.push(c[u]);
+        spans.push([start, at]);
+      }
+    }
+  }
+  const norm = [];
+  const nspans = [];
+  for (let k = 0; k < out.length; k++) {
+    if (SEP.test(out[k]) && norm.length && /[0-9]/.test(norm.at(-1))) {
+      let e = k;
+      while (e + 1 < out.length && e - k < 2 && SEP.test(out[e + 1])) e++;
+      if (e + 1 < out.length && /[0-9]/.test(out[e + 1])) {
+        norm.push(" ");
+        nspans.push([spans[k][0], spans[e][1]]);
+        k = e;
+        continue;
+      }
+    }
+    norm.push(out[k]);
+    nspans.push(spans[k]);
+  }
+  return { norm: norm.join(""), spans: nspans };
+}
+
+export const normalizeForScan = (text) => normalizeWithMap(text).norm;
+
+/** A pattern with an optional tail can swallow the next word ("… 1332 please"); drop trailing groups until it validates. */
+function longestValid(text, check) {
+  for (let s = text; ; ) {
+    if (check(s)) return s;
+    const i = s.lastIndexOf(" ");
+    if (i < 0) return null;
+    s = s.slice(0, i);
+  }
+}
+
+function* ruleMatches(norm) {
+  for (const { kind, re, check } of COMPILED) {
+    for (const m of norm.matchAll(re)) {
+      const text = !check ? m[0] : kind === "iban" ? longestValid(m[0], check) : check(m[0]) ? m[0] : null;
+      if (text) yield { kind, start: m.index, end: m.index + text.length, text };
+    }
+  }
 }
 
 /** Returns findings; an empty array means the text is safe to store. */
 export function scan(text) {
-  const findings = [];
-  const norm = normalizeForScan(text);
-  const upper = norm.toUpperCase();
-  for (const { kind, re, check } of RULES) {
-    const caseSensitive = !CASE_INSENSITIVE.has(kind);
-    for (const m of (caseSensitive ? norm : upper).matchAll(re)) {
-      if (check && !check(m[0])) continue;
-      const v = m[0];
-      findings.push({ kind, preview: `${v.slice(0, 4)}…${v.slice(-2)}` });
-    }
-  }
-  return findings;
+  return [...ruleMatches(normalizeWithMap(text).norm)].map(({ kind, text: v }) => ({ kind, preview: `${v.slice(0, 4)}…${v.slice(-2)}` }));
 }
 
 /**
- * B24: automatic captures (checkpoints from hooks) redact instead of refusing, so one pasted key doesn't
- * cost the whole checkpoint. Explicit saves (remember) still refuse, so nothing is silently altered.
+ * Automatic captures (checkpoints from hooks) redact instead of refusing, so one pasted key doesn't cost the whole
+ * checkpoint. Only the characters that formed a match are replaced; the rest of the text is returned exactly as it
+ * was (the previous version returned the normalised copy: "4.1.1" became "4 1 1", accents and emoji changed).
  */
 export function redact(text) {
-  let out = normalizeForScan(text);
+  const src = String(text);
+  const { norm, spans } = normalizeWithMap(src);
+  const found = [...ruleMatches(norm)].sort((a, b) => a.start - b.start || b.end - a.end);
+  let out = "";
+  let pos = 0;
   let count = 0;
-  for (const { kind, re, check } of RULES) {
-    const caseSensitive = !CASE_INSENSITIVE.has(kind);
-    const reI = caseSensitive ? re : new RegExp(re.source, re.flags.includes("i") ? re.flags : `${re.flags}i`);
-    out = out.replace(reI, (m) => {
-      if (check && !check(caseSensitive ? m : m.toUpperCase())) return m;
-      count++;
-      return `[redacted:${kind}]`;
-    });
+  let lastEnd = -1;
+  for (const f of found) {
+    if (f.start < lastEnd) continue; // overlaps a match we already took
+    const s = spans[f.start][0];
+    const e = spans[f.end - 1][1];
+    if (s < pos) continue;
+    out += src.slice(pos, s) + `[redacted:${f.kind}]`;
+    pos = e;
+    lastEnd = f.end;
+    count++;
   }
-  return { text: out, count };
+  return { text: out + src.slice(pos), count };
 }

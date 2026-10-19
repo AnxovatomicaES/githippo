@@ -32,7 +32,7 @@ export const fmt = {
     if (r.kind === "as_of") {
       return r.existed ? `${r.path} as of ${r.as_of} (commit ${short(r.commit)}):\n${r.content}` : `${r.path} did not exist on ${r.as_of}`;
     }
-    return r.commits.length ? `${r.path}\n${r.commits.map((c) => `${c.date.slice(0, 16)} ${short(c.commit)} ${c.message}`).join("\n")}` : `${r.path}: no history`;
+    return r.commits.length ? `${r.path}\n${r.commits.map((c) => `${new Date(c.date).toISOString().slice(0, 16).replace("T", " ")}Z ${short(c.commit)} ${c.message}`).join("\n")}` : `${r.path}: no history`;
   },
   checkpoint(r) {
     if (r.status === "none") return `∅ no checkpoint at ${r.path}`;

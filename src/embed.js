@@ -26,7 +26,7 @@ import { fork, spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { HOME_DIR } from "./config.js";
 
 // The local embedding runtime is ~500 MB, so it is NOT part of the install. It's fetched once, in the
@@ -60,7 +60,23 @@ export function ensureRuntime({ wait = false } = {}) {
     stdio: ["ignore", log, log],
     shell: process.platform === "win32",
   });
-  if (wait) return new Promise((r) => child.on("exit", (code) => { writeFileSync(lock, "0"); r(code === 0); }));
+  // no npm on PATH (or it can't start): without a listener, Node turns the 'error' event into a crash
+  const failed = (e) => {
+    try {
+      writeFileSync(lock, "0"); // allow a retry later
+      writeFileSync(join(RUNTIME_DIR, "install.log"), `could not run npm: ${e.message}\n`, { flag: "a" });
+    } catch {}
+  };
+  child.on("error", failed);
+  if (wait) {
+    return new Promise((r) => {
+      child.on("error", () => r(false));
+      child.on("exit", (code) => {
+        writeFileSync(lock, "0");
+        r(code === 0);
+      });
+    });
+  }
   child.unref();
   return null;
 }
@@ -89,11 +105,12 @@ export function localEmbedder(model = DEFAULT_LOCAL_MODEL, { impl } = {}) {
     pending.clear();
   };
   const start = () => {
-    child = fork(new URL("./embed-worker.js", import.meta.url).pathname, [], {
+    child = fork(fileURLToPath(new URL("./embed-worker.js", import.meta.url)), [], {
       env: { ...process.env, GITHIPPO_EMBED_MODEL: model, ...(impl ? { GITHIPPO_EMBED_IMPL: impl } : {}) },
       stdio: ["ignore", "ignore", "inherit", "ipc"],
     });
     const me = child;
+    me.on("error", (e) => failAll(`embedding worker failed to start: ${e.message}`));
     // An open IPC channel keeps the parent alive; only hold it while a request is in flight, so CLI
     // commands (eval, warm, demo) exit as soon as they're done instead of waiting for the idle timeout.
     me.unref();
@@ -188,7 +205,8 @@ export function hashEmbedder(dims = 256) {
 }
 
 export function createEmbedder(env = process.env) {
-  const p = (env.EMBEDDINGS || "local").toLowerCase();
+  const p = String(env.EMBEDDINGS || "local").toLowerCase();
+  if (!["none", "local", "static", "voyage", "hash"].includes(p)) throw new Error(`EMBEDDINGS must be none, local, static, voyage or hash (got "${env.EMBEDDINGS}")`);
   if (p === "none") return null;
   if (p === "voyage") return voyageEmbedder(env.VOYAGE_API_KEY, env.VOYAGE_MODEL);
   if (p === "hash") return hashEmbedder();

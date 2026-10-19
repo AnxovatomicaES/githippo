@@ -36,12 +36,24 @@ const safeEqual = (a, b) => {
   return A.length === B.length && A.length > 0 && timingSafeEqual(A, B);
 };
 
+/**
+ * A rule path is a FOLDER ("shared/", also written "shared") or one exact note ("people/ada.md"), never a bare
+ * string prefix: "shared:read" must not open "shared-secret/", and "users/ali:read" must not open "users/alice/".
+ */
+const normRule = (path) => {
+  let s = String(path || "").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
+  if (s && !s.endsWith("/") && !s.endsWith(".md")) s += "/";
+  return s;
+};
+export const ruleMatches = (rulePath, p) => rulePath === "" || (rulePath.endsWith("/") ? p.startsWith(rulePath) : p === rulePath);
+
 export class Acl {
   constructor(user) {
     this.user = user.id;
+    // the user's own home folder is always writable; listed first so it wins a tie with an equal-length rule
     this.rules = [
-      ...(user.acl || []).map((r) => ({ path: String(r.path || "").replace(/^\/+/, ""), access: r.access })),
       { path: `users/${user.id}/`, access: "write" },
+      ...(user.acl || []).map((r) => ({ path: normRule(r.path), access: r.access })),
     ].sort((a, b) => b.path.length - a.path.length);
     this.isAdmin = this.level("") === LEVEL.write && this.rules.every((r) => r.access !== "none" || r.path.startsWith("users/"));
   }
@@ -52,7 +64,7 @@ export class Acl {
     // never a catch-all like ":read".
     const othersPrivate = p.startsWith("users/") && !p.startsWith(`users/${this.user}/`);
     for (const r of this.rules) {
-      if (!p.startsWith(r.path)) continue;
+      if (!ruleMatches(r.path, p)) continue;
       if (othersPrivate && !r.path.startsWith("users/")) return 0;
       return LEVEL[r.access] ?? 0;
     }

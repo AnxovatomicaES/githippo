@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/instal
 
 That's the whole install: no account, no token, no questions. It sets up a local memory vault, wires Claude Code (hooks, MCP, status line) and fetches semantic search in the background. Restart Claude Code and just talk; it remembers.
 
-Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.8.0 demo` shows it working in 30 seconds without installing anything.
+Want it backed up and synced across machines? `githippo sync --github` creates a private repo with your existing GitHub CLI login and pushes after every change. Just curious? `npx -y github:AnxovatomicaES/githippo#v3.8.1 demo` shows it working in 30 seconds without installing anything.
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/AnxovatomicaES/githippo"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render"></a><br>
@@ -187,7 +187,7 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 curl -fsSL https://raw.githubusercontent.com/AnxovatomicaES/githippo/main/install.sh | sh
 ```
 
-Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.8.0`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
+Prefer to see what runs? It's [a short shell script](https://github.com/AnxovatomicaES/githippo/blob/main/install.sh): check Node 20+, `npm i -g github:AnxovatomicaES/githippo#v3.8.1`, then `githippo setup`. `setup` is idempotent, keeps any status line you already have, and backs up `~/.claude/settings.json` before touching it. `githippo doctor` checks everything afterwards.
 
 Coming from the official reference memory server? `githippo import ~/path/to/memory.jsonl` turns its entities, observations and relations into notes and typed links (secrets guard and dedupe apply, so re-running is safe).
 
@@ -222,7 +222,7 @@ githippo users add john --acl "shared/:write,people/:read"   # prints his passwo
 githippo users list
 ```
 
-Rules use the longest matching folder (`none`, `read`, `write`). Everyone also gets a private `users/<id>/` folder for their own inbox, sessions and pinned core memory, which a catch-all rule can never open. Facts a user can't write where they'd naturally go land in their own inbox instead. Every commit records who made it. Changing a password or ACL revokes that user's tokens immediately. On hosts without a disk, paste `~/.githippo/users.json` into the `USERS_JSON` variable.
+Each rule is a folder (`shared/`, also written `shared`) or one exact note (`people/ada.md`), never a string prefix: `shared:read` does not open `shared-secret/`. The longest matching rule wins (`none`, `read`, `write`). Everyone also gets a private `users/<id>/` folder for their own inbox, sessions and pinned core memory, which a catch-all rule can never open. Facts a user can't write where they'd naturally go land in their own inbox instead. Every commit records who made it. Changing a password or ACL revokes that user's tokens immediately. On hosts without a disk, paste `~/.githippo/users.json` into the `USERS_JSON` variable.
 </details>
 
 <details><summary><b>Cursor, Windsurf, VS Code, any MCP client</b></summary>
@@ -254,6 +254,10 @@ aliases: [billing rewrite]
 
 Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted facts), `people/`, `projects/`, `topics/`, `decisions/`, `sessions/` (checkpoints). See [`examples/memory`](https://github.com/AnxovatomicaES/githippo/tree/main/examples/memory).
 
+Note names can contain spaces, accents and any script (`my notes.md`, `café.md`, `笔记.md`), so a vault synced from Obsidian works as it is. Only names that are unsafe everywhere are refused (control characters, `\ < > : " | ? *`, hidden names). Frontmatter is treated as untrusted: odd values (`title: []`, huge fields, `__proto__`) can't break search, and a single unreadable note is skipped with a warning instead of taking memory down. Notes containing unresolved git conflict markers are never indexed or written to, and githippo refuses to write while a merge or rebase is unfinished.
+
+Configuration precedence is one rule everywhere: environment variable, then `~/.githippo/config.json`, then the default.
+
 ## Configuration
 
 | Variable | Default | |
@@ -263,6 +267,8 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 | `GITHUB_TOKEN`, `MEMORY_REPO` | | only for `STORE=github` / remote mode |
 | `MCP_SECRET` | | remote mode, 24+ chars: owner login and OAuth signing key |
 | `PUBLIC_URL` | | remote mode: the server's public https URL (OAuth issuer) |
+| `TRUST_PROXY` | | remote mode: set to `1` behind a reverse proxy (Render, nginx…). Rate limits then use the right-most `X-Forwarded-For` entry, the address your proxy appended. Without it, `X-Forwarded-For` is ignored, because any client can forge it |
+| `OAUTH_STATE_FILE` | `~/.githippo/oauth-state.json` | remote mode: remembers spent refresh tokens and revoked sign-ins across restarts (on a host with no persistent disk, a restart forgets them) |
 | `USERS_JSON` | | remote multi-user: contents of `githippo users` file |
 | `EMBEDDINGS` | `local` | `local` (paraphrase-multilingual-MiniLM-L12-v2 in a separate process: ~520 MB while in use, exits after `EMBED_IDLE_MS`, default 10 min); `static` (Model2Vec lookup-table embeddings, `STATIC_EMBED_MODEL=minishlab/potion-base-8M` is ~100× faster at ~200 MB with about the same LongMemEval score, but English-only); `voyage`, or `none` (keyword only). Choice and thresholds are measured in [docs/calibration.md](https://github.com/AnxovatomicaES/githippo/blob/main/docs/calibration.md) |
 | `MEMORY_ROOT` / `MEMORY_BRANCH` | `memory` / `main` | |
@@ -277,14 +283,14 @@ Layout: `core.md` (pinned), `index.md` (table of contents), `inbox.md` (unrouted
 
 - **Your files, your data.** githippo has no backend. Memory lives in a folder on your machine; backup goes to a **private** repo you own (`doctor` warns if it isn't private).
 - **No stored token for local use.** Sync uses git's existing login (GitHub CLI, SSH or keychain). Only the remote server needs a token: make it fine-grained, one repo, Contents read/write only.
-- **Remote auth is OAuth 2.1** (PKCE S256 only, dynamic client registration, single-use codes, tokens bound to the `/mcp` resource and to the user's current password and ACL). It's stateless: everything is HMAC-signed, so restarts don't log anyone out. The old secret-in-URL (`/mcp/<secret>`) is off unless `LEGACY_SECRET_URL=1`, because URLs end up in proxy logs. Login attempts are rate limited and every response is constant-time.
+- **Remote auth is OAuth 2.1** (PKCE S256 only, dynamic client registration, single-use codes, tokens bound to the `/mcp` resource and to the user's current password and ACL). Refresh tokens rotate: each works once, and presenting a spent one (a sign it was copied) revokes everything from that sign-in, access tokens included; reusing an authorization code does the same. Signing is stateless (HMAC), so restarts don't log anyone out. The old secret-in-URL (`/mcp/<secret>`) is off unless `LEGACY_SECRET_URL=1`, because URLs end up in proxy logs. The server answers malformed requests with 400 instead of dying, validates every body, throttles repeated failed logins, caps and counts JSON-RPC batches per call, and rate-limits by socket address.
 - **The guard is a backstop, not DLP.** It catches common secret and ID formats. `forget` removes a line from the current file, but git history keeps it; purging needs a history rewrite.
 - **Hooks never break your session.** Every failure path exits 0 with a short timeout.
 
 ## Develop
 
 ```bash
-npm ci && npm test      # 140 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
+npm ci && npm test      # 171 tests: unit, hooks, adopted features, bug regressions, local vault, setup, end-to-end over Streamable HTTP with the official MCP client
 npm run bench           # token cost of the tool surface
 ```
 

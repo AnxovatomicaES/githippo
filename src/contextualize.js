@@ -31,18 +31,36 @@ export async function contextualize({ brain, llm, vaultDir, limit = Infinity, lo
   const base = brain.store.base || vaultDir; // the memory folder of a local vault
   const ctx = loadContexts(base);
   let done = 0;
-  for (const f of brain.index.files.values()) {
-    if (f.path.startsWith("sessions/") || ["index.md", "core.md"].includes(f.path)) continue;
-    for (const c of f.chunks) {
-      if (ctx[c.baseHash || c.hash] || done >= limit) continue;
-      const text = (await llm.complete({ prompt: CONTEXT_PROMPT(f.live.slice(0, 12000), c.text), maxTokens: 120 })).trim().replace(/\s+/g, " ").slice(0, 300);
-      if (text) ctx[c.baseHash || c.hash] = text;
-      done++;
-      if (done % 25 === 0) log(`${done} chunks`);
+  let unsaved = 0;
+  // Each context costs an API call. Save every 20 and, whatever happens, on the way out: a rate limit or a
+  // crash after 500 paid calls must not throw those 500 away.
+  const save = async () => {
+    if (!unsaved) return;
+    mkdirSync(join(base, ".githippo"), { recursive: true });
+    writeFileSync(contextFile(base), JSON.stringify(ctx, null, 1));
+    await brain.store.commit?.([".githippo/context.json"], "memory: contextualize chunks", "contextualize");
+    unsaved = 0;
+  };
+  try {
+    for (const f of brain.index.files.values()) {
+      if (f.path.startsWith("sessions/") || ["index.md", "core.md"].includes(f.path)) continue;
+      for (const c of f.chunks) {
+        if (ctx[c.baseHash || c.hash] || done >= limit) continue;
+        const text = (await llm.complete({ prompt: CONTEXT_PROMPT(f.live.slice(0, 12000), c.text), maxTokens: 120 })).trim().replace(/\s+/g, " ").slice(0, 300);
+        if (text) {
+          ctx[c.baseHash || c.hash] = text;
+          unsaved++;
+        }
+        done++;
+        if (done % 25 === 0) log(`${done} chunks`);
+        if (unsaved >= 20) await save();
+      }
     }
+  } catch (e) {
+    await save().catch(() => {});
+    e.message = `${e.message} (${Object.keys(ctx).length} contexts are saved; run contextualize again to continue)`;
+    throw e;
   }
-  mkdirSync(join(base, ".githippo"), { recursive: true });
-  writeFileSync(contextFile(base), JSON.stringify(ctx, null, 1));
-  if (done) await brain.store.commit?.([".githippo/context.json"], "memory: contextualize chunks", "contextualize");
+  await save();
   return { added: done, total: Object.keys(ctx).length };
 }

@@ -3,7 +3,7 @@
 // server) is untouched until someone accepts. With a GitHub remote and gh, the branch becomes a pull request.
 // Model output is untrusted: every proposal goes through the same secrets guard and injection screen.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { FileStore } from "./filestore.js";
 import { MemoryIndex } from "./search.js";
@@ -90,7 +90,20 @@ export async function applyOnBranch({ vaultDir, ops, root = "memory", stampNow =
 
 /** Accept = merge the proposals branch into the vault's current branch; reject = delete it. */
 export function acceptProposals(vaultDir, branch) {
-  git(vaultDir, "-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "merge", "--no-edit", "-q", branch);
+  try {
+    git(vaultDir, "-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "merge", "--no-edit", "-q", branch);
+  } catch (e) {
+    // a conflict leaves MERGE_HEAD and <<<<<<< markers in memory files, which would then be indexed as facts:
+    // always roll back to the exact state we started from
+    let files = [];
+    try {
+      files = git(vaultDir, "diff", "--name-only", "--diff-filter=U").split("\n").filter(Boolean);
+    } catch {}
+    try {
+      git(vaultDir, "merge", "--abort");
+    } catch {}
+    throw new Error(`the proposals conflict with changes made since they were created${files.length ? ` (${files.join(", ")})` : ""}; nothing was merged. Discard them with \`githippo proposals reject ${branch}\` and run consolidate again. (${String(e.stderr || e.message).split("\n")[0].slice(0, 100)})`);
+  }
   git(vaultDir, "branch", "-d", branch);
 }
 export function rejectProposals(vaultDir, branch) {
@@ -109,4 +122,51 @@ export function openPullRequest(vaultDir, branch, summary) {
   } catch {
     return null;
   }
+}
+
+/**
+ * A review costs a model call. Its output is written to disk BEFORE anything is applied, and removed only after
+ * the proposals branch exists, so a failure in any later step (git busy, disk full, a crash) loses nothing: the next
+ * run applies what's waiting first.
+ */
+export const pendingFiles = (dir) => {
+  try {
+    return readdirSync(dir).filter((f) => /^consolidation-\d+\.json$/.test(f)).sort().map((f) => join(dir, f));
+  } catch {
+    return [];
+  }
+};
+
+export function savePending(dir, ops, meta = {}) {
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, `consolidation-${Date.now()}.json`);
+  writeFileSync(file, JSON.stringify({ at: new Date().toISOString(), model: meta.model, ops }), { mode: 0o600 });
+  return file;
+}
+
+/** Applies any saved batches, then (if there's a session) reviews it with the model and applies that. */
+export async function runConsolidation({ llm, sessionText, brain, vaultDir, root = "memory", pendingDir, apply = applyOnBranch }) {
+  const batches = [];
+  for (const file of pendingFiles(pendingDir)) {
+    try {
+      batches.push({ file, ops: JSON.parse(readFileSync(file, "utf8")).ops || [] });
+    } catch {
+      rmSync(file, { force: true }); // unreadable leftover: nothing recoverable in it
+    }
+  }
+  if (sessionText) {
+    const ops = await proposeUpdates({ llm, sessionText, brain }); // the paid call
+    if (ops.length) batches.push({ file: savePending(pendingDir, ops, { model: llm?.model }), ops });
+  }
+  const results = [];
+  for (const b of batches) {
+    try {
+      results.push(await apply({ vaultDir, ops: b.ops, root }));
+    } catch (e) {
+      e.message = `${e.message} (the model's proposals are saved in ${b.file}; the next run will apply them)`;
+      throw e;
+    }
+    rmSync(b.file, { force: true });
+  }
+  return results;
 }

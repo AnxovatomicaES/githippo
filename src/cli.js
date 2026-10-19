@@ -9,11 +9,13 @@ import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildServer, createBrain, instructions, VERSION } from "./server.js";
-import { loadConfig, CONFIG_FILE, HOME_DIR } from "./config.js";
+import { loadConfig, applyFileConfig, CONFIG_FILE, HOME_DIR } from "./config.js";
+import { fileURLToPath } from "node:url";
 import { preCompact, postCompact, sessionEnd, sessionStart, promptRecall, readStdin, cleanupOld, statusLine } from "./hooks.js";
 import { createHttpApp } from "./http.js";
 
 const [cmd = "serve", ...rest] = process.argv.slice(2);
+applyFileConfig();
 const timeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
 
 /** B26: a missing or bad config is a one-line instruction, not a stack trace. */
@@ -43,12 +45,24 @@ async function http() {
   const brain = brainOrExit("remote");
   await timeout(brain.loadCore().catch(() => {}), 5000);
   const port = Number(process.env.PORT || 8787);
+  // Last line of defence for a long-running server: log and keep serving, but a crash loop still exits so the
+  // host (Render, systemd, Docker) restarts a clean process.
+  const faults = [];
+  const survive = (kind) => (err) => {
+    console.error(`[githippo] ${kind}:`, err?.stack || err);
+    const now = Date.now();
+    faults.push(now);
+    while (faults.length && now - faults[0] > 60_000) faults.shift();
+    if (faults.length > 20) process.exit(1);
+  };
+  process.on("uncaughtException", survive("uncaught exception"));
+  process.on("unhandledRejection", survive("unhandled rejection"));
   const { Accounts } = await import("./accounts.js");
   const { signingKey } = await import("./oauth.js");
   const accounts = Accounts.load({ file: join(HOME_DIR, "users.json") });
   const legacy = process.env.LEGACY_SECRET_URL === "1";
   if (legacy) console.warn("[githippo] LEGACY_SECRET_URL=1: the secret is accepted in the URL path, where proxies may log it. Prefer OAuth.");
-  createHttpApp(brain, { secret: cfg.MCP_SECRET, key: signingKey(process.env), accounts, publicUrl: process.env.PUBLIC_URL || null, legacySecretUrl: legacy }).listen(port, () => {
+  createHttpApp(brain, { secret: cfg.MCP_SECRET, key: signingKey(process.env), accounts, publicUrl: process.env.PUBLIC_URL || null, legacySecretUrl: legacy, stateFile: process.env.OAUTH_STATE_FILE || join(HOME_DIR, "oauth-state.json") }).listen(port, () => {
     console.log(`[githippo] v${VERSION} on :${port} · auth: OAuth 2.1${accounts.multiUser ? ` (${accounts.users.size} users)` : " (owner)"} · embeddings ${brain.index.embedder?.id || "off"}`);
     brain.index.sync().catch((e) => console.error("[githippo] index:", e.message));
   });
@@ -76,7 +90,7 @@ async function hook(event) {
       out = await sessionEnd(input, { brain: repoBrain() });
       // CONSOLIDATE=1: review the finished session in the background (needs ANTHROPIC_API_KEY)
       if (process.env.CONSOLIDATE === "1" && input.transcript_path && process.env.ANTHROPIC_API_KEY) {
-        spawn(process.execPath, [new URL(import.meta.url).pathname, "consolidate", "--transcript", input.transcript_path], { detached: true, stdio: "ignore" }).unref();
+        spawn(process.execPath, [fileURLToPath(import.meta.url), "consolidate", "--transcript", input.transcript_path], { detached: true, stdio: "ignore" }).on("error", () => {}).unref();
       }
     } else if (event === "session-start") {
       out = await sessionStart(input);
@@ -242,7 +256,10 @@ async function setup() {
   const settingsPath = join(homedir(), ".claude", "settings.json");
   if (existsSync(join(homedir(), ".claude")) || commandExists("claude")) {
     const r = await wireClaudeCode(settingsPath);
-    say(`✓ Claude Code    hooks${r.statusLine ? " + status line" : ""} · MCP ${r.mcp}`);
+    if (r.error) {
+      say(`✗ Claude Code    not set up: ${r.error}. Fix that file, then run githippo setup again.`);
+      process.exitCode = 1;
+    } else say(`✓ Claude Code    hooks${r.statusLine ? " + status line" : ""} · MCP ${r.mcp}`);
   } else {
     say("· Claude Code    not found (add the MCP server to your client: command `githippo serve`)");
   }
@@ -254,7 +271,8 @@ async function setup() {
 
   if ((loadConfig().EMBEDDINGS || "local") === "local") {
     const log = join(HOME_DIR, "warm.log");
-    const child = spawn(process.execPath, [new URL(import.meta.url).pathname, "warm"], { detached: true, stdio: ["ignore", "ignore", "ignore"] });
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "warm"], { detached: true, stdio: ["ignore", "ignore", "ignore"] });
+    child.on("error", () => {}); // a missing runtime must never crash setup
     child.unref();
     say(`✓ semantic search downloading in the background (keyword search works now) · log: ${log}`);
   }
@@ -385,7 +403,7 @@ async function sessionText(path) {
  */
 async function consolidateCmd() {
   const { createLLM } = await import("./llm.js");
-  const { proposeUpdates, applyOnBranch, openPullRequest } = await import("./consolidate.js");
+  const { openPullRequest } = await import("./consolidate.js");
   const cfg = loadConfig();
   const llm = createLLM(process.env);
   if (!llm) return console.error("consolidate needs ANTHROPIC_API_KEY (it uses a small model to review the session)."), process.exit(1);
@@ -399,17 +417,23 @@ async function consolidateCmd() {
   }
   if (!file) return console.error("No Claude Code transcript found; pass --transcript <path>."), process.exit(1);
   const brain = brainOrExit("consolidate");
-  const ops = await proposeUpdates({ llm, sessionText: await sessionText(file), brain });
-  const r = await applyOnBranch({ vaultDir: cfg.VAULT_DIR, ops, root: cfg.MEMORY_ROOT ?? "memory" });
-  const summary = [
-    `${r.applied.length} proposed change(s) from a session, made by ${llm.model}. Review and merge, or close to discard.`,
-    ...r.applied.map((a) => `- ${a.op.op}: ${a.op.fact || `${a.op.old} → ${a.op.new}`} (${a.path})`),
-    ...(r.contradictions.length ? ["", "Possible contradictions to look at:", ...r.contradictions.map((c) => `- ${c.a} ↔ ${c.b}: ${c.note || ""}`)] : []),
-    ...(r.rejected.length ? ["", `Not proposed (${r.rejected.length}):`, ...r.rejected.map((x) => `- ${x.op.fact || x.op.new || x.op.op}: ${x.reason}`)] : []),
-  ].join("\n");
-  if (!r.applied.length) return console.log(`No changes proposed.${r.rejected.length ? `\n${summary}` : ""}`);
-  const pr = rest.includes("--no-pr") ? null : openPullRequest(cfg.VAULT_DIR, r.branch, summary);
-  console.log(`${summary}\n\n${pr ? `Pull request: ${pr}` : `Branch ${r.branch}: githippo proposals accept ${r.branch}  (or reject)`}`);
+  const { runConsolidation } = await import("./consolidate.js");
+  const results = await runConsolidation({ llm, sessionText: await sessionText(file), brain, vaultDir: cfg.VAULT_DIR, root: cfg.MEMORY_ROOT ?? "memory", pendingDir: join(HOME_DIR, "pending") });
+  if (!results.length) return console.log("No changes proposed.");
+  for (const r of results) {
+    const summary = [
+      `${r.applied.length} proposed change(s) from a session, made by ${llm.model}. Review and merge, or close to discard.`,
+      ...r.applied.map((a) => `- ${a.op.op}: ${a.op.fact || `${a.op.old} → ${a.op.new}`} (${a.path})`),
+      ...(r.contradictions.length ? ["", "Possible contradictions to look at:", ...r.contradictions.map((x) => `- ${x.a} ↔ ${x.b}: ${x.note || ""}`)] : []),
+      ...(r.rejected.length ? ["", `Not proposed (${r.rejected.length}):`, ...r.rejected.map((x) => `- ${x.op.fact || x.op.new || x.op.op}: ${x.reason}`)] : []),
+    ].join("\n");
+    if (!r.applied.length) {
+      console.log(`No changes proposed.${r.rejected.length ? `\n${summary}` : ""}`);
+      continue;
+    }
+    const pr = rest.includes("--no-pr") ? null : openPullRequest(cfg.VAULT_DIR, r.branch, summary);
+    console.log(`${summary}\n\n${pr ? `Pull request: ${pr}` : `Branch ${r.branch}: githippo proposals accept ${r.branch}  (or reject)`}`);
+  }
 }
 
 /** Contextual retrieval: githippo contextualize [--limit N]  (needs ANTHROPIC_API_KEY; local vault) */
@@ -458,6 +482,8 @@ async function evalCmd() {
 
 /** Downloads the embedding runtime + model once, so semantic recall is instant afterwards. */
 async function warm() {
+  const mode = String(loadConfig().EMBEDDINGS || "local").toLowerCase();
+  if (!["local", "static"].includes(mode)) return console.log(`nothing to download: EMBEDDINGS=${mode} doesn't use a local model`);
   const { importTransformers, ensureRuntime, createEmbedder } = await import("./embed.js");
   try {
     await importTransformers();

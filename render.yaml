@@ -19,6 +19,8 @@ services:
         sync: false
       - key: USERS_JSON          # optional: team vault users from `githippo users`
         sync: false
+      - key: TRUST_PROXY         # Render's proxy appends the real client address to X-Forwarded-For
+        value: "1"
       - key: EMBEDDINGS
         value: local
       - key: CACHE_DIR

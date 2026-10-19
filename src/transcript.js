@@ -4,9 +4,10 @@ import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { basename } from "node:path";
 import { stripMemoryTags } from "./parse.js";
+import { defang } from "./injection.js";
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
-const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const clip = (s, n) => defang(s.length > n ? `${s.slice(0, n - 1)}…` : s); // every free-text line is screened for planted instructions
 const oneLine = (s) => s.replace(/\s+/g, " ").trim();
 
 function blocks(message) {

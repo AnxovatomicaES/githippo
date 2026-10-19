@@ -282,13 +282,22 @@ export class MemoryIndex {
       if (changed.length > 20 && this.store.prefetch) await this.store.prefetch().catch(() => 0);
       const read = (f) => (this.store.readVersion ? this.store.readVersion(f.path, f.version) : this.store.read(f.path));
       const fresh = [];
+      const failed = [];
       await forEachLimit(changed, 32, async (f) => {
-        const file = await read(f);
-        if (!file) return;
-        const parsed = this.withContext({ ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content });
-        this.applyFile(f.path, parsed);
-        fresh.push(parsed);
+        try {
+          const file = await read(f);
+          if (!file) return;
+          if (/^<{7}( |$)/m.test(file.content) && /^={7}$/m.test(file.content) && /^>{7}( |$)/m.test(file.content)) throw new Error("unresolved git conflict markers");
+          const parsed = this.withContext({ ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content });
+          this.applyFile(f.path, parsed);
+          fresh.push(parsed);
+        } catch (e) {
+          // a note that can't be read or parsed is skipped and reported; it never takes the rest of memory down
+          this.applyFile(f.path, null);
+          failed.push(`${f.path}: ${String(e.message).split("\n")[0].slice(0, 80)}`);
+        }
       });
+      if (failed.length) console.error(`[githippo] ${failed.length} note(s) skipped: ${failed.slice(0, 3).join(" | ")}`);
       // loud, not silent: a note that was listed but couldn't be read is a note the user can't search
       const unreadable = listing.filter((f) => !this.files.has(f.path));
       if (unreadable.length) console.error(`[githippo] ${unreadable.length} note(s) could not be read and are not searchable, e.g. ${unreadable[0].path}`);

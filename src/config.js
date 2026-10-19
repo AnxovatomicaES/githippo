@@ -14,7 +14,24 @@ const KEYS = [
   "VOYAGE_API_KEY", "VOYAGE_MODEL", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "MCP_SECRET", "CACHE_DIR",
   "CORE_BUDGET_TOKENS", "PROMPT_RECALL", "GITHIPPO_HOOK_PROFILE", "GITHIPPO_DISABLED_HOOKS", "DECAY_ACTIVE_DAYS",
   "STORE", "VAULT_DIR", "MEMORY_STYLE",
+  "STATIC_EMBED_MODEL", "GITHIPPO_CONFIRM", "RERANK", "RERANK_MODEL", "EMBED_IDLE_MS", "GIT_SIGN", "CONSOLIDATE",
+  "TRUST_PROXY", "LEGACY_SECRET_URL", "PUBLIC_URL", "OAUTH_STATE_FILE", "PORT",
 ];
+
+/**
+ * One precedence rule everywhere: environment variable > ~/.githippo/config.json > built-in default.
+ * Modules that read process.env directly (confirmations, reranking, proxy trust…) see config.json values because
+ * the CLI copies any key the environment doesn't set into process.env once, at startup.
+ */
+export function applyFileConfig(env = process.env) {
+  let file = {};
+  try {
+    file = JSON.parse(readFileSync(CONFIG_FILE, "utf8"));
+  } catch {
+    return;
+  }
+  for (const k of KEYS) if (env[k] === undefined && file[k] !== undefined && file[k] !== null && file[k] !== "") env[k] = String(file[k]);
+}
 
 export function loadConfig(env = process.env) {
   let file = {};

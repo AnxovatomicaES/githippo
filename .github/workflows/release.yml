@@ -20,12 +20,8 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm test
-      - name: Check versions match the tag
-        run: |
-          V="${GITHUB_REF_NAME#v}"
-          for f in package.json manifest.json .claude-plugin/plugin.json; do
-            test "$(node -p "require('./$f').version")" = "$V" || { echo "$f is not $V"; exit 1; }
-          done
+      - name: Check every version and pinned tag matches the release tag
+        run: node scripts/versions.mjs
       - name: Build Claude Desktop extension
         run: node scripts/build-mcpb.mjs
       - name: Write server.json from the built bundle's hash

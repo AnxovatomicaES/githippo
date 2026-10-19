@@ -35,8 +35,16 @@ export class KnowledgeGraph {
     // B5: ids are file stems, unless two files share a stem (people/johnny + projects/johnny) → folder/stem
     const counts = new Map();
     for (const f of files) counts.set(stem(f.path), (counts.get(stem(f.path)) || 0) + 1);
-    for (const f of files) this.addNode(f, counts.get(stem(f.path)) > 1 ? f.path.replace(/\.md$/, "") : stem(f.path));
-    for (const f of files) this.addEdges(f);
+    for (const f of files) {
+      try {
+        this.addNode(f, counts.get(stem(f.path)) > 1 ? f.path.replace(/\.md$/, "") : stem(f.path));
+      } catch {}
+    }
+    for (const f of files) {
+      try {
+        this.addEdges(f);
+      } catch {}
+    }
   }
 
   idOf(path) {

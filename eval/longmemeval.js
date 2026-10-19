@@ -4,6 +4,7 @@
 // answer session is in the top K. Retrieval only: no LLM, no answer generation, no judge.
 // Usage: node eval/longmemeval.js --data longmemeval_s_cleaned.json [--embeddings none|local] [--limit N]
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { InMemoryStore } from "../src/memstore.js";
 import { MemoryIndex } from "../src/search.js";
 import { createEmbedder } from "../src/embed.js";
@@ -87,7 +88,7 @@ export function formatLongMemEval(r) {
   ].join("\n");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv.includes("--rerank")) process.env.RERANK = "local";
   const arg = (n, d) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1] : d);
   const data = JSON.parse(readFileSync(arg("data", "longmemeval_s_cleaned.json"), "utf8"));

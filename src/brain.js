@@ -53,8 +53,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 const bare = (l) => l.replace(/^\s*[-*]\s+/, "").trim();
 
 function jaccard(a, b) {
-  const A = new Set(tokenize(a));
-  const B = new Set(tokenize(b));
+  const A = new Set(tokenize(plain(a))); // plain() drops the hidden date/provenance stamp: "2026 10 18" is not a word
+  const B = new Set(tokenize(plain(b)));
   if (!A.size || !B.size) return 0;
   let inter = 0;
   for (const t of A) if (B.has(t)) inter++;
@@ -77,6 +77,32 @@ const EVERYDAY = new Set(
     "sobre bajo entre durante desde hasta hacia cada todo toda todos otro otra mismo",
   ].join(" ").split(" ").map((w) => (w.length > 4 && /[^su]s$/.test(w) ? w.slice(0, -1) : w)),
 );
+
+const stripLine = (l) => plain(bare(l)).replace(/\s+/g, " ").trim();
+
+/**
+ * Which bullet line does `text` mean? Exact text first (case-sensitive, then case-insensitive); only if neither
+ * matches, tokenizer equality (which ignores stop words, plurals and accents, so two different lines can collide).
+ * Returns { idx } (or -1), or { ambiguous: n } when several lines match at the same level: never guess.
+ */
+export function matchLine(lines, text, from = 0, to = lines.length) {
+  const bullets = [];
+  for (let i = from; i < to; i++) if (/^\s*[-*]\s+/.test(lines[i])) bullets.push(i);
+  const want = stripLine(text);
+  const levels = [
+    (l) => stripLine(l) === want,
+    (l) => stripLine(l).toLowerCase() === want.toLowerCase(),
+    (l) => tokenize(stripLine(l)).join(" ") === tokenize(want).join(" "),
+  ];
+  for (const same of levels) {
+    const hits = bullets.filter((i) => same(lines[i]));
+    if (hits.length === 1) return { idx: hits[0] };
+    if (hits.length > 1) return { ambiguous: hits.length };
+  }
+  return { idx: -1 };
+}
+
+const MAX_FACT_BYTES = 4000;
 
 export function assertSafe(text) {
   const findings = scan(text);
@@ -330,6 +356,9 @@ export class Brain {
     const { text: visible, removed } = stripMemoryTags(String(fact).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ""));
     const clean = bare(visible).replace(/\s+/g, " ");
     if (clean.length < 3) throw new MemoryError(removed ? "Nothing to save: the fact was entirely inside <private> tags." : "Fact is empty.");
+    if (Buffer.byteLength(clean) > MAX_FACT_BYTES) {
+      throw new MemoryError(`This "fact" is ${Buffer.byteLength(clean)} bytes; a fact is a sentence or two (max ${MAX_FACT_BYTES} bytes). Save a short summary, or put the document in a note with the files tool.`);
+    }
     assertSafe(clean);
     const inj = injectionKinds(clean);
     if (inj.length) {
@@ -346,7 +375,7 @@ export class Brain {
     const existing = this.file(target.path) || (await this.store.read(target.path));
     const content = existing?.content ?? null;
 
-    if (opts.replaces) return this.supersede(target.path, existing, opts.replaces, clean);
+    if (opts.replaces) return this.supersede(target.path, existing, opts.replaces, clean, source);
 
     // Duplicate / supersession check against target + nearest files.
     const candidates = new Set([target.path]);
@@ -379,7 +408,7 @@ export class Brain {
     } else {
       next = insertLive(content, line);
       if (Buffer.byteLength(next) > MAX_FILE_BYTES * 0.9) {
-        throw new MemoryError(`${target.path} is nearly full; run maintain with rewrite first.`);
+        throw new MemoryError(`${target.path} is nearly full (${Buffer.byteLength(content)} of ${MAX_FILE_BYTES} bytes); run maintain with rewrite=${target.path} first.`);
       }
     }
     const r = await this.store.write(target.path, next, content ? existing.version : "new", "remember");
@@ -395,17 +424,19 @@ export class Brain {
   }
 
   /** Temporal supersession: the old fact moves to a dated History section (excluded from recall), never silently lost. */
-  async supersede(path, existing, oldText, newFact) {
+  async supersede(path, existing, oldText, newFact, source = null) {
     if (!existing) throw new MemoryError(`${path} does not exist; nothing to replace.`);
     const content = existing.content;
-    const want = tokenize(plain(bare(oldText))).join(" ");
     const lines = content.split("\n");
     const historyAt = lines.findIndex((l) => /^#{1,6}\s+(?:history|archived)\s*$/i.test(l));
-    const idx = lines.findIndex((l, i) => (historyAt < 0 || i < historyAt) && /^\s*[-*]\s+/.test(l) && tokenize(plain(bare(l))).join(" ") === want);
-    if (idx < 0) throw new MemoryError(`Line to replace not found in ${path}.`);
+    const m = matchLine(lines, oldText, 0, historyAt < 0 ? lines.length : historyAt);
+    if (m.ambiguous) throw new MemoryError(`${m.ambiguous} lines in ${path} match "${stripLine(oldText).slice(0, 60)}"; pass the exact text of the one to replace.`);
+    if (m.idx < 0) throw new MemoryError(`Line to replace not found in ${path}.`);
+    const idx = m.idx;
     const old = plain(bare(lines[idx]));
     const { text, linked } = this.graph.autoLink(newFact, [this.graph.idOf(path)]);
-    lines[idx] = `- ${text}${stamp()}`;
+    // the replacement keeps its provenance: an external fact that replaces a trusted one stays marked [external]
+    lines[idx] = `- ${text}${stamp(undefined, source)}`;
     let next = lines.join("\n").replace(/\n*$/, "\n");
     const record = `- ~~${old}~~ (until ${today()})`;
     next = /^#{1,6}\s+history\s*$/im.test(next) ? `${next}${record}\n` : `${next}\n## History\n${record}\n`;
@@ -436,46 +467,46 @@ export class Brain {
     return this.retrying(() => this._forget(text, opts));
   }
 
-  /** Read-only: the exact fact forget(text) would remove, so a caller can show it before anything changes. */
-  async locateFact(text, { path } = {}) {
-    await this.index.sync();
-    const want = tokenize(plain(bare(text))).join(" ");
-    let candidates = path ? [normalizePath(path)] : [];
-    if (!path) {
-      const hits = await this.search(text, { k: 5, expand: false });
-      candidates = [...new Set([...hits.map((h) => h.path), "core.md", this.acl.home("core.md")])].filter((p) => this.acl.canWrite(p));
-    }
-    for (const p of candidates) {
-      const f = this.file(p);
-      const line = f?.content.split("\n").find((l) => /^\s*[-*]\s+/.test(l) && tokenize(plain(bare(l))).join(" ") === want);
-      if (line) return { path: p, line: plain(bare(line)) };
-    }
-    return null;
+  /** Candidate notes for forget(text): the given path, or what search finds plus core memory. */
+  async forgetCandidates(text, path) {
+    if (path) return [normalizePath(path)];
+    const hits = await this.search(text, { k: 5, expand: false });
+    return [...new Set([...hits.map((h) => h.path), "core.md", this.acl.home("core.md")])].filter((p) => this.acl.canWrite(p));
   }
 
-  async _forget(text, { path } = {}) {
+  /** The single line forget(text) would remove, or null. Throws if the text matches more than one line or note. */
+  async findForgettable(text, path) {
     await this.index.sync();
-    const want = tokenize(plain(bare(text))).join(" ");
-    let candidates = path ? [normalizePath(path)] : [];
-    if (!path) {
-      const hits = await this.search(text, { k: 5, expand: false });
-      candidates = [...new Set([...hits.map((h) => h.path), "core.md", this.acl.home("core.md")])].filter((p) => this.acl.canWrite(p));
-    }
-    for (const p of candidates) {
+    const found = [];
+    for (const p of await this.forgetCandidates(text, path)) {
       const f = this.file(p);
       if (!f) continue;
       const lines = f.content.split("\n");
-      const idx = lines.findIndex((l) => /^\s*[-*]\s+/.test(l) && tokenize(plain(bare(l))).join(" ") === want);
-      if (idx < 0) continue;
-      const removed = bare(lines[idx]);
-      lines.splice(idx, 1);
-      const next = lines.join("\n");
-      const r = await this.store.write(p, next, f.version, "forget");
-      await this.index.upsert(p, next, r.version);
-      if (/(^|\/)core\.md$/.test(p)) await this.loadCore();
-      return { status: "forgotten", path: p, line: plain(removed), note: "Still in git history; rewrite history to purge completely." };
+      const m = matchLine(lines, text);
+      if (m.ambiguous) throw new MemoryError(`${m.ambiguous} lines in ${p} match that text; pass the exact text of the one to remove.`);
+      if (m.idx >= 0) found.push({ p, f, lines, idx: m.idx });
     }
-    throw new MemoryError("No exact matching line found. Use recall mode=brief to get the exact text.");
+    if (found.length > 1) throw new MemoryError(`That fact appears in ${found.length} notes (${found.map((x) => x.p).join(", ")}); pass path to say which.`);
+    return found[0] || null;
+  }
+
+  /** Read-only: the exact fact forget(text) would remove, so a caller can show it before anything changes. */
+  async locateFact(text, { path } = {}) {
+    const hit = await this.findForgettable(text, path);
+    return hit ? { path: hit.p, line: plain(bare(hit.lines[hit.idx])) } : null;
+  }
+
+  async _forget(text, { path } = {}) {
+    const hit = await this.findForgettable(text, path);
+    if (!hit) throw new MemoryError("No exact matching line found. Use recall mode=brief to get the exact text.");
+    const { p, f, lines, idx } = hit;
+    const removed = bare(lines[idx]);
+    lines.splice(idx, 1);
+    const next = lines.join("\n");
+    const r = await this.store.write(p, next, f.version, "forget");
+    await this.index.upsert(p, next, r.version);
+    if (/(^|\/)core\.md$/.test(p)) await this.loadCore();
+    return { status: "forgotten", path: p, line: plain(removed), note: "Still in git history; rewrite history to purge completely." };
   }
 
   async addToIndex(path, description) {

@@ -6,6 +6,8 @@
 // blobs, so nothing needs storing. Codes are single-use (in-memory replay set, 60 s lifetime). Tokens are
 // bound to the user's current password+ACL version, so changing either revokes them immediately.
 import { createHash, createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
+import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 const b64 = (b) => Buffer.from(b).toString("base64url");
 const now = () => Math.floor(Date.now() / 1000);
@@ -20,7 +22,7 @@ export function signingKey(env = process.env) {
   return Buffer.from(hkdfSync("sha256", env.MCP_SECRET, "githippo", "oauth-signing-v1", 32));
 }
 
-export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin = 10 }) {
+export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin = 10, stateFile = null }) {
   const sign = (kind, payload) => {
     const body = b64(JSON.stringify({ k: kind, ...payload }));
     return `hippo.${body}.${b64(createHmac("sha256", key).update(`${kind}.${body}`).digest())}`;
@@ -40,6 +42,39 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
   };
 
   const usedCodes = new Map();
+  // Refresh-token rotation with reuse detection (RFC 9700 §4.14). Every sign-in is a "family" (fid = the
+  // authorization code's id). Each refresh token is single use; presenting an already-used one means it was
+  // copied, so the WHOLE family (its access tokens and its newest refresh token) is revoked. This is the only
+  // state the otherwise-stateless server keeps; with a stateFile it survives restarts.
+  const usedRefresh = new Map(); // refresh-token jti -> exp
+  const revokedFamilies = new Map(); // fid -> exp
+  try {
+    if (stateFile) {
+      const st = JSON.parse(readFileSync(stateFile, "utf8"));
+      for (const [k, v] of Object.entries(st.used || {})) usedRefresh.set(k, v);
+      for (const [k, v] of Object.entries(st.revoked || {})) revokedFamilies.set(k, v);
+    }
+  } catch {}
+  let saveTimer = null;
+  const persist = () => {
+    if (!stateFile || saveTimer) return;
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      const t = now();
+      for (const m of [usedRefresh, revokedFamilies]) for (const [k, exp] of m) if (exp < t) m.delete(k);
+      try {
+        mkdirSync(dirname(stateFile), { recursive: true });
+        const tmp = `${stateFile}.${process.pid}.tmp`;
+        writeFileSync(tmp, JSON.stringify({ used: Object.fromEntries(usedRefresh), revoked: Object.fromEntries(revokedFamilies) }), { mode: 0o600 });
+        renameSync(tmp, stateFile);
+      } catch {}
+    }, 200);
+    saveTimer.unref?.();
+  };
+  const revokeFamily = (fid, exp) => {
+    revokedFamilies.set(fid, exp);
+    persist();
+  };
   const logins = new Map();
   const base = (req) => (publicUrl || `${req.headers["x-forwarded-proto"]?.split(",")[0] || "http"}://${req.headers["x-forwarded-host"] || req.headers.host}`).replace(/\/+$/, "");
   const resourceOf = (req) => `${base(req)}/mcp`;
@@ -57,7 +92,9 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
     }
     if (/json/.test(req.headers["content-type"] || "")) {
       try {
-        return JSON.parse(s);
+        const v = JSON.parse(s);
+        // a JSON body is only usable as an object: null, numbers, strings and arrays become "nothing sent"
+        return v && typeof v === "object" && !Array.isArray(v) ? v : {};
       } catch {
         return {};
       }
@@ -81,18 +118,18 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
     if (logins.size > 5000) for (const [k, v] of logins) if (!v.length || t - v.at(-1) > 60_000) logins.delete(k);
     return w.length > loginRatePerMin;
   };
-  const issue = (user, cid, aud, scope) => {
+  const issue = (user, cid, aud, scope, fid) => {
     const uv = accounts.version(user);
     return {
-      access_token: sign("access", { sub: user.id, cid, aud, scope, uv, exp: now() + ACCESS_TTL }),
+      access_token: sign("access", { sub: user.id, cid, aud, scope, uv, fid, exp: now() + ACCESS_TTL }),
       token_type: "Bearer",
       expires_in: ACCESS_TTL,
-      refresh_token: sign("refresh", { sub: user.id, cid, aud, scope, uv, jti: b64(randomBytes(9)), exp: now() + REFRESH_TTL }),
+      refresh_token: sign("refresh", { sub: user.id, cid, aud, scope, uv, fid, jti: b64(randomBytes(9)), exp: now() + REFRESH_TTL }),
       scope,
     };
   };
 
-  async function handle(req, res, url) {
+  async function handle(req, res, url, { ip: ctxIp } = {}) {
     const path = url.pathname;
     if (req.method === "OPTIONS" && /^\/(\.well-known|register|token)/.test(path)) {
       res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version" });
@@ -147,7 +184,7 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
       const r = open("req", b.req);
       if (!r) return page(res, 400, "This sign-in expired", "Go back to your app and connect again."), true;
       if (b.action !== "allow") return redirect(res, r.uri, { error: "access_denied", state: r.st, iss: base(req) }), true;
-      const ip = String(req.headers["x-forwarded-for"] || "").split(",").map((x) => x.trim()).filter(Boolean).at(-1) || req.socket.remoteAddress;
+      const ip = ctxIp || req.socket.remoteAddress; // the address http.js derived (X-Forwarded-For only with TRUST_PROXY=1)
       if (tooManyLogins(ip)) return page(res, 429, "Too many attempts", "Wait a minute and try again."), true;
       const user = accounts.verify(accounts.multiUser ? b.username : "owner", b.password);
       if (!user) return loginPage(res, open("client", r.cid)?.n || "MCP client", new URL(r.uri).host, b.req, accounts.multiUser, "Wrong username or password."), true;
@@ -160,7 +197,10 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
       if (b.grant_type === "authorization_code") {
         const c = open("code", b.code);
         if (!c) return oauthError(res, 400, "invalid_grant", "code is invalid or expired"), true;
-        if (usedCodes.has(c.jti)) return oauthError(res, 400, "invalid_grant", "code already used"), true;
+        if (usedCodes.has(c.jti)) {
+          revokeFamily(c.jti, now() + REFRESH_TTL); // RFC 6749 §4.1.2: a reused code revokes what it already produced
+          return oauthError(res, 400, "invalid_grant", "code already used"), true;
+        }
         if (b.client_id !== c.cid || b.redirect_uri !== c.uri) return oauthError(res, 400, "invalid_grant", "client_id or redirect_uri mismatch"), true;
         if (b64(createHash("sha256").update(String(b.code_verifier || "")).digest()) !== c.chal) return oauthError(res, 400, "invalid_grant", "PKCE verification failed"), true;
         if (b.resource && b.resource.replace(/\/+$/, "") !== c.res.replace(/\/+$/, "")) return oauthError(res, 400, "invalid_target", "resource mismatch"), true;
@@ -168,14 +208,20 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
         for (const [k, exp] of usedCodes) if (exp < now()) usedCodes.delete(k);
         const user = accounts.get(c.sub);
         if (!user) return oauthError(res, 400, "invalid_grant", "user no longer exists"), true;
-        json(res, 200, issue(user, c.cid, c.res, c.sc));
+        json(res, 200, issue(user, c.cid, c.res, c.sc, c.jti));
         return true;
       }
       if (b.grant_type === "refresh_token") {
         const t = open("refresh", b.refresh_token);
         const user = t && accounts.get(t.sub);
-        if (!t || !user || accounts.version(user) !== t.uv || (b.client_id && b.client_id !== t.cid)) return oauthError(res, 400, "invalid_grant", "refresh token is invalid, expired or revoked"), true;
-        json(res, 200, issue(user, t.cid, t.aud, t.scope));
+        if (!t || !user || accounts.version(user) !== t.uv || (b.client_id && b.client_id !== t.cid) || revokedFamilies.has(t.fid)) return oauthError(res, 400, "invalid_grant", "refresh token is invalid, expired or revoked"), true;
+        if (usedRefresh.has(t.jti)) {
+          revokeFamily(t.fid, t.exp); // an old refresh token was presented again: it was copied
+          return oauthError(res, 400, "invalid_grant", "refresh token was already used; every token from this sign-in has been revoked, sign in again"), true;
+        }
+        usedRefresh.set(t.jti, t.exp); // rotate: this one is now spent
+        persist();
+        json(res, 200, issue(user, t.cid, t.aud, t.scope, t.fid));
         return true;
       }
       oauthError(res, 400, "unsupported_grant_type", "use authorization_code or refresh_token");
@@ -188,7 +234,7 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
   function verifyBearer(req) {
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     const t = open("access", token);
-    if (!t || t.aud.replace(/\/+$/, "") !== resourceOf(req)) return null;
+    if (!t || t.aud.replace(/\/+$/, "") !== resourceOf(req) || revokedFamilies.has(t.fid)) return null;
     const user = accounts.get(t.sub);
     return user && accounts.version(user) === t.uv ? user : null;
   }

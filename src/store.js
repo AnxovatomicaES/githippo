@@ -17,8 +17,11 @@ export function normalizePath(input) {
   if (p.split("/").some((s) => s === ".." || s === "." || s === "")) {
     throw new MemoryError(`Invalid path: ${input}`);
   }
-  if (!/^[A-Za-z0-9._\-/]+$/.test(p)) {
-    throw new MemoryError(`Path may only contain letters, digits, '.', '_', '-', '/': ${input}`);
+  const segs = p.split("/");
+  // refused: control characters, backslashes and characters that no common filesystem accepts everywhere,
+  // hidden (dot-leading) names, and over-long names. Everything else is fine: "my notes.md", "café.md", "笔记.md".
+  if (/[\u0000-\u001f\u007f\\<>:"|?*]/.test(p) || segs.some((s) => s.startsWith(".") || Buffer.byteLength(s) > 255)) {
+    throw new MemoryError(`Unsupported file name (no control characters, backslashes or < > : " | ? *, no hidden names, 255 bytes max): ${input}`);
   }
   if (!p.endsWith(".md")) throw new MemoryError(`Memory files must end in .md: ${input}`);
   return p;

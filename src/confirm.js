@@ -12,8 +12,13 @@
 // Ordinary facts the user stated are never interrupted. Questions are asked BEFORE any lock is taken, so a
 // slow answer never blocks other memory writes.
 import { ElicitResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { loadConfig } from "./config.js";
 
-export const confirmMode = (env = process.env) => (["off", "strict"].includes(env.GITHIPPO_CONFIRM) ? env.GITHIPPO_CONFIRM : "auto");
+// environment variable > ~/.githippo/config.json > "auto"
+export const confirmMode = (env = process.env) => {
+  const v = loadConfig(env).GITHIPPO_CONFIRM;
+  return v === "off" || v === "strict" ? v : "auto";
+};
 
 /** An empty `elicitation: {}` means form mode (MCP spec backwards compatibility; that's what Claude Code declares). */
 export function canElicit(server) {

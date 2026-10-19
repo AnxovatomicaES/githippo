@@ -3,6 +3,7 @@
 // ceiling). Judge instructions are ADAPTED from LongMemEval's per-type evaluation rules, not copied verbatim.
 // Usage: ANTHROPIC_API_KEY=… node eval/qa.js --data longmemeval_s_cleaned.json --sample 50 [--embeddings local]
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { InMemoryStore } from "../src/memstore.js";
 import { MemoryIndex } from "../src/search.js";
 import { createEmbedder } from "../src/embed.js";
@@ -78,7 +79,7 @@ export function formatQA(score, meta = "") {
   ].join("\n");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const arg = (n, d) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1] : d);
   const llm = createLLM(process.env);
   if (!llm) throw new Error("set ANTHROPIC_API_KEY");

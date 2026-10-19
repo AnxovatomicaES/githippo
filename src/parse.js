@@ -20,9 +20,10 @@ export function parseFrontmatter(content) {
   const m = content.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!m) return { meta: {}, body: content, bodyOffset: 0 };
   const meta = {};
-  for (const line of m[1].split("\n")) {
-    const kv = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
-    if (kv) meta[kv[1]] = parseValue(kv[2]);
+  for (const line of m[1].split("\n").slice(0, 200)) {
+    const kv = line.match(/^([A-Za-z_][\w-]{0,40}):\s*(.{0,2000})$/);
+    // __proto__ / constructor / prototype would rewrite the object's prototype; they're not metadata
+    if (kv && !["__proto__", "constructor", "prototype"].includes(kv[1])) meta[kv[1]] = parseValue(kv[2]);
   }
   const bodyOffset = m[0].split("\n").length - 1;
   return { meta, body: content.slice(m[0].length), bodyOffset };
@@ -35,9 +36,13 @@ export const folder = (path) => (path.includes("/") ? path.split("/")[0] : "");
 export function parseFile(path, content, { maxChars = 700 } = {}) {
   content = content.replace(/\r\n?/g, "\n"); // B2: files edited on Windows
   const { meta, body, bodyOffset } = parseFrontmatter(content);
-  const name = meta.name || stem(path);
-  const title = meta.title || name;
-  const aliases = Array.isArray(meta.aliases) ? meta.aliases : meta.aliases ? [meta.aliases] : [];
+  // frontmatter is user-editable: any field can arrive as a list, empty, or huge. Coerce to short strings here, once,
+  // so nothing downstream ever sees an array where it expects text ("title: []" used to break every recall).
+  const text = (v) => (Array.isArray(v) ? v.map(String).join(", ") : v == null ? "" : String(v)).slice(0, 300);
+  const name = text(meta.name) || stem(path);
+  const title = text(meta.title) || name;
+  const description = text(meta.description);
+  const aliases = (Array.isArray(meta.aliases) ? meta.aliases : meta.aliases ? [meta.aliases] : []).map(text).filter(Boolean).slice(0, 30);
   const chunks = [];
   let heading = "";
   let buf = [];
@@ -56,7 +61,7 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
       .trim();
     if (text) {
       // The description is the file's best semantic summary ("Johnny" means nothing to a model; "Voice assistant for the Mac" does).
-      const embedText = `${title}${meta.description && meta.description !== title ? ` — ${meta.description}` : ""}${heading ? ` › ${heading}` : ""}\n${text}`;
+      const embedText = `${title}${description && description !== title ? ` — ${description}` : ""}${heading ? ` › ${heading}` : ""}\n${text}`;
       chunks.push({
         id: `${path}#${chunks.length}`,
         path,
@@ -92,13 +97,13 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
   });
   flush();
 
-  if (!chunks.length && meta.description) {
-    const embedText = `${title}\n${meta.description}`;
-    chunks.push({ id: `${path}#0`, path, heading: "", history: false, line: 1, text: meta.description, embedText, hash: hash(embedText) });
+  if (!chunks.length && description) {
+    const embedText = `${title}\n${description}`;
+    chunks.push({ id: `${path}#0`, path, heading: "", history: false, line: 1, text: description, embedText, hash: hash(embedText) });
   }
   const live = body.split(/^#{1,6}\s+(?:history|archived)\s*$/im)[0];
   const tags = [...new Set([...live.matchAll(/(?:^|\s)#([\p{L}][\p{L}\p{N}_-]*)/gu)].map((m) => m[1].toLowerCase()))];
-  return { path, name, title, description: meta.description || "", aliases, type: meta.type || folder(path), meta, body, live, tags, chunks };
+  return { path, name, title, description, aliases, type: text(meta.type) || folder(path), meta, body, live, tags, chunks };
 }
 
 /** Renders [[id|Word]] as Word and [[id]] as id: the graph lives server-side, so links cost tokens for nothing. */

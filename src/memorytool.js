@@ -26,7 +26,7 @@ export function toRel(raw) {
   if (p !== ROOT && !p.startsWith(`${ROOT}/`)) throw new MemoryToolError(`Error: Paths must start with ${ROOT}`);
   const segs = p.slice(ROOT.length).split("/").filter(Boolean);
   if (segs.some((s) => s === ".." || s === "." || s.startsWith("."))) throw new MemoryToolError(`Error: Invalid path ${raw}`);
-  if (segs.some((s) => !/^[\w .@()+-]+$/.test(s))) throw new MemoryToolError(`Error: Invalid characters in path ${raw}`);
+  if (segs.some((s) => !/^[\p{L}\p{N}\p{M} ._@()+,&'-]+$/u.test(s))) throw new MemoryToolError(`Error: Invalid characters in path ${raw}`);
   return segs.join("/");
 }
 

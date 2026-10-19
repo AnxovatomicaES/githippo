@@ -11,6 +11,12 @@ const PATTERNS = [
   ["tool-hijack", /\b(call|invoke|use|run)\s+the\s+[\w-]+\s+tool\s+(to|and)\s+(delete|forget|send|write|remember)/i],
 ];
 
+/**
+ * For text copied out of a session (tool output, web pages, errors): if it reads as instructions to an AI, it is
+ * replaced by a marker, so a saved checkpoint can't replay an attack into the next session.
+ */
+export const defang = (text) => (injectionKinds(text).length ? "[instruction-like text removed]" : text);
+
 /** Returns the kinds of injection found (empty = looks like an ordinary fact). */
 export function injectionKinds(text) {
   const s = String(text || "");
