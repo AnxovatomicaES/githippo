@@ -44,3 +44,21 @@ Read it carefully: this is retrieval recall, not the official LongMemEval QA sco
 **Resources** (measured in CI, Linux): githippo itself uses about 50 MB. The local model runs in a separate process that uses about 520 MB while you're using it and exits after 10 idle minutes (`EMBED_IDLE_MS`), so an idle githippo is back to about 50 MB. Without the model (`EMBEDDINGS=none`) it never goes above about 100 MB. The model embeds about 46 chunks a second on a 4-core CI machine (batch size and thread count make no difference), so the first semantic index of a 5,000-note vault takes a few minutes; it happens once in the background, vectors are cached on disk, and keyword search works in the meantime.
 
 **Scale** (local vault, keyword index, measured on Linux): 5,000 notes: cold index 1.3 s, query 23 ms, `remember` 0.06–0.1 s, 149 MB RAM. 20,000 notes: 4.7 s, 41 ms, 0.17–0.2 s, 315 MB. 50,000 notes: 12.4 s, 78 ms, 0.5–0.7 s, 541 MB. A write re-tokenises only the note it touches (an inverted index with incremental add/remove), queries pick the top results from postings, and the semantic vector cache is a binary file: 77 MB, written in 0.14 s and loaded in 0.09 s at 50,000 chunks of 384 dimensions (it was 162 MB of JSON with a 6 s write that blocked the server). The trade-off: cold start is about 50% slower than the old full-scan index (12 s vs 8 s at 50,000 notes). Ranking is unchanged: LongMemEval gives identical numbers before and after. A personal memory rarely passes a few thousand notes; a database isn't needed at these sizes.
+
+## What a question costs as memory grows
+
+`node eval/scale-context.js` (or `npm run bench:scale`) builds vaults of 100 to 30,000 synthetic notes (people and projects with 4 to 8 facts each, written with the overlapping vocabulary real notes have: many people "prefer written RFCs", many projects "decided to use Postgres") and plants 40 questions of two kinds: **named** ("What does Sam Okafor say about the billing migration?": a full name plus a topic word) and **needle** ("What did we decide for the zorvakel migration?": a rare codename plus a topic word that hundreds of notes share). It reports what a model has to read, against loading the whole memory into the context. Keyword mode, no model, one Apple-silicon laptop, seed 7:
+
+| notes | loading everything | recall pack (mean) | recall brief (mean) | pack is smaller by | named: fact in pack | needle: fact in pack | needle hit@1 | query (median) | cold index |
+|---|---|---|---|---|---|---|---|---|---|
+| 100 | 7,306 tok | 564 tok | 266 tok | 12.9x | 100% | 100% | 100% | 0 ms | 15 ms |
+| 1,000 | 68,130 tok | 544 tok | 272 tok | 125.1x | 100% | 100% | 100% | 0 ms | 42 ms |
+| 10,000 | 672,866 tok | 565 tok | 267 tok | 1,191.5x | 100% | 100% | 100% | 1 ms | 379 ms |
+| 30,000 | 2,021,230 tok | 557 tok | 263 tok | 3,626.5x | 100% | 100% | 100% | 3 ms | 1,187 ms |
+
+Read it for what it is: the context a question costs stays flat (about 550 tokens as a pack, about 265 as a brief) while the memory it comes from grows 300-fold, and a rare identifier stays findable in it. "Fact in pack" means the exact fact text reached the model, which is stricter than "the right note ranked first".
+
+What it does **not** show: paraphrases (keyword mode has no way to bridge "the language I prefer" and "TypeScript"; see the table at the top for that), real notes, or whether the answer is any better for having been found. Names and rare codenames are the easy case for keyword search, which is the point of a scale test: it asks whether cost and recall *hold* as the haystack grows, not how good recall is in the first place. Loading everything is only a baseline for the cost axis: past a few thousand notes it doesn't fit in any context window.
+
+This benchmark found a real bug: with usage learning on (the default), rank-1 accuracy on the needle questions fell from 100% to about 35% after a few dozen queries, because the usage boost was applied after rank fusion, where scores differ by 1 to 3% from one rank to the next. It is now applied to the raw scores (see the README), and `test/report6-ranking.test.js` guards it.
+

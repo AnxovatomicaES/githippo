@@ -464,13 +464,23 @@ export class MemoryIndex {
     const semantic = (await this.dense(query)).filter((x) => inScope(x.c));
     const RRF_K = 60;
     const fused = new Map();
+    // Usage-weighted ranking: memory that keeps being used ranks a little higher, and the boost fades. It is applied HERE, to each list's raw
+    // score before the list is ranked, so it can only reorder results that were nearly tied on the evidence (a keyword score of 9.1 against 8.8).
+    // It used to be a x1.4 on the fused score, but reciprocal-rank-fusion scores sit within 1-3% of each other from one rank to the next, so
+    // that flipped clear winners: after a few dozen queries a rare codename matched at rank 1 lost to notes that had merely been shown
+    // before (rank-1 accuracy 100% -> 35%). Semantic scores sit in a narrow band, so they get a quarter of the effect. 1.0 with no data.
+    const usageWeight = { bm25: (c) => this.usage.boost(c, user), cosine: (c) => 1 + (this.usage.boost(c, user) - 1) * 0.25 };
     const add = (list, label) =>
-      list.slice(0, 50).forEach(({ c, s }, rank) => {
-        const e = fused.get(c.id) || { chunk: c, score: 0, signals: {} };
-        e.score += 1 / (RRF_K + rank + 1);
-        e.signals[label] = +s.toFixed(4);
-        fused.set(c.id, e);
-      });
+      list
+        .map((x) => ({ ...x, ranked: x.s * (usageWeight[label]?.(x.c) ?? 1) }))
+        .sort((x, y) => y.ranked - x.ranked)
+        .slice(0, 50)
+        .forEach(({ c, s }, rank) => {
+          const e = fused.get(c.id) || { chunk: c, score: 0, signals: {} };
+          e.score += 1 / (RRF_K + rank + 1);
+          e.signals[label] = +s.toFixed(4);
+          fused.set(c.id, e);
+        });
     add(lexical, "bm25");
     add(semantic, "cosine");
     // Document evidence: each matching note contributes its RRF term to its best chunk (or its first chunk
@@ -488,8 +498,6 @@ export class MemoryIndex {
       best.score += 1 / (RRF_K + rank + 1);
       best.signals.doc = +s.toFixed(4);
     });
-    // Usage-weighted ranking: a small, fading boost for memory that keeps being used (1.0 with no data).
-    for (const e of fused.values()) e.score *= this.usage.boost(e.chunk, user);
     if (when) {
       for (const e of fused.values()) {
         if (inWindow(e.chunk.dates, when)) {
