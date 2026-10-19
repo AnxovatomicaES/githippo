@@ -47,6 +47,29 @@ function nirValid(raw) {
   return Number(97n - (n % 97n)) === Number(m[2]);
 }
 
+// A name that says what a value IS, not a secret ("token_url", "private_key_path", "secret_id"), and values that are plainly
+// not credentials: a path, a URL (credentials inside a URL are the connection_string rule's job), or a short number for a name that
+// isn't a password-like one ("tokens: 128000" is a context window).
+const BENIGN_NAME = /(?:^|[_.-])(?:path|url|uri|file|dir|folder|name|id|length|limit|count|size|ttl|timeout|expiry|expires|type|endpoint|header|host|salt|version)$/i;
+const STRONG_NAME = /password|passwd|pwd|contraseña|secret|api[_-]?key|apikey|access[_-]?key|private[_-]?key/i;
+const PATHLIKE = /^(?:\/|~\/|\.{1,2}\/|[A-Za-z]:\\|https?:\/\/)/i;
+function realSecretAssignment(raw) {
+  const i = raw.search(/[:=]/);
+  if (i < 0) return true;
+  const name = raw.slice(0, i).trim().replace(/["'`*_]+$/, "");
+  const value = raw.slice(i + 1).trim().replace(/^["'`*]+/, "");
+  if (/secretar|tokeni[sz]|passwordless/i.test(name)) return false; // "Secretary: …", "tokenizer: …"
+  if (BENIGN_NAME.test(name) || PATHLIKE.test(value)) return false;
+  if (!STRONG_NAME.test(name) && /^\d{1,12}$/.test(value)) return false;
+  return true;
+}
+// "pwd: /Users/me/project" is the working directory, not a password
+const notWorkingDirectory = (raw) => !(/^pwd/i.test(raw) && PATHLIKE.test(raw.slice(raw.search(/[:=|]/) + 1).trim().replace(/^["'`*]+/, "")));
+
+// Real cards start with an issuer prefix of a known network and have that network's length; random 13-19 digit identifiers (snowflake ids,
+// millisecond timestamps) pass Luhn one time in ten, so without this ~10% of them were refused as "payment_card".
+const ISSUER = /^(?:4(?:\d{12}|\d{15}|\d{18})|(?:5[1-5]\d{2}|222[1-9]|22[3-9]\d|2[3-6]\d{2}|27[01]\d|2720)\d{12}|3[47]\d{13}|(?:6011|65\d{2}|64[4-9]\d)\d{12,15}|35(?:2[89]|[3-8]\d)\d{12,15}|3(?:0[0-5]|[689]\d)\d{11,16}|62\d{14,17}|(?:50|5[6-9]|6\d)\d{10,17}|220[0-4]\d{12,15}|8[12]\d{14,17}|9792\d{12})$/;
+
 const RULES = [
   { kind: "private_key", re: /-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----/g }, // incl. "PGP PRIVATE KEY BLOCK"
   { kind: "anthropic_key", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/g },
@@ -61,12 +84,36 @@ const RULES = [
   { kind: "huggingface_token", re: /\bhf_[A-Za-z0-9]{30,}\b/g },
   { kind: "jwt", re: /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g }, // short segments and an empty (alg:none) signature too
   // a value with a digit or symbol (6+), or a long all-letters passphrase (14+); "password: required" is just a sentence
-  { kind: "password_assignment", re: /\b(?:password|passwd|pwd|contraseña|secret)\s*[:=]\s*(?:(?=\S{0,200}[\d!@#$%^&*()+=/\\|~`])\S{6,300}|[A-Za-z]{14,300})/gi },
+  // ("db_password": "…" and **Password:** … have a quote or markdown between the word and the colon)
+  { kind: "password_assignment", re: /\b(?:password|passwd|pwd|contraseña|secret)["'`*_]{0,3}[ \t]*[:=]["'`*_]{0,3}\s*(?:(?=\S{0,200}[\d!@#$%^&*()+=/\\|~`])\S{6,300}|[A-Za-z]{14,300})/gi, check: notWorkingDirectory },
+  // | password | hunter2hunter2 |  (a table cell; a value must have a digit or a symbol, so a header cell like "Description" saves)
+  { kind: "password_assignment", re: /\b(?:password|passwd|pwd|contraseña)[ \t]*\|[ \t]*(?=[^\s|]{0,200}[\d!@#$%^&*()+=/\\~`])[^\s|]{6,300}/gi },
+  // "the VPN password is Tr0ub4dor&3"
+  { kind: "password_assignment", re: /\b(?:password|passwd|passcode)[ \t]+(?:is|was)[ \t]*:?[ \t]*(?=[^\s"',;]{0,200}[\d!@#$%^&*()+=/\\|~`])[^\s"',;]{6,300}/gi },
   // env-style names (DB_PASSWORD=…, AWS_SECRET_ACCESS_KEY=…, STRIPE_API_KEY: …): the value must look secret (a digit or a symbol),
   // so a note saying "token: required" or "password: rotate" still saves
-  { kind: "secret_assignment", re: /(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]{0,40}(?:password|passwd|pwd|contraseña|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_.-]{0,40}\s{0,3}[:=]\s{0,3}["']?(?=[^\s"',;]{6,})(?=[^\s"',;]{0,200}[\d!@#$%^&*()+=/\\|~`])[^\s"',;]{1,300}/gi },
-  // scheme://user:password@host (database and broker URLs)
-  { kind: "connection_string", re: /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s:/@]+:[^\s@/]+@[^\s/]+/gi },
+  { kind: "secret_assignment", re: /(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]{0,40}(?:password|passwd|pwd|contraseña|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_.-]{0,40}["'`]?\s{0,3}[:=]\s{0,3}["']?(?=[^\s"',;]{6})(?=[^\s"',;]{0,200}[\d!@#$%^&*()+=/\\|~`])[^\s"',;]{1,300}/gi, check: realSecretAssignment },
+  // STRIPE_KEY=…, DB_PASS=…, SLACK_AUTH=… : upper-case environment names ending in a secret-ish word
+  { kind: "secret_assignment", re: /(?<![A-Za-z0-9_])[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_(?:PASS|PASSWD|PWD|KEY|SECRET|TOKEN|AUTH|CREDS?|CREDENTIALS?)["'`]?[ \t]{0,3}[:=][ \t]{0,3}["']?(?=[^\s"',;]{6})(?=[^\s"',;]{0,200}[\d!@#$%^&*()+=/\\|~`])[^\s"',;]{1,300}/g, check: realSecretAssignment },
+  // scheme://user:password@host (database and broker URLs); the user may be empty (redis://:password@host)
+  { kind: "connection_string", re: /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s:/@]*:[^\s@/]+@[^\s/]+/gi },
+  // "PIN: 4821", "pin code is 123456"
+  { kind: "pin_code", re: /\b(?:pin(?:[ _-]?code)?|c[oó]digo pin)[ \t]*(?:is|was|[:=])[ \t]*\d{4,8}\b/gi },
+  // opaque credentials in HTTP headers, and the formats of services whose tokens have no fixed prefix
+  { kind: "auth_header", re: /\bAuthorization["']?[ \t]*[:=][ \t]*["']?(?:Bearer|Basic|Token)[ \t]+[A-Za-z0-9._~+\/=-]{16,}/gi },
+  { kind: "bearer_token", re: /\bBearer[ \t]+(?=[A-Za-z0-9._~+\/-]{0,200}\d)[A-Za-z0-9._~+\/-]{24,}={0,2}/g },
+  { kind: "gitlab_token", re: /\bglpat-[A-Za-z0-9_-]{20,}/g },
+  { kind: "google_oauth_token", re: /\bya29\.[A-Za-z0-9_-]{20,}/g },
+  { kind: "slack_token", re: /\bxapp-[A-Za-z0-9-]{10,}/g },
+  { kind: "webhook_url", re: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]+|https:\/\/discord(?:app)?\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+/g },
+  { kind: "discord_bot_token", re: /\b[MN][A-Za-z\d]{23,25}\.[\w-]{6}\.[\w-]{27,38}\b/g },
+  { kind: "telegram_bot_token", re: /\b\d{8,10}:[A-Za-z0-9_-]{35}\b/g },
+  { kind: "twilio_key", re: /\bSK[0-9a-f]{32}\b/g },
+  { kind: "mailgun_key", re: /\bkey-[0-9a-f]{32}\b/g },
+  { kind: "azure_key", re: /\bAccountKey=[A-Za-z0-9+\/]{40,}={0,2}|\bSharedAccessSignature=[^\s;]{16,}|[?&]sig=[A-Za-z0-9%+\/]{20,}={0,2}/g },
+  { kind: "shopify_token", re: /\bshp(?:at|ss|ca|pa)_[a-f0-9]{32}\b/g },
+  { kind: "pypi_token", re: /\bpypi-[A-Za-z0-9_-]{50,}/g },
+  { kind: "digitalocean_token", re: /\bdop_v1_[a-f0-9]{64}\b/g },
   // card security codes must never be stored, even without the card number next to them
   { kind: "card_security_code", re: /\b(?:cvv2?|cvc2?|security code|código de seguridad)\b[^\w]{0,3}\d{3,4}\b/gi },
   { kind: "iban", re: /\b[A-Z]{2}\d{2}(?:[\s-]?[A-Z0-9]{4}){2,7}(?:[\s-]?[A-Z0-9]{1,4})?\b/g, check: ibanValid },
@@ -115,6 +162,7 @@ export function normalizeWithMap(text) {
     const start = at;
     at += ch.length;
     if (/[\p{Cf}\p{M}\u00ad]/u.test(ch)) continue;
+    if (ch === "\\" && (src[at] === "_" || src[at] === "*")) continue; // markdown escapes: ghp\_abc renders as ghp_abc
     for (let c of ch.normalize("NFKC")) {
       if (/\p{Nd}/u.test(c) && !/[0-9]/.test(c)) c = String(digitValue(c));
       c = CONFUSABLES[c] || c;
@@ -173,7 +221,7 @@ function* cardMatches(norm) {
       for (let j = i; j < groups.length; j++) {
         digits += s.slice(groups[j].start, groups[j].end);
         if (digits.length > 19) break;
-        if (digits.length >= 13 && cardShaped(groups.slice(i, j + 1)) && luhn(digits)) {
+        if (digits.length >= 13 && cardShaped(groups.slice(i, j + 1)) && luhn(digits) && ISSUER.test(digits)) {
           yield { kind: "payment_card", start: run.index + groups[i].start, end: run.index + groups[j].end, text: s.slice(groups[i].start, groups[j].end) };
           i = j; // continue after this card
           break;

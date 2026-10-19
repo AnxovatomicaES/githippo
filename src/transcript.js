@@ -1,14 +1,19 @@
 // Turns a Claude Code transcript (JSONL) into a compact session checkpoint,
 // deterministically: no LLM call, so it works inside a PreCompact hook.
 import { createReadStream } from "node:fs";
-import { createInterface } from "node:readline";
 import { basename } from "node:path";
-import { stripMemoryTags } from "./parse.js";
+import { cleanControl, stripMemoryTags } from "./parse.js";
 import { defang } from "./injection.js";
+import { redact } from "./guard.js";
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
-const clip = (s, n) => defang(s.length > n ? `${s.slice(0, n - 1)}…` : s); // every free-text line is screened for planted instructions
-const oneLine = (s) => s.replace(/\s+/g, " ").trim();
+// Every free-text line is cleaned in this order: private spans out, secrets redacted, THEN cut to length (a token cut in half by the limit
+// no longer matches any secret pattern, and its first 24 characters used to be written to disk), then screened for planted instructions.
+const clip = (s, n) => {
+  const t = redact(stripMemoryTags(String(s)).text).text;
+  return defang(t.length > n ? `${t.slice(0, n - 1)}…` : t);
+};
+const oneLine = (s) => cleanControl(String(s)).replace(/\s+/g, " ").trim();
 
 function blocks(message) {
   const c = message?.content;
@@ -47,7 +52,7 @@ export function transcriptParser() {
   const add = (e) => {
     cwd ||= e.cwd || "";
     if (e.gitBranch) branch = e.gitBranch;
-    if (e.type === "summary" && e.summary) priorSummary = e.summary;
+    if (e.type === "summary" && e.summary) priorSummary = String(e.summary);
     const p = promptText(e);
     if (p) prompts.push(p);
     if (e.type === "user") {
@@ -121,8 +126,19 @@ export function parseTranscript(jsonl) {
 
 export async function parseTranscriptFile(path) {
   const p = transcriptParser();
-  const rl = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
-  for await (const l of rl) p.line(l);
+  // Split on "\n" only. readline also splits on U+2028/U+2029, and JSON.stringify writes those raw inside strings, so a prompt
+  // containing one was cut in two and both halves were dropped as invalid JSON.
+  let rest = "";
+  for await (const chunk of createReadStream(path, { encoding: "utf8" })) {
+    rest += chunk;
+    let from = 0;
+    for (let i = rest.indexOf("\n", from); i >= 0; i = rest.indexOf("\n", from)) {
+      p.line(rest.slice(from, i).replace(/\r$/, ""));
+      from = i + 1;
+    }
+    rest = rest.slice(from);
+  }
+  p.line(rest.replace(/\r$/, ""));
   return p.result();
 }
 
@@ -156,7 +172,7 @@ export function renderCheckpoint(t, { sessionId = "", budgetTokens = 900 } = {})
   }
   if (t.todos?.length) {
     const mark = { completed: "x", in_progress: "~", pending: " " };
-    section("Tasks", t.todos.filter((td) => td && typeof td === "object").map((td) => `- [${mark[td.status] ?? " "}] ${safe(td.content ?? "", 160)}`));
+    section("Tasks", t.todos.filter((td) => td && typeof td === "object").map((td) => `- [${Object.hasOwn(mark, td.status) ? mark[td.status] : " "}] ${safe(td.content ?? "", 160)}`));
   }
   const files = [...t.files].sort((a, b) => b[1] - a[1]).slice(0, 15);
   section("Files changed", files.map(([f, n]) => `- ${safe(f, 160)}${n > 1 ? ` (${n} edits)` : ""}`));

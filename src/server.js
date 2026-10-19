@@ -1,11 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { GitHubMemoryStore, MemoryError, normalizePath } from "./store.js";
+import { GitHubMemoryStore, MemoryError, MAX_FILE_BYTES, normalizePath } from "./store.js";
 import { FileStore } from "./filestore.js";
 import { MemoryIndex } from "./search.js";
 import { createEmbedder } from "./embed.js";
 import { createLLM } from "./llm.js";
-import { Brain, assertSafe } from "./brain.js";
+import { Brain, vetNote } from "./brain.js";
 import { fmt, fmtError } from "./format.js";
 import { loadConfig } from "./config.js";
 import { gate } from "./confirm.js";
@@ -194,13 +194,15 @@ export function buildServer(brain) {
       if (op !== "read" && op !== "list" && /(^|\/)core\.md$/i.test(normalizePath(need(path, "path")))) {
         throw new MemoryError("core.md is pinned memory: add to it with remember (pin=true), remove with forget, or edit the file yourself. The files tool doesn't write it.");
       }
+      // size first: the checks below read every character, and a note can't be bigger than this anyway
+      for (const text of [content, nu]) if (text !== undefined && Buffer.byteLength(text) > MAX_FILE_BYTES) throw new MemoryError(`Content is over ${MAX_FILE_BYTES} bytes; a note can't be that big. Split it.`);
       if (op === "write") {
-        assertSafe(need(content, "content"));
-        return { text: fmt.write(await refresh(await store.write(need(path, "path"), content, need(v, "v")), path)) };
+        const safe = vetNote(need(content, "content")); // <private> spans, secrets and instruction-like text: same rules as remember
+        return { text: fmt.write(await refresh(await store.write(need(path, "path"), safe, need(v, "v")), path)) };
       }
       if (op === "edit") {
-        assertSafe(need(nu, "new"));
-        return { text: fmt.write(await refresh(await store.replace(need(path, "path"), need(old, "old"), nu, need(v, "v")), path)) };
+        const safe = vetNote(need(nu, "new"));
+        return { text: fmt.write(await refresh(await store.replace(need(path, "path"), need(old, "old"), safe, need(v, "v")), path)) };
       }
       const r = await store.delete(need(path, "path"), need(v, "v"));
       index.remove(r.path);

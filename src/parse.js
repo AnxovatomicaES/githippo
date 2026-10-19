@@ -4,6 +4,13 @@ import { createHash } from "node:crypto";
 
 export const hash = (s) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 
+/**
+ * An HTML comment (our hidden stamps) with the whitespace before it. The lookbehind makes the match start only at the beginning of
+ * a whitespace run: "\s*<!--" tried at every position inside a long run of spaces re-scanned the rest of the run each time,
+ * which is quadratic (65,000 spaces took 3.7 s). Linear patterns only, for text that arrives from outside.
+ */
+const COMMENT = /(?<!\s)\s*<!--[^]{0,300}?-->/g;
+
 function parseValue(raw) {
   const v = raw.trim();
   if (v.startsWith("[") && v.endsWith("]")) {
@@ -20,10 +27,17 @@ export function parseFrontmatter(content) {
   const m = content.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!m) return { meta: {}, body: content, bodyOffset: 0 };
   const meta = {};
-  for (const line of m[1].split("\n").slice(0, 200)) {
-    const kv = line.match(/^([A-Za-z_][\w-]{0,40}):\s*(.{0,2000})$/);
+  const lines = m[1].split("\n").slice(0, 200);
+  for (let i = 0; i < lines.length; i++) {
+    const kv = lines[i].match(/^([A-Za-z_][\w-]{0,40}):[ \t]*(.{0,2000})$/);
     // __proto__ / constructor / prototype would rewrite the object's prototype; they're not metadata
-    if (kv && !["__proto__", "constructor", "prototype"].includes(kv[1])) meta[kv[1]] = parseValue(kv[2]);
+    if (!kv || ["__proto__", "constructor", "prototype"].includes(kv[1])) continue;
+    if (kv[2].trim() === "") {
+      // Obsidian writes lists as a block: "aliases:\n  - a\n  - b"
+      const items = [];
+      while (i + 1 < lines.length && /^[ \t]+-[ \t]+\S/.test(lines[i + 1])) items.push(lines[++i].replace(/^[ \t]+-[ \t]+/, "").trim().replace(/^["']|["']$/g, ""));
+      meta[kv[1]] = items.length ? items : "";
+    } else meta[kv[1]] = parseValue(kv[2]);
   }
   const bodyOffset = m[0].split("\n").length - 1;
   return { meta, body: content.slice(m[0].length), bodyOffset };
@@ -61,7 +75,7 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
       .split("\n")
       .map((l) => (/<!--\+\d{4}-\d{2}-\d{2} src:external-->/.test(l) ? l.replace(/^(\s*[-*]\s+)/, "$1[external] ") : l))
       .join("\n")
-      .replace(/\s*<!--[^]{0,300}?-->/g, "")
+      .replace(COMMENT, "")
       .trim();
     if (text) {
       // The description is the file's best semantic summary ("Johnny" means nothing to a model; "Voice assistant for the Mac" does).
@@ -112,7 +126,7 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
 
 /** Renders [[id|Word]] as Word and [[id]] as id: the graph lives server-side, so links cost tokens for nothing. */
 // bounded/linear patterns only: stamps are short, link contents exclude "["
-export const plain = (s) => s.replace(/\s*<!--[^]{0,300}?-->/g, "").replace(/\[\[([^\[\]|]+)\|([^\[\]]+)\]\]/g, "$2").replace(/\[\[([^\[\]]+)\]\]/g, "$1");
+export const plain = (s) => s.replace(COMMENT, "").replace(/\[\[([^\[\]|]+)\|([^\[\]]+)\]\]/g, "$2").replace(/\[\[([^\[\]]+)\]\]/g, "$1");
 
 export function factLines(body) {
   return body
@@ -142,7 +156,7 @@ export function stripMemoryTags(input) {
     // Depth-counting scan, one tag name at a time. Everything inside an open tag is dropped, nested tags included.
     // A closing tag with nothing open is just removed. An opener that never closes makes everything after it
     // private: content the user marked private must never survive because they forgot (or an attacker omitted) the closer.
-    const re = new RegExp(`<(\\/?)${tag}(?:\\s[^>]*)?>`, "gi");
+    const re = new RegExp(`<(\\/?)${tag}(?:\\s[^>]{0,200})?>`, "gi"); // bounded: an opener with no ">" must not scan to the end of the text each time
     let out = "";
     let last = 0;
     let depth = 0;
@@ -161,10 +175,11 @@ export function stripMemoryTags(input) {
     else unclosed = true;
     text = out;
   }
-  return { text: text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(), removed, unclosed };
+  return { text: text.replace(/(?<![ \t])[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(), removed, unclosed };
 }
 
-export const wrapContext = (s) => (s ? `<githippo-context>\n${s}\n</githippo-context>` : s);
+// Text from a session (a shell command, a web page) can contain our closing tag; escaped, it can't end the wrapper early.
+export const wrapContext = (s) => (s ? `<githippo-context>\n${s.replace(/<(\/?)githippo-context/gi, "&lt;$1githippo-context")}\n</githippo-context>` : s);
 
 /** Hidden creation stamp on a fact line: invisible in Obsidian, stripped before recall and embedding. */
 export const stamp = (date = new Date().toISOString().slice(0, 10), source = null) => ` <!--+${date}${source ? ` src:${source}` : ""}-->`;
