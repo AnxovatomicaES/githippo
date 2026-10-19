@@ -150,6 +150,29 @@ export function assertSafe(text) {
   }
 }
 
+const MEMORY_TAG = /<\/?(?:private|githippo-context|system-reminder)\b/i;
+const injectionError = (kinds) =>
+  new MemoryError(`Not saved: this reads like instructions aimed at an AI (${kinds.join(", ")}), and memory is replayed into future sessions as trusted context. If it's a genuine fact, rephrase it as a statement about the source.`);
+
+/**
+ * Everything that writes memory text outside remember() (the files tool, the memory tool, an LLM rewrite) goes through here, so
+ * those routes obey the same three rules as remember: <private> spans never reach memory (an unclosed one is refused, not
+ * guessed at), secrets and ID numbers are refused, and text that reads as instructions to an AI is refused. Returns the text to
+ * store (private spans removed, nothing else changed: a note keeps its formatting and its final newline).
+ */
+export function vetNote(text) {
+  let out = String(text ?? "");
+  if (MEMORY_TAG.test(out)) {
+    const r = stripMemoryTags(out);
+    if (r.unclosed) throw new MemoryError("Not saved: a <private> (or similar) tag is opened but never closed, so everything after it would count as private. Close the tag, or remove it.");
+    out = r.text + (/\n$/.test(String(text)) ? "\n" : "");
+  }
+  assertSafe(out);
+  const inj = injectionKinds(out);
+  if (inj.length) throw injectionError(inj);
+  return out;
+}
+
 function frontmatter({ name, title, kind, description, aliases = [] }) {
   return [
     "---",
@@ -420,8 +443,14 @@ export class Brain {
     }
     assertSafe(clean);
     const inj = injectionKinds(clean);
-    if (inj.length) {
-      throw new MemoryError(`Not saved: this reads like instructions aimed at an AI (${inj.join(", ")}), and memory is replayed into future sessions as trusted context. If it's a genuine fact, rephrase it as a statement about the source.`);
+    if (inj.length) throw injectionError(inj);
+    if (opts.about != null) {
+      // `about` becomes a file name, a title and a line in index.md: it is memory text like the fact itself
+      const about = String(opts.about);
+      if (MEMORY_TAG.test(about)) throw new MemoryError("Not saved: `about` can't contain <private> (or similar) tags.");
+      assertSafe(about);
+      const aboutInj = injectionKinds(about);
+      if (aboutInj.length) throw injectionError(aboutInj);
     }
     const source = ["user", "inferred", "external", "import"].includes(opts.source) ? opts.source : null;
     await this.index.sync({ maxAgeMs: 0 }); // a write must see what other processes just wrote (duplicates, versions)
@@ -609,7 +638,7 @@ export class Brain {
   async _checkpoint({ session = "default", task, state, next, files } = {}) {
     // free text from the model: strip control characters like every other entry point does
     // (one line each: a newline in "state" could otherwise forge a "## Where it stopped" section; instruction-like text is neutralised)
-    const c = (v) => (typeof v === "string" ? defang(cleanControl(v).replace(/\s*[\r\n\u2028\u2029]+\s*/g, " ")) : v);
+    const c = (v) => (typeof v === "string" ? defang(cleanControl(v).replace(/(?<![ \t])[ \t]*[\r\n\u2028\u2029]+\s*/g, " ")) : v);
     task = c(task);
     state = c(state);
     next = c(next);
@@ -826,8 +855,7 @@ export class Brain {
       const f = this.file(p);
       if (!f) throw new MemoryError(`${p} not found.`);
       const hints = duplicates.filter((d) => d.a.path === p || d.b.path === p).map((d) => [d.a.line, d.b.line]);
-      const next = restoreProvenance(f.content, await this.llm.consolidate(f.content, hints));
-      assertSafe(next);
+      const next = vetNote(restoreProvenance(f.content, await this.llm.consolidate(f.content, hints)));
       const lost = [...f.content.matchAll(/\[\[([^\[\]|]+)/g)].map((m) => m[1]).filter((l) => !next.includes(`[[${l}`));
       if (lost.length) throw new MemoryError(`Rewrite dropped links (${[...new Set(lost)].join(", ")}); not saved.`);
       if (f.content.startsWith("---") && !next.startsWith("---")) throw new MemoryError("Rewrite dropped frontmatter; not saved.");

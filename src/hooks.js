@@ -121,7 +121,9 @@ export async function postCompact(input, { brain } = {}) {
   const raw = String(input.compact_summary || "");
   if (!raw.trim() || !hookEnabled("postcompact")) return "";
   const stripped = raw.replace(/<analysis>[\s\S]*?<\/analysis>/g, "").replace(/<\/?summary>/g, "").trim();
-  const summary = (stripped.length >= 200 ? stripped : raw).slice(0, 4000);
+  // The summary is the model's account of a session that may have read web pages and tool output: screen it like every other line,
+  // and keep it from forging one of our own section headings ("## Where it stopped") that a later resume would trust.
+  const summary = defang(redact((stripped.length >= 200 ? stripped : raw).slice(0, 4000)).text).replace(/^#{1,6}[ \t]+(Goal|Latest requests|Tasks|Files changed|Recent errors|Recent commands|Where it stopped|Earlier summary|Compaction summary)[ \t]*$/gim, "> $1");
   const file = join(CK_DIR, `${safeId(input.session_id)}.md`);
   const ck = await readFile(file, "utf8").catch(() => null);
   if (!ck) return "";

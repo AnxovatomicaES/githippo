@@ -50,7 +50,7 @@ export const tokenize = (s) => {
       .map((x) => x.toLowerCase())
       .filter(Boolean);
     if (parts.length > 1 && whole) out.push(whole);
-    out.push(...parts);
+    for (const part of parts) out.push(part); // not push(...parts): a 250 KB token overflows the argument limit
   };
   for (const w of fold(s).match(/[\p{L}\p{M}\p{N}_./-]+/gu) || []) {
     if (!HAS_NO_SPACE.test(w)) {

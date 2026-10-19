@@ -4,7 +4,7 @@
 // so API agents share memory with Claude Code and Desktop; every write is a git commit, indexed for recall,
 // and checked by the secrets guard. Files Claude names notes.txt are stored as notes.txt.md (indexable,
 // visible in Obsidian) and shown back as notes.txt.
-import { assertSafe } from "./brain.js";
+import { assertSafe, vetNote } from "./brain.js";
 import { MemoryError } from "./store.js";
 
 const ROOT = "/memories";
@@ -53,6 +53,14 @@ export function createMemoryTool(brain) {
   const assertUnambiguous = async (rel, shown) => {
     if ((await findFile(rel)) && (await isDir(rel))) throw new MemoryToolError(`Error: ${shown} is both a file and a directory; address the file as ${shown}.md`);
   };
+  /** Text Claude sends is vetted like remember() does: private spans removed, secrets and instruction-like text refused. */
+  const vetText = (text) => {
+    try {
+      return vetNote(text);
+    } catch (e) {
+      throw new MemoryToolError(`Error: ${e.message}`);
+    }
+  };
   const write = async (rel, content, version, op) => {
     try {
       assertSafe(content);
@@ -100,7 +108,7 @@ export function createMemoryTool(brain) {
       await assertPlaceable(rel, input.path);
       const existing = await findFile(rel);
       // reference behavior is an error; the docs allow overwriting, and Claude's tool description says "creates or overwrites"
-      await write(rel, String(input.file_text ?? ""), existing ? existing.version : "new", existing ? "memory-tool overwrite" : "memory-tool create");
+      await write(rel, vetText(input.file_text), existing ? existing.version : "new", existing ? "memory-tool overwrite" : "memory-tool create");
       return `File created successfully at: ${input.path}`;
     }
     if (cmd === "str_replace") {
@@ -114,9 +122,10 @@ export function createMemoryTool(brain) {
         const lines = file.content.split("\n").map((l, i) => (l.includes(old) ? i + 1 : 0)).filter(Boolean);
         throw new MemoryToolError(`No replacement was performed. Multiple occurrences of old_str \`${old}\` in lines: ${lines.join(", ")}. Please ensure it is unique`);
       }
-      const next = parts.join(String(input.new_str ?? ""));
+      const replacement = vetText(input.new_str);
+      const next = parts.join(replacement);
       await write(rel, next, file.version, "memory-tool edit");
-      const at = next.slice(0, next.indexOf(String(input.new_str ?? "")) >= 0 ? next.indexOf(String(input.new_str ?? "")) : 0).split("\n").length;
+      const at = next.slice(0, next.indexOf(replacement) >= 0 ? next.indexOf(replacement) : 0).split("\n").length;
       const lines = next.split("\n");
       const from = Math.max(1, at - 2);
       return `The memory file has been edited.\n${numbered(lines.slice(from - 1, at + 3).join("\n"), from)}`;
@@ -128,7 +137,7 @@ export function createMemoryTool(brain) {
       const lines = file.content.replace(/\n$/, "").split("\n");
       const n = Number(input.insert_line);
       if (!Number.isInteger(n) || n < 0 || n > lines.length) throw new MemoryToolError(`Error: Invalid \`insert_line\` parameter: ${input.insert_line}. It should be within the range of lines of the file: [0, ${lines.length}]`);
-      lines.splice(n, 0, ...String(input.insert_text ?? "").replace(/\n$/, "").split("\n"));
+      lines.splice(n, 0, ...vetText(input.insert_text).replace(/\n$/, "").split("\n"));
       await write(rel, `${lines.join("\n")}\n`, file.version, "memory-tool insert");
       return `The file ${input.path} has been edited.`;
     }

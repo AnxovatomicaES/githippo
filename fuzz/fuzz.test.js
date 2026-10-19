@@ -192,7 +192,9 @@ test(`memory-tool backend: hostile paths and random operations stay inside the v
         if (!same(before, after)) problems.push(`${res.is_error ? "failed" : "view"} operation changed the vault: ${tag}`);
         continue;
       }
-      if (op === "create" && after.get(stored(path)) !== input.file_text) problems.push(`create didn't store the text exactly: ${tag}`);
+      // exactly what was sent, except that <private> spans are removed (on every write route, like remember)
+      const expectedText = (t) => (/<\/?(?:private|githippo-context|system-reminder)\b/i.test(t) ? stripMemoryTags(t).text + (/\n$/.test(t) ? "\n" : "") : t);
+      if (op === "create" && after.get(stored(path)) !== expectedText(input.file_text)) problems.push(`create didn't store the text exactly: ${tag}`);
       if (op === "delete" && [...after.keys()].some((k) => k === stored(path) || k.startsWith(prefixOf(path)))) problems.push(`delete left something behind: ${tag}`);
       if (op === "rename") {
         const was = before.get(stored(input.old_path));
