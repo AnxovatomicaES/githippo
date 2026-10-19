@@ -94,4 +94,21 @@ What it does **not** show, and the reasons not to read more into it:
 - **One small model, one seed, one vault, synthetic notes.** A "preference" note can also be self-referential (the generator can write "design docs over design docs"); the scorer accepts it by containment.
 - Subagent token counts include the agent's own start-up, so only differences between arms mean anything.
 
-To repeat it: `node eval/ab-setup.js --size 150 --questions 12 --seed 11 --out <dir>`, give each question to a fresh agent per arm with the file paths above, save each answer as `<dir>/answers/<arm>-<qid>.txt`, put the token and tool counts in `<dir>/usage.json` as `{"<arm>-<qid>": {"tokens": n, "tools": n}}`, then `node eval/ab-score.js <dir>`. A fairer next step needs an API key and many more questions: paraphrased ones, a bigger vault, several seeds, and the real MCP server.
+To repeat it: `node eval/ab-setup.js --size 150 --questions 12 --seed 11 --out <dir>`, give each question to a fresh agent per arm with the file paths above, save each answer as `<dir>/answers/<arm>-<qid>.txt`, put the token and tool counts in `<dir>/usage.json` as `{"<arm>-<qid>": {"tokens": n, "tools": n}}`, then `node eval/ab-score.js <dir>`. A fairer next step needs an API key and more of what is still missing: paraphrased questions, several seeds, and the real MCP server (a ten times bigger vault is in the next section).
+
+### The same pilot at 1,500 notes
+
+Same method, one more vault: 1,500 notes (seed 12; the memory file is about 88 thousand tokens), 24 questions (12 needle, 12 preference), arms B and D only. A was not repeated (the facts are invented, so it stays at 0%) and C was skipped (reading 88 thousand tokens a question needs no new evidence). Commands: `node eval/ab-setup.js --size 1500 --questions 24 --seed 12 --out <dir>`, then as above.
+
+| arm | correct | accuracy (95% Wilson interval) | mean tokens per question | median | mean tool calls |
+|---|---|---|---|---|---|
+| B: githippo recall | 24/24 | 100% (86-100%) | 69,898 | 69,760 | 2.7 |
+| D: search the files | 24/24 | 100% (86-100%) | 72,963 | 71,019 | 4.1 |
+
+Against the 68,056-token baseline of the 150-note pilot (arm A there; this run has no A of its own, so the baseline is borrowed), finding the answer cost **+1.8k tokens with recall and +4.9k searching files**, up from +1.4k and +3.9k at 150 notes. A vault ten times bigger added about 0.4k to recall and about 1.0k to the file search. The file search also had a tail: three of its 24 questions cost between 80.6k and 84.6k tokens (+12k to +16k, up to about what reading the whole 150-note memory cost), where recall's most expensive question was 71.7k. Outside a deterministic check (below) these are single runs.
+
+A free check ran before any agent: for each of the 24 questions the recall pack contained the exact expected fact (24/24) at 540 to 600 tokens for a needle question and 375 to 440 for a preference one, in 0.2 s for a whole script run (start-up, indexing 1,500 notes and one query). The agents therefore tested reading and answering, not retrieval.
+
+Caveats specific to this run:
+- **4 of the 12 preference questions have a circular answer.** The note generator can write "short standups over short standups" (102 of 750 preference lines in this vault); a person whose note says that has no alternative channel to report. Both arms answered those four with the circular sentence or a hedged version of it (D's answer for Tess Purohi says the notes name no channel and quotes "design docs over design docs"), and the scorer accepts them by containment. Without those four, both arms are 20/20. The generator is `buildVault` in `eval/scale-context.js`, shared with the scale test; it is not changed here so that the published numbers stay reproducible.
+- **Still ties.** 24/24 against 24/24 cannot separate the arms on accuracy, and the questions are still the easy case for keyword search (a full name or a rare codename). The usual caveats above apply: Haiku only, one seed, restrictions by instruction, B is the recall code as a script and not the MCP tool.
