@@ -10,7 +10,7 @@ import { fmt, fmtError } from "./format.js";
 import { loadConfig } from "./config.js";
 import { gate } from "./confirm.js";
 
-export const VERSION = "3.9.0";
+export const VERSION = "3.9.1";
 
 /** Server instructions live in the system prompt, so they survive context compaction. Core memory rides along. */
 export function instructions(core) {
