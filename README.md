@@ -83,7 +83,7 @@ Bonus: a fresh session in the same project and branch within 24h gets a brief "l
 
 How we know the hooks do what we say: the contracts were read from Claude Code's own code (2.1.258). PreCompact passes each successful hook's stdout to the compactor as custom instructions (Claude Code also shows that text in the transcript as "PreCompact … completed successfully"); PostCompact receives `compact_summary`; every hook receives `session_id`, `transcript_path` and `cwd`; SessionStart sources are `startup`, `resume`, `clear`, `compact` and `fork`.
 
-Recall also learns what you actually use: memory that keeps being handed to Claude gets a small boost (at most +40%) that halves every 30 days without use. The counts stay on your machine, are kept per user, and with no usage data ranking is exactly the same as without it.
+Recall also learns what you actually use: memory that keeps being handed to Claude gets a small boost (at most +40% on its keyword score, +10% on its semantic score) that halves every 30 days without use. It is applied to those raw scores, so it only reorders results that were nearly tied: it can't push a clear match out of first place (an earlier version applied it after rank fusion and did, see `test/report6-ranking.test.js`). The counts stay on your machine, are kept per user, and with no usage data ranking is exactly the same as without it.
 
 Wrap anything in `<private>…</private>` and it never reaches memory. An opening tag that is never closed makes everything after it private, and `remember` refuses the fact and tells you why, rather than silently keeping the part you meant to hide. Turn hooks off without editing files: `GITHIPPO_HOOK_PROFILE=minimal` or `GITHIPPO_DISABLED_HOOKS=prompt,steer`.
 
