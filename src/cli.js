@@ -2,17 +2,17 @@
 // githippo CLI: setup | sync | serve | http | hook <event> | statusline | install | init | doctor | demo | warm | bench
 import { mkdir, readFile, writeFile, copyFile, chmod } from "node:fs/promises";
 import { existsSync, openSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { buildServer, createBrain, instructions, VERSION } from "./server.js";
+import { VERSION } from "./version.js";
+// Start-up cost matters here: Claude Code runs `githippo hook prompt` before every prompt and `githippo statusline` constantly, and
+// importing the MCP SDK and zod (via server.js) was ~85 ms of a ~125 ms start. So the server, the HTTP app and the SDK are imported by the
+// commands that use them (see `server()` below), never at the top. test/report6.test.js keeps it that way.
 import { loadConfig, applyFileConfig, CONFIG_FILE, HOME_DIR, claudeDir, expandHome } from "./config.js";
-import { gitEnv } from "./filestore.js";
 import { fileURLToPath } from "node:url";
 import { preCompact, postCompact, sessionEnd, sessionStart, promptRecall, readStdin, cleanupOld, statusLine } from "./hooks.js";
-import { createHttpApp } from "./http.js";
 import { remoteVisibility, publicBackupMessage } from "./remote.js";
 
 const [cmd = "serve", ...restRaw] = process.argv.slice(2);
@@ -22,10 +22,12 @@ const rest = restRaw.flatMap((a) => (/^--[\w-]+=/.test(a) ? [a.slice(0, a.indexO
 applyFileConfig();
 const timeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
 
+const server = () => import("./server.js");
+
 /** B26: a missing or bad config is a one-line instruction, not a stack trace. */
-function brainOrExit(source, env = process.env) {
+async function brainOrExit(source, env = process.env) {
   try {
-    return createBrain(env, { source });
+    return (await server()).createBrain(env, { source });
   } catch (e) {
     console.error(`githippo is not configured: ${e.message}\nRun \`githippo install\` (or set GITHUB_TOKEN and MEMORY_REPO).`);
     process.exit(1);
@@ -33,20 +35,22 @@ function brainOrExit(source, env = process.env) {
 }
 
 async function serve() {
-  const brain = brainOrExit("local");
+  const brain = await brainOrExit("local");
   if (brain.store.ensure) await brain.store.ensure();
   if (brain.store.pull) {
     await timeout(brain.store.pull().catch(() => {}), 5000); // other devices' changes
     setInterval(() => brain.store.pull().catch(() => {}), 5 * 60_000).unref();
   }
   await timeout(brain.loadCore().catch(() => {}), 4000); // core goes into the instructions
-  await buildServer(brain).connect(new StdioServerTransport());
+  const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+  await (await server()).buildServer(brain).connect(new StdioServerTransport());
   brain.index.sync().catch((e) => console.error("[githippo] index:", e.message));
 }
 
 async function http() {
   const cfg = loadConfig();
-  const brain = brainOrExit("remote");
+  const brain = await brainOrExit("remote");
+  const { createHttpApp } = await import("./http.js");
   await timeout(brain.loadCore().catch(() => {}), 5000);
   const port = Number(process.env.PORT || 8787);
   // Last line of defence for a long-running server: log and keep serving, but a crash loop still exits so the
@@ -78,20 +82,20 @@ async function hook(event) {
     const input = await readStdin();
     const cfg = loadConfig();
     let out = "";
-    const repoBrain = () => {
+    const repoBrain = async () => {
       try {
-        return createBrain(process.env, { source: event });
+        return (await server()).createBrain(process.env, { source: event });
       } catch {
         return null;
       }
     };
     if (event === "precompact") {
-      out = await preCompact(input, { brain: repoBrain() });
+      out = await preCompact(input, { brain: await repoBrain() });
       await cleanupOld();
     } else if (event === "postcompact") {
-      out = await postCompact(input, { brain: repoBrain() });
+      out = await postCompact(input, { brain: await repoBrain() });
     } else if (event === "session-end") {
-      out = await sessionEnd(input, { brain: repoBrain() });
+      out = await sessionEnd(input, { brain: await repoBrain() });
       // CONSOLIDATE=1: review the finished session in the background (needs ANTHROPIC_API_KEY)
       if (process.env.CONSOLIDATE === "1" && input.transcript_path && process.env.ANTHROPIC_API_KEY) {
         spawn(process.execPath, [fileURLToPath(import.meta.url), "consolidate", "--transcript", input.transcript_path], { detached: true, stdio: "ignore" }).on("error", () => {}).unref();
@@ -358,7 +362,7 @@ async function seed(store, log = console.log) {
 }
 
 async function init() {
-  const brain = brainOrExit("init");
+  const brain = await brainOrExit("init");
   if (brain.store.ensure) await brain.store.ensure();
   await seed(brain.store);
 }
@@ -382,7 +386,7 @@ async function setup() {
   await writeFile(CONFIG_FILE, JSON.stringify(file, null, 2), { mode: 0o600 });
   await chmod(CONFIG_FILE, 0o600);
 
-  const brain = createBrain(process.env, { source: "setup" });
+  const brain = (await server()).createBrain(process.env, { source: "setup" });
   if (brain.store.ensure) await brain.store.ensure();
   await seed(brain.store, () => {});
   say(`✓ memory vault   ${file.STORE === "github" ? `github.com/${cfg.MEMORY_REPO}` : loadConfig().VAULT_DIR}`);
@@ -443,6 +447,7 @@ async function wireClaudeCode(settingsPath) {
 
 /** Backs the local vault up to a private GitHub repo using the user's own gh login. No token is stored. */
 async function syncToGitHub(name) {
+  const { gitEnv } = await import("./filestore.js");
   const cfg = loadConfig();
   const dir = cfg.VAULT_DIR;
   const git = (...a) => execFileSync("git", ["-C", dir, ...a], { stdio: "pipe", env: gitEnv() }).toString().trim();
@@ -488,7 +493,7 @@ async function sync() {
     console.log(await syncToGitHub(name && !name.startsWith("--") ? name : "githippo-memory"));
     return;
   }
-  const brain = brainOrExit("sync");
+  const brain = await brainOrExit("sync");
   const hasRemote = brain.store.git ? !!(await brain.store.git(["remote"])).out : false;
   if (!hasRemote) return console.log("· no remote; run githippo sync --github to back up to a private repo");
   const pulled = brain.store.pull ? await brain.store.pull() : true;
@@ -570,7 +575,7 @@ async function consolidateCmd() {
     file = all.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
   }
   if (!file) return console.error("No Claude Code transcript found; pass --transcript <path>."), process.exit(1);
-  const brain = brainOrExit("consolidate");
+  const brain = await brainOrExit("consolidate");
   const { runConsolidation } = await import("./consolidate.js");
   const results = await runConsolidation({ llm, sessionText: await sessionText(file), brain, vaultDir: cfg.VAULT_DIR, root: cfg.MEMORY_ROOT ?? "memory", pendingDir: join(HOME_DIR, "pending") });
   if (!results.length) return console.log("No changes proposed.");
@@ -599,7 +604,7 @@ async function contextualizeCmd() {
   if (!llm) return console.error("contextualize needs ANTHROPIC_API_KEY."), process.exit(1);
   if (cfg.STORE !== "local") return console.error("contextualize works on a local vault."), process.exit(1);
 
-  const r = await contextualize({ brain: brainOrExit("contextualize"), llm, vaultDir: cfg.VAULT_DIR, limit, log: (m) => console.error(m) });
+  const r = await contextualize({ brain: await brainOrExit("contextualize"), llm, vaultDir: cfg.VAULT_DIR, limit, log: (m) => console.error(m) });
   console.log(`✓ ${r.added} chunks contextualized (${r.total} total) · ${llm.model} · stored in memory/.githippo/context.json (committed)`);
 }
 
@@ -620,7 +625,7 @@ async function importCmd() {
   const file = rest[0];
   if (!file) return console.error("usage: githippo import <path/to/memory.jsonl>"), process.exit(1);
   const { importReferenceMemory } = await import("./importer.js");
-  const brain = brainOrExit("import");
+  const brain = await brainOrExit("import");
   if (brain.store.ensure) await brain.store.ensure();
   const r = await importReferenceMemory(brain, await readFile(file, "utf8"));
   console.log(`✓ ${r.entities} entities → ${r.facts} facts, ${r.relations} relations` + (r.duplicates ? ` · ${r.duplicates} already known` : "") + (r.blocked ? ` · ${r.blocked} blocked by the secrets guard` : "") + (r.rejected ? ` · ${r.rejected} refused (${r.reasons.slice(0, 2).join("; ")})` : "") + (r.skippedLines ? ` · ${r.skippedLines} unreadable lines skipped` : ""));
@@ -660,7 +665,7 @@ async function doctor() {
     if (!b) process.exitCode = 1; // a failed check is a failing exit code, so scripts and CI can rely on it
   };
   if (cfg.STORE === "local") {
-    const b = brainOrExit("doctor");
+    const b = await brainOrExit("doctor");
     ok(existsSync(cfg.VAULT_DIR), `local vault ${cfg.VAULT_DIR}`);
     ok(await b.store.hasGit(), "vault is a git repo (history + time travel)");
     const remote = (await b.store.git(["remote", "get-url", "origin"])).out;
@@ -690,7 +695,7 @@ async function doctor() {
   }
   }
   // the index check below would start the embedding install by itself when the runtime is missing; doctor only looks
-  const brain = brainOrExit("doctor", sem.startsWith("ready") || mode === "none" ? process.env : { ...process.env, EMBEDDINGS: "none" });
+  const brain = await brainOrExit("doctor", sem.startsWith("ready") || mode === "none" ? process.env : { ...process.env, EMBEDDINGS: "none" });
   const t0 = Date.now();
   await brain.index.sync({ maxAgeMs: 0 }).then(
     () => ok(true, `indexed ${brain.index.files.size} files, ${brain.index.chunks?.length || 0} chunks in ${Date.now() - t0} ms (${brain.index.embedder?.id || "keyword only"})`),
@@ -734,9 +739,10 @@ async function bench() {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
   const brain = { core: "", index: {}, store: {}, loadCore: async () => "" };
-  const server = buildServer(brain);
+  const { buildServer, instructions } = await server();
+  const mcp = buildServer(brain);
   const [a, b] = InMemoryTransport.createLinkedPair();
-  await server.connect(a);
+  await mcp.connect(a);
   const client = new Client({ name: "bench", version: "1" });
   await client.connect(b);
   const { tools } = await client.listTools();
@@ -745,6 +751,20 @@ async function bench() {
   const instr = instructions("").length;
   console.log(`tools: ${tools.length}\nmodel-visible schema: ~${Math.round(visible / 3.6)} tokens per turn\ninstructions: ~${Math.round(instr / 3.8)} tokens + core`);
   await client.close();
+  // The other cost of memory: time. Hooks run before every prompt and the status line runs constantly, so their start-up is measured too,
+  // next to what `node` alone needs (nothing can start faster than that).
+  const median = (xs) => xs.sort((x, y) => x - y)[Math.floor(xs.length / 2)];
+  const time = (args, input) => {
+    const runs = [];
+    for (let i = 0; i < 7; i++) {
+      const t = performance.now();
+      spawnSync(process.execPath, args, { input, stdio: ["pipe", "ignore", "ignore"], env: { ...process.env, EMBEDDINGS: "none" } });
+      runs.push(performance.now() - t);
+    }
+    return Math.round(median(runs));
+  };
+  const cli = fileURLToPath(import.meta.url);
+  console.log(`hook start-up: ~${time([cli, "hook", "prompt"], JSON.stringify({ session_id: "bench", prompt: "hi" }))} ms, status line: ~${time([cli, "statusline"], "{}")} ms (node alone: ~${time(["-e", "0"], "")} ms)`);
 }
 
 /** Every command: readable one-line errors instead of stack traces (DEBUG=1 shows the trace). */

@@ -12,7 +12,8 @@ import { gate } from "./confirm.js";
 import { makePushGuard } from "./remote.js";
 import { join } from "node:path";
 
-export const VERSION = "3.9.2";
+import { VERSION } from "./version.js";
+export { VERSION };
 
 /** Server instructions live in the system prompt, so they survive context compaction. Core memory rides along. */
 export function instructions(core) {

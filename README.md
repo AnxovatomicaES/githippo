@@ -137,6 +137,8 @@ How: terse schemas, the redundant `$schema` URL stripped from `tools/list`, comp
 
 What that costs per turn, worst case: tool schemas ~790 + instructions ~200 + core memory up to 400 (`CORE_BUDGET_TOKENS`) is about 1,400 tokens, plus up to 300 on prompts where the per-prompt hook finds a confident match, plus whatever `recall` returns (about 47 for `mode=brief`, up to 1,000 for a pack by default). The schemas, instructions and core are a stable prefix, so a client that uses prompt caching pays less than the raw count. githippo does not save tokens by existing: it saves them when a recalled fact replaces re-explaining or re-discovering something.
 
+And in time: the hooks run before every prompt and the status line runs constantly, so their start-up is kept minimal (they load none of the server code). On the development machine `githippo bench` reports about 57 ms for a hook and 60 ms for the status line, against 39 ms for `node` alone; it was 125 ms until the server's imports were made lazy. Run `githippo bench` to see your own.
+
 ## Tools
 
 | Tool | What it does |
