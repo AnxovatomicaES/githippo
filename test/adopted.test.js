@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -132,7 +133,8 @@ test("claude-meister: honest status line from local state only", async () => {
   const cacheDir = join(home, "cache");
   const { index } = setup({ cacheDir });
   await index.sync();
-  await new Promise((r) => setTimeout(r, 50));
+  // the snapshot is written in the background after sync(): wait for the file, not for a fixed 50 ms (a loaded CI runner needed longer)
+  for (let i = 0; i < 100 && !existsSync(join(cacheDir, "snapshot.json")); i++) await new Promise((r) => setTimeout(r, 50));
   const line = await hooks.statusLine({ session_id: "none", workspace: { current_dir: "/x/app" } }, { cacheDir });
   assert.match(line, /^🦛 githippo · \d+ facts · checkpoint \d+m ago$/);
 });
