@@ -13,7 +13,17 @@ const startOfMonth = (y, m) => Date.UTC(y, m, 1);
 const endOfMonth = (y, m) => Date.UTC(y, m + 1, 1) - day;
 
 /** Returns { from, to, past } (ISO dates) or null. `past` = the question asks about an earlier state. */
+/** Never throws: an expression that can't be turned into a sensible window ("300000 years ago") is just not a time window. */
 export function timeWindow(query, now = new Date()) {
+  try {
+    const w = timeWindowUnchecked(query, now);
+    return w && w.from >= "1900-01-01" && w.to <= "2200-12-31" && w.from <= w.to ? w : null;
+  } catch {
+    return null;
+  }
+}
+
+function timeWindowUnchecked(query, now) {
   const q = String(query).toLowerCase();
   const t = typeof now === "number" ? now : new Date(now).getTime();
   const Y = new Date(t).getUTCFullYear();
@@ -27,6 +37,7 @@ export function timeWindow(query, now = new Date()) {
   if ((m = q.match(/\b(\d+|a|one|two|three|four|five|six|seven|eight|nine|ten)\s+(day|week|month|year)s?\s+ago\b/)) || (m = q.match(/\bhace\s+(\d+|un|una|dos|tres|cuatro|cinco)\s+(día|dia|semana|mes|año)/))) {
     const nums = { a: 1, one: 1, un: 1, una: 1, two: 2, dos: 2, three: 3, tres: 3, four: 4, cuatro: 4, five: 5, cinco: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
     const n = Number(m[1]) || nums[m[1]] || 1;
+    if (!(n > 0) || n > 1000) return null;
     const unit = { day: 1, día: 1, dia: 1, week: 7, semana: 7, month: 30, mes: 30, year: 365, año: 365 }[m[2]];
     const center = t - n * unit * day;
     const slack = Math.max(1, Math.round(unit * 0.5)) * day;
@@ -55,9 +66,10 @@ export function timeWindow(query, now = new Date()) {
       return win(startOfMonth(y, idx), endOfMonth(y, idx));
     }
   }
-  if ((m = q.match(/\b(?:in\s+|en\s+el\s+|during\s+)?(?:q|t)([1-4])(?:\s+(?:of\s+|de\s+)?(\d{4}))?\b/))) {
-    const qn = +m[1] - 1;
-    const y = m[2] ? +m[2] : startOfMonth(Y, qn * 3) > t ? Y - 1 : Y;
+  // Q1-Q4 or an UPPERCASE T1-T4 (Spanish), standing alone: "t3.large" (an AWS instance) and "t3a" are not quarters
+  if ((m = String(query).match(/(?<![\w.-])(?:(?:[Ii]n|[Ee]n el|[Dd]uring)\s+)?([Qq]|T)([1-4])(?:\s+(?:[Oo]f\s+|[Dd]e\s+)?(\d{4}))?(?!\w|\.\w)/))) {
+    const qn = +m[2] - 1;
+    const y = m[3] ? +m[3] : startOfMonth(Y, qn * 3) > t ? Y - 1 : Y;
     return win(startOfMonth(y, qn * 3), endOfMonth(y, qn * 3 + 2));
   }
   if ((m = q.match(/\b(?:in|en|during|durante)\s+(19\d{2}|20\d{2})\b/))) return win(Date.UTC(+m[1], 0, 1), Date.UTC(+m[1], 11, 31));

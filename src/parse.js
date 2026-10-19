@@ -33,8 +33,11 @@ export const stem = (path) => path.split("/").pop().replace(/\.md$/, "");
 export const folder = (path) => (path.includes("/") ? path.split("/")[0] : "");
 
 /** Parses a file into entity metadata plus retrievable chunks. */
+/** "- ~~old fact~~ (until 2026-01-01)": a superseded record is history even if it ended up outside the History section. */
+export const isSuperseded = (line) => /^\s*[-*]\s+~~.+~~\s*\(until \d{4}-\d{2}-\d{2}\)\s*$/.test(line);
+
 export function parseFile(path, content, { maxChars = 700 } = {}) {
-  content = content.replace(/\r\n?/g, "\n"); // B2: files edited on Windows
+  content = content.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n"); // a BOM (some Windows editors) hid the frontmatter; B2: Windows line endings
   const { meta, body, bodyOffset } = parseFrontmatter(content);
   // frontmatter is user-editable: any field can arrive as a list, empty, or huge. Coerce to short strings here, once,
   // so nothing downstream ever sees an array where it expects text ("title: []" used to break every recall).
@@ -49,7 +52,8 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
   let startLine = 0;
 
   const flush = () => {
-    const raw = buf.join("\n");
+    const inHistory = /^(history|archived)$/i.test(heading);
+    const raw = (inHistory ? buf : buf.filter((l) => !isSuperseded(l))).join("\n");
     // dates the chunk's facts were written (hidden stamps) or stopped being true (History "until")
     const dates = [...raw.matchAll(/<!--\+(\d{4}-\d{2}-\d{2})(?: src:\w+)?-->|\(until (\d{4}-\d{2}-\d{2})\)/g)].map((m) => m[1] || m[2]);
     // facts that came from web pages, files or tool output are marked so Claude treats them as data
@@ -101,7 +105,7 @@ export function parseFile(path, content, { maxChars = 700 } = {}) {
     const embedText = `${title}\n${description}`;
     chunks.push({ id: `${path}#0`, path, heading: "", history: false, line: 1, text: description, embedText, hash: hash(embedText) });
   }
-  const live = body.split(/^#{1,6}\s+(?:history|archived)\s*$/im)[0];
+  const live = body.split(/^#{1,6}\s+(?:history|archived)\s*$/im)[0].split("\n").filter((l) => !isSuperseded(l)).join("\n");
   const tags = [...new Set([...live.matchAll(/(?:^|\s)#([\p{L}][\p{L}\p{N}_-]*)/gu)].map((m) => m[1].toLowerCase()))];
   return { path, name, title, description, aliases, type: text(meta.type) || folder(path), meta, body, live, tags, chunks };
 }
@@ -115,7 +119,7 @@ export function factLines(body) {
     .split(/^#{1,6}\s+(?:history|archived)\s*$/im)[0]
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => /^[-*]\s+/.test(l))
+    .filter((l) => /^[-*]\s+/.test(l) && !isSuperseded(l))
     .map((l) => l.replace(/^[-*]\s+/, ""));
 }
 

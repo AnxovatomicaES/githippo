@@ -9,9 +9,9 @@
 // Every user can always read and write their own users/<id>/ folder (personal inbox, sessions, core).
 // With no users configured, a single "owner" with full access logs in with MCP_SECRET.
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, statSync, copyFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { MemoryError } from "./store.js";
+import { MemoryError, normalizePath } from "./store.js";
 
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 const LEVEL = { none: 0, read: 1, write: 2 };
@@ -45,6 +45,21 @@ const normRule = (path) => {
   if (s && !s.endsWith("/") && !s.endsWith(".md")) s += "/";
   return s;
 };
+/**
+ * The path as a permission check may read it, or null (= deny) if it contains anything a filesystem or a trim() could
+ * interpret differently: control or invisible characters, non-space whitespace (tab, NBSP…), backslashes, "."/".."
+ * segments, or segments with leading/trailing spaces.
+ */
+export function canonAclPath(path) {
+  const s = String(path ?? "");
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\\]/u.test(s) || /\p{Zs}/u.test(s.replace(/ /g, ""))) return null;
+  const p = s.replace(/^\/+/, "");
+  for (const seg of p.split("/")) if (seg === "." || seg === ".." || seg !== seg.trim()) return null;
+  return p;
+}
+// macOS and Windows filesystems treat Users/ and users/ as the same folder, and Unicode forms as the same name
+const fold = (s) => s.normalize("NFC").toLowerCase();
+
 export const ruleMatches = (rulePath, p) => rulePath === "" || (rulePath.endsWith("/") ? p.startsWith(rulePath) : p === rulePath);
 
 export class Acl {
@@ -59,14 +74,20 @@ export class Acl {
   }
 
   level(path) {
-    const p = String(path || "").replace(/^\/+/, "");
+    const p = canonAclPath(path);
+    if (p === null) return 0;
+    const key = fold(p);
     // Another user's users/<id>/ folder is private: only a rule that names users/ explicitly can open it,
     // never a catch-all like ":read".
-    const othersPrivate = p.startsWith("users/") && !p.startsWith(`users/${this.user}/`);
+    const me = fold(`users/${this.user}/`);
+    const othersPrivate = key.startsWith("users/") && !key.startsWith(me);
     for (const r of this.rules) {
-      if (!ruleMatches(r.path, p)) continue;
-      if (othersPrivate && !r.path.startsWith("users/")) return 0;
-      return LEVEL[r.access] ?? 0;
+      if (!ruleMatches(fold(r.path), key)) continue; // the winning rule is chosen case-insensitively…
+      if (othersPrivate && !fold(r.path).startsWith("users/")) return 0;
+      const lvl = LEVEL[r.access] ?? 0;
+      // …a deny always applies, but a grant only applies to the exact spelling it names ("Users/bob" is not "users/bob")
+      if (lvl > 0 && !ruleMatches(r.path, p)) return 0;
+      return lvl;
     }
     return 0;
   }
@@ -95,11 +116,15 @@ export class Accounts {
 
   static load({ env = process.env, file } = {}) {
     let users = [];
+    let loadError = null;
     try {
       users = JSON.parse(env.USERS_JSON || readFileSync(file, "utf8")).users || [];
-    } catch {}
+    } catch (e) {
+      if (env.USERS_JSON || e.code !== "ENOENT") loadError = e.message; // a missing file is fine; a broken one must not be "fixed" by overwriting it
+    }
     const a = new Accounts({ users: users.filter((u) => u && typeof u.id === "string" && ID_RE.test(u.id)), ownerSecret: env.MCP_SECRET, file });
     a.fromEnv = !!env.USERS_JSON;
+    a.loadError = loadError;
     a.mtime = a.fileMtime();
     return a;
   }
@@ -160,7 +185,12 @@ export class Accounts {
 
   save() {
     if (!this.file) throw new MemoryError("No users file to save to.");
+    // a users file that failed to parse (a trailing comma…) is NOT empty: overwriting it would delete every other user
+    if (this.loadError) throw new MemoryError(`${this.file} could not be read (${this.loadError}). Fix it, or restore ${this.file}.bak, before changing users; nothing was written.`);
     mkdirSync(dirname(this.file), { recursive: true });
+    try {
+      copyFileSync(this.file, `${this.file}.bak`); // one step of undo
+    } catch {}
     writeFileSync(this.file, JSON.stringify({ users: [...this.users.values()] }, null, 2), { mode: 0o600 });
   }
 }
@@ -189,13 +219,21 @@ export class AclStore {
     throw new MemoryError(`${this.acl.user} has no ${what} access to ${path}.`);
   }
 
+  /** The one canonical note path used for BOTH the permission check and the store call. */
+  canon(path) {
+    return normalizePath(path);
+  }
+
   async read(path, ref) {
-    if (!this.acl.canRead(path)) this.deny(path, "read");
-    return this.base.read(path, ref);
+    const p = this.canon(path);
+    if (!this.acl.canRead(p)) this.deny(p, "read");
+    return this.base.read(p, ref);
   }
 
   async list(prefix = "") {
-    return (await this.base.list(prefix)).filter((f) => this.acl.canRead(f.path));
+    const pre = canonAclPath(prefix);
+    if (pre === null) throw new MemoryError(`Invalid path: ${JSON.stringify(prefix)}`);
+    return (await this.base.list(pre)).filter((f) => this.acl.canRead(f.path));
   }
 
   op(op) {
@@ -203,33 +241,39 @@ export class AclStore {
   }
 
   async write(path, content, v, op = "write") {
-    if (!this.acl.canWrite(path)) this.deny(path, "write");
-    return this.base.write(path, content, v, this.op(op));
+    const p = this.canon(path);
+    if (!this.acl.canWrite(p)) this.deny(p, "write");
+    return this.base.write(p, content, v, this.op(op));
   }
 
   async append(path, text, v, op = "append") {
-    if (!this.acl.canWrite(path)) this.deny(path, "write");
-    return this.base.append(path, text, v, this.op(op));
+    const p = this.canon(path);
+    if (!this.acl.canWrite(p)) this.deny(p, "write");
+    return this.base.append(p, text, v, this.op(op));
   }
 
   async replace(path, a, b, v) {
-    if (!this.acl.canWrite(path)) this.deny(path, "write");
-    return this.base.replace(path, a, b, v);
+    const p = this.canon(path);
+    if (!this.acl.canWrite(p)) this.deny(p, "write");
+    return this.base.replace(p, a, b, v);
   }
 
   async delete(path, v) {
-    if (!this.acl.canWrite(path)) this.deny(path, "write");
-    return this.base.delete(path, v);
+    const p = this.canon(path);
+    if (!this.acl.canWrite(p)) this.deny(p, "write");
+    return this.base.delete(p, v);
   }
 
   async history(path, limit) {
-    if (!this.acl.canRead(path)) this.deny(path, "read");
-    return this.base.history(path, limit);
+    const p = this.canon(path);
+    if (!this.acl.canRead(p)) this.deny(p, "read");
+    return this.base.history(p, limit);
   }
 
   async at(path, iso) {
-    if (!this.acl.canRead(path)) this.deny(path, "read");
-    return this.base.at(path, iso);
+    const p = this.canon(path);
+    if (!this.acl.canRead(p)) this.deny(p, "read");
+    return this.base.at(p, iso);
   }
 
   activeDays(since) {

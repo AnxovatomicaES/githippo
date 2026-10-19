@@ -6,7 +6,7 @@
 // blobs, so nothing needs storing. Codes are single-use (in-memory replay set, 60 s lifetime). Tokens are
 // bound to the user's current password+ACL version, so changing either revokes them immediately.
 import { createHash, createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
-import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
 const b64 = (b) => Buffer.from(b).toString("base64url");
@@ -22,7 +22,7 @@ export function signingKey(env = process.env) {
   return Buffer.from(hkdfSync("sha256", env.MCP_SECRET, "githippo", "oauth-signing-v1", 32));
 }
 
-export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin = 10, stateFile = null }) {
+export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin = 8, stateFile = null, trustProxy = false }) {
   const sign = (kind, payload) => {
     const body = b64(JSON.stringify({ k: kind, ...payload }));
     return `hippo.${body}.${b64(createHmac("sha256", key).update(`${kind}.${body}`).digest())}`;
@@ -46,6 +46,7 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
   // authorization code's id). Each refresh token is single use; presenting an already-used one means it was
   // copied, so the WHOLE family (its access tokens and its newest refresh token) is revoked. This is the only
   // state the otherwise-stateless server keeps; with a stateFile it survives restarts.
+  let stateMtime = 0;
   const usedRefresh = new Map(); // refresh-token jti -> exp
   const revokedFamilies = new Map(); // fid -> exp
   try {
@@ -53,20 +54,36 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
       const st = JSON.parse(readFileSync(stateFile, "utf8"));
       for (const [k, v] of Object.entries(st.used || {})) usedRefresh.set(k, v);
       for (const [k, v] of Object.entries(st.revoked || {})) revokedFamilies.set(k, v);
+      for (const [k, v] of Object.entries(st.codes || {})) usedCodes.set(k, v);
+      stateMtime = statSync(stateFile).mtimeMs;
     }
   } catch {}
+  // another process sharing this state file (or a manual edit) may have recorded spent tokens since we last looked
+  const reloadState = () => {
+    if (!stateFile) return;
+    try {
+      const m = statSync(stateFile).mtimeMs;
+      if (m === stateMtime) return;
+      stateMtime = m;
+      const st = JSON.parse(readFileSync(stateFile, "utf8"));
+      for (const [k, v] of Object.entries(st.used || {})) usedRefresh.set(k, v);
+      for (const [k, v] of Object.entries(st.revoked || {})) revokedFamilies.set(k, v);
+      for (const [k, v] of Object.entries(st.codes || {})) usedCodes.set(k, v);
+    } catch {}
+  };
   let saveTimer = null;
   const persist = () => {
     if (!stateFile || saveTimer) return;
     saveTimer = setTimeout(() => {
       saveTimer = null;
       const t = now();
-      for (const m of [usedRefresh, revokedFamilies]) for (const [k, exp] of m) if (exp < t) m.delete(k);
+      for (const m of [usedRefresh, revokedFamilies, usedCodes]) for (const [k, exp] of m) if (exp < t) m.delete(k);
       try {
         mkdirSync(dirname(stateFile), { recursive: true });
         const tmp = `${stateFile}.${process.pid}.tmp`;
-        writeFileSync(tmp, JSON.stringify({ used: Object.fromEntries(usedRefresh), revoked: Object.fromEntries(revokedFamilies) }), { mode: 0o600 });
+        writeFileSync(tmp, JSON.stringify({ used: Object.fromEntries(usedRefresh), revoked: Object.fromEntries(revokedFamilies), codes: Object.fromEntries(usedCodes) }), { mode: 0o600 });
         renameSync(tmp, stateFile);
+        stateMtime = statSync(stateFile).mtimeMs;
       } catch {}
     }, 200);
     saveTimer.unref?.();
@@ -76,7 +93,9 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
     persist();
   };
   const logins = new Map();
-  const base = (req) => (publicUrl || `${req.headers["x-forwarded-proto"]?.split(",")[0] || "http"}://${req.headers["x-forwarded-host"] || req.headers.host}`).replace(/\/+$/, "");
+  // X-Forwarded-* is client-controlled unless a proxy you trust sets it: without TRUST_PROXY (or a fixed PUBLIC_URL), only Host is used
+  const fwd = (req, name) => (trustProxy ? req.headers[name] : undefined);
+  const base = (req) => (publicUrl || `${fwd(req, "x-forwarded-proto")?.split(",")[0] || "http"}://${fwd(req, "x-forwarded-host") || req.headers.host}`).replace(/\/+$/, "");
   const resourceOf = (req) => `${base(req)}/mcp`;
 
   const json = (res, status, body, extra = {}) => {
@@ -85,11 +104,14 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
   };
   const oauthError = (res, status, error, error_description) => json(res, status, { error, error_description });
   const readBody = async (req) => {
-    let s = "";
+    const chunks = [];
+    let size = 0;
     for await (const c of req) {
-      s += c;
-      if (s.length > 64_000) break;
+      size += c.length;
+      if (size > 64_000) return null; // callers answer 413 and close the connection
+      chunks.push(c);
     }
+    const s = Buffer.concat(chunks).toString("utf8");
     if (/json/.test(req.headers["content-type"] || "")) {
       try {
         const v = JSON.parse(s);
@@ -110,13 +132,29 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
       return false;
     }
   };
-  const tooManyLogins = (ip) => {
+  const tooLarge = (res, req) => {
+    res.setHeader("Connection", "close");
+    json(res, 413, { error: "invalid_request", error_description: "request body too large" });
+    res.once("finish", () => req.destroy()); // don't leave the unread remainder to confuse the next request on this connection
+  };
+  // Failed sign-ins only (a success never counts), on three keys so that one noisy client can't lock out a whole office:
+  // a given user from a given address (strict), a given user from anywhere (guards against spread-out guessing), and
+  // an address overall (floods). Windows are 10 minutes.
+  const failLog = new Map();
+  const recent = (k, t = Date.now()) => {
+    const w = (failLog.get(k) || []).filter((x) => t - x < 600_000);
+    failLog.set(k, w);
+    return w;
+  };
+  const failKeys = (ip, user) => [`iu|${ip}|${user}`, `u|${user}`, `i|${ip}`];
+  const loginBlocked = (ip, user) => {
+    const [iu, u, i] = failKeys(ip, user);
+    return recent(iu).length >= loginRatePerMin || recent(u).length >= loginRatePerMin * 5 || recent(i).length >= loginRatePerMin * 20;
+  };
+  const loginFailed = (ip, user) => {
     const t = Date.now();
-    const w = (logins.get(ip) || []).filter((x) => t - x < 60_000);
-    w.push(t);
-    logins.set(ip, w);
-    if (logins.size > 5000) for (const [k, v] of logins) if (!v.length || t - v.at(-1) > 60_000) logins.delete(k);
-    return w.length > loginRatePerMin;
+    for (const k of failKeys(ip, user)) recent(k, t).push(t);
+    if (failLog.size > 10_000) for (const [k, v] of failLog) if (!v.length || t - v.at(-1) > 600_000) failLog.delete(k);
   };
   const issue = (user, cid, aud, scope, fid) => {
     const uv = accounts.version(user);
@@ -157,6 +195,7 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
     }
     if (path === "/register" && req.method === "POST") {
       const b = await readBody(req);
+      if (b === null) return tooLarge(res, req), true;
       const uris = Array.isArray(b.redirect_uris) ? b.redirect_uris : [];
       if (!uris.length || uris.length > 10 || !uris.every(validRedirect)) return oauthError(res, 400, "invalid_redirect_uri", "redirect_uris must be https (or http on localhost)"), true;
       const name = String(b.client_name || "MCP client").replace(/[<>&"']/g, "").slice(0, 80);
@@ -181,12 +220,16 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
     }
     if (path === "/authorize" && req.method === "POST") {
       const b = await readBody(req);
+      if (b === null) return tooLarge(res, req), true;
       const r = open("req", b.req);
       if (!r) return page(res, 400, "This sign-in expired", "Go back to your app and connect again."), true;
       if (b.action !== "allow") return redirect(res, r.uri, { error: "access_denied", state: r.st, iss: base(req) }), true;
       const ip = ctxIp || req.socket.remoteAddress; // the address http.js derived (X-Forwarded-For only with TRUST_PROXY=1)
-      if (tooManyLogins(ip)) return page(res, 429, "Too many attempts", "Wait a minute and try again."), true;
+      const uname = String((accounts.multiUser ? b.username : "owner") ?? "").toLowerCase().slice(0, 64);
+      if (loginBlocked(ip, uname)) return page(res, 429, "Too many attempts", "Wait a few minutes and try again."), true;
       const user = accounts.verify(accounts.multiUser ? b.username : "owner", b.password);
+      if (!user) loginFailed(ip, uname);
+      else failLog.delete(`iu|${ip}|${uname}`);
       if (!user) return loginPage(res, open("client", r.cid)?.n || "MCP client", new URL(r.uri).host, b.req, accounts.multiUser, "Wrong username or password."), true;
       const code = sign("code", { cid: r.cid, uri: r.uri, chal: r.chal, res: r.res, sc: r.sc, sub: user.id, jti: b64(randomBytes(12)), exp: now() + CODE_TTL });
       redirect(res, r.uri, { code, state: r.st, iss: base(req) });
@@ -194,6 +237,8 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
     }
     if (path === "/token" && req.method === "POST") {
       const b = await readBody(req);
+      if (b === null) return tooLarge(res, req), true;
+      reloadState();
       if (b.grant_type === "authorization_code") {
         const c = open("code", b.code);
         if (!c) return oauthError(res, 400, "invalid_grant", "code is invalid or expired"), true;
@@ -206,6 +251,7 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
         if (b.resource && b.resource.replace(/\/+$/, "") !== c.res.replace(/\/+$/, "")) return oauthError(res, 400, "invalid_target", "resource mismatch"), true;
         usedCodes.set(c.jti, c.exp);
         for (const [k, exp] of usedCodes) if (exp < now()) usedCodes.delete(k);
+        persist();
         const user = accounts.get(c.sub);
         if (!user) return oauthError(res, 400, "invalid_grant", "user no longer exists"), true;
         json(res, 200, issue(user, c.cid, c.res, c.sc, c.jti));
@@ -232,6 +278,7 @@ export function createOAuth({ accounts, key, publicUrl = null, loginRatePerMin =
 
   /** Resource-server check for /mcp. Returns the user or null. */
   function verifyBearer(req) {
+    reloadState();
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     const t = open("access", token);
     if (!t || t.aud.replace(/\/+$/, "") !== resourceOf(req) || revokedFamilies.has(t.fid)) return null;

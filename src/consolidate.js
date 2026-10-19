@@ -5,7 +5,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { FileStore } from "./filestore.js";
+import { FileStore, gitBusyState } from "./filestore.js";
 import { MemoryIndex } from "./search.js";
 import { Brain } from "./brain.js";
 import { factLines, plain } from "./parse.js";
@@ -91,6 +91,8 @@ export async function applyOnBranch({ vaultDir, ops, root = "memory", stampNow =
 
 /** Accept = merge the proposals branch into the vault's current branch; reject = delete it. */
 export function acceptProposals(vaultDir, branch) {
+  const busy = gitBusyState(vaultDir);
+  if (busy) throw new Error(`the vault has an unfinished git ${busy}; finish or abort it yourself first. Nothing was merged.`);
   try {
     git(vaultDir, "-c", "user.name=githippo", "-c", "user.email=githippo@localhost", "merge", "--no-edit", "-q", branch);
   } catch (e) {

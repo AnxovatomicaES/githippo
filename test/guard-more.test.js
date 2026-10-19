@@ -38,7 +38,7 @@ test("guard sees through encodings: lowercase, fullwidth digits, zero-width char
     ["card 4111.1111.1111.1111", "payment_card"],
     ["card 4111\u20131111\u20131111\u20131111", "payment_card"],
     ["dni 12345678z", "spanish_dni_nie"],
-    ["ni ab 12 34 56 c", "uk_nino"],
+    ["NI number AB 12 34 56 C", "uk_nino"], // NI numbers are matched in capitals: "el 12/10/26 a las…" is a date, not a NI number
     ["iban\u200b ES91\u00ad2100 0418 4502 0005 1332", "iban"],
   ]) assert.ok(kinds(t).includes(kind), `${JSON.stringify(t)} → ${kinds(t)}`);
 });

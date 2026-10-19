@@ -169,8 +169,13 @@ test("an external or inferred fact that replaces another keeps its provenance ma
   const txt = (await store.read("projects/johnny.md")).content;
   assert.match(txt, /- Sample rate is 48 kHz per a web page <!--\+\d{4}-\d{2}-\d{2} src:external-->/);
   assert.match((await brain.recall("sample rate")).context, /\[external\] Sample rate is 48 kHz/);
+  // an automatic (inferred) replacement of an external fact inherits the taint instead of laundering it
   await brain.remember("Sample rate is 44.1 kHz", { about: "johnny", replaces: "Sample rate is 48 kHz per a web page", source: "inferred" });
-  assert.match((await store.read("projects/johnny.md")).content, /44\.1 kHz <!--\+[\d-]+ src:inferred-->/);
+  assert.match((await store.read("projects/johnny.md")).content, /44\.1 kHz <!--\+[\d-]+ src:external-->/);
+  // ...while an inferred replacement of a trusted fact stays inferred
+  await brain.remember("Johnny needs a wake word", { about: "johnny" });
+  await brain.remember("Johnny needs a custom wake word", { about: "johnny", replaces: "Johnny needs a wake word", source: "inferred" });
+  assert.match((await store.read("projects/johnny.md")).content, /custom wake word <!--\+[\d-]+ src:inferred-->/);
 });
 
 // ---------- guard + checkpoints ----------
@@ -215,7 +220,10 @@ test("forget and replaces= match the exact line first; the tokenizer only when u
   await assert.rejects(brain.forget("Ada prefers tea", { path: "topics/t.md" }), /2 lines .* match that text; pass the exact text/);
   await brain.remember("Sam owns the whole billing platform", { path: "topics/t.md", replaces: "Sam owns the billing rewrite" });
   assert.match((await store.read("topics/t.md")).content, /whole billing platform/);
-  assert.deepEqual(matchLine(["- Sam owns billing rewrites"], "Sam owns the billing rewrite"), { idx: 0 }, "tokenizer fallback when nothing is exact and only one line fits");
+  assert.deepEqual(matchLine(["- Sam owns billing rewrites"], "Sam owns the billing rewrite"), { idx: -1 }, "no fuzzy level: different words are different lines");
+  assert.deepEqual(matchLine(["- Max dose is 4 tablets"], "Max dose is 2 tablets"), { idx: -1 }, "a different number is a different line");
+  assert.deepEqual(matchLine(["- Flight to Madrid"], "Flight from Madrid"), { idx: -1 }, "a different word is a different line");
+  assert.deepEqual(matchLine(["- Prefers tea"], "[external] prefers  tea."), { idx: 0 }, "recall's [external] marker, case, spacing and punctuation are ignored");
   assert.deepEqual(matchLine(["- A b", "- a B"], "A  b"), { idx: 0 }, "case-sensitive exact beats case-insensitive");
   // the same text in two notes: forget needs a path
   await store.write("topics/u.md", "---\nname: u\n---\n\n- Ada prefers coffee\n", "new");

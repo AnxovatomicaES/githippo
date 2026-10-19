@@ -15,7 +15,7 @@ const PADDING = [
   [/(?<![\p{L}])please note that\s*/giu, ""],
   [/(?<![\p{L}])in order to(?![\p{L}])/giu, "to"],
   [/(?<![\p{L}])due to the fact that(?![\p{L}])/giu, "because"],
-  [W("a|an|the"), ""],
+  [W("an|the"), ""], // not "a": "Class A shares" and "de lunes a martes" must survive
   [W("just|really|basically|actually|simply|essentially|generally|quite|very"), ""],
 ];
 

@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { GitHubMemoryStore, MemoryError } from "./store.js";
+import { GitHubMemoryStore, MemoryError, normalizePath } from "./store.js";
 import { FileStore } from "./filestore.js";
 import { MemoryIndex } from "./search.js";
 import { createEmbedder } from "./embed.js";
@@ -112,7 +112,8 @@ export function buildServer(brain) {
         const g = await gate(server, "forget", { text: hit.line, path: hit.path });
         if (!g.ok) return { status: "declined", reason: g.reason, path: hit.path, line: hit.line };
       }
-      return brain.forget(text, { path });
+      // delete exactly the line that was shown (and approved), not whatever the text matches a moment later
+      return brain.forget(hit ? hit.line : text, { path: hit ? hit.path : path });
     },
   );
 
@@ -188,6 +189,9 @@ export function buildServer(brain) {
         return { text: fmt.read(await Promise.all(ps.map(async (p) => (await store.read(p)) ?? { path: p, missing: true }))) };
       }
       if (/[\u0000]/.test(content || "") || /[\u0000]/.test(nu || "")) throw new MemoryError("Content contains NUL bytes; memory files are text.");
+      if (op !== "read" && op !== "list" && /(^|\/)core\.md$/i.test(normalizePath(need(path, "path")))) {
+        throw new MemoryError("core.md is pinned memory: add to it with remember (pin=true), remove with forget, or edit the file yourself. The files tool doesn't write it.");
+      }
       if (op === "write") {
         assertSafe(need(content, "content"));
         return { text: fmt.write(await refresh(await store.write(need(path, "path"), content, need(v, "v")), path)) };

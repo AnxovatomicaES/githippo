@@ -26,7 +26,7 @@ const safeEqual = (a, b) => {
  */
 export function createHttpApp(brain, { secret, key, accounts = new Accounts({ ownerSecret: secret }), publicUrl = null, legacySecretUrl = false, maxBodyBytes = 1_000_000, ratePerMinute = 120, maxBatch = 25, trustProxy = process.env.TRUST_PROXY === "1", stateFile = null } = {}) {
   if (!secret || secret.length < 24) throw new Error("MCP_SECRET must be set (24+ chars). Try: openssl rand -hex 32");
-  const oauth = createOAuth({ accounts, key: key || Buffer.from(secret), publicUrl, stateFile });
+  const oauth = createOAuth({ accounts, key: key || Buffer.from(secret), publicUrl, stateFile, trustProxy });
   const windows = new Map();
   let sweep = 0;
   /** Sliding one-minute window; returns true when `cost` more events would exceed `max`. */

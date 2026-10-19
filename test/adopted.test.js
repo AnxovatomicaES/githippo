@@ -22,7 +22,10 @@ test("claude-mem: <private> content is never stored", async () => {
   await brain.remember("Johnny API base is staging <private>password hunter2</private> for now", { about: "johnny" });
   assert.doesNotMatch(gh.text("memory/projects/johnny.md"), /hunter2|private/);
   await assert.rejects(brain.remember("<private>only secret stuff here</private>"), /entirely inside <private>/);
-  assert.equal(stripMemoryTags("explain how <private> tags work").text, "explain how <private> tags work");
+  // an opener that never closes makes everything after it private (a forgotten closing tag must not leak the text),
+  // and an explicit save is refused with a clear message instead of silently losing the end of the fact
+  assert.deepEqual(stripMemoryTags("explain how <private> tags work"), { text: "explain how", removed: 1, unclosed: true });
+  await assert.rejects(brain.remember("explain how <private> tags work"), /opened but never closed/);
 });
 
 test("claude-mem: injected memory is never re-captured (feedback-loop guard)", async () => {

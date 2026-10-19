@@ -30,7 +30,7 @@ const FOLD_MARKS = /(\p{Script=Latin}|\p{Script=Greek}|\p{Script=Arabic}|\p{Scri
 export const fold = (s) => s.normalize("NFD").replace(FOLD_MARKS, "$1").normalize("NFC");
 // Scripts written without spaces between words: indexed as overlapping character bigrams (what the trigram
 // tokenizers in OpenClaw and Hermes do for the same reason), since there are no word boundaries to split on.
-const NO_SPACE = "[\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}\\p{scx=Thai}\\p{scx=Lao}\\p{scx=Khmer}\\p{scx=Myanmar}\\p{M}]";
+const NO_SPACE = "[\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}\\p{scx=Thai}\\p{scx=Lao}\\p{scx=Khmer}\\p{scx=Myanmar}]"; // (not \\p{M}: Hindi and other Indic words have vowel-sign marks but ARE space-separated)
 const HAS_NO_SPACE = new RegExp(NO_SPACE, "u");
 const NO_SPACE_RUNS = new RegExp(`${NO_SPACE}+`, "gu");
 
@@ -59,11 +59,14 @@ export const tokenize = (s) => {
     for (const m of w.matchAll(NO_SPACE_RUNS)) {
       const chars = Array.from(m[0]);
       if (chars.length === 1) out.push(chars[0]);
-      else for (let k = 0; k < chars.length - 1; k++) out.push(chars[k] + chars[k + 1]);
+      else {
+        for (let k = 0; k < chars.length - 1; k++) out.push(chars[k] + chars[k + 1]);
+        for (const c of chars) if (/\p{scx=Han}/u.test(c)) out.push(c); // single Chinese characters are words too: 1-character queries must match
+      }
     }
     for (const piece of w.replace(NO_SPACE_RUNS, " ").split(" ")) if (piece) latin(piece);
   }
-  return out.filter((t) => t.length > 1 && !STOP.has(t)).map((t) => (t.length > 4 && /[^su]s$/.test(t) ? t.slice(0, -1) : t));
+  return out.filter((t) => (t.length > 1 || /\p{scx=Han}/u.test(t)) && !STOP.has(t)).map((t) => (t.length > 4 && /[^su]s$/.test(t) ? t.slice(0, -1) : t));
 };
 
 /**
@@ -122,7 +125,7 @@ export class Bm25 {
     this.docs.delete(id);
   }
 
-  search(query, limit = 1000) {
+  search(query, limit = 1000, accept = null) {
     const q = [...new Set(tokenize(query))];
     const N = this.docs.size;
     const avg = this.avgLen;
@@ -138,6 +141,9 @@ export class Bm25 {
         scores.set(id, (scores.get(id) || 0) + idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * len) / avg))));
       }
     }
+    // Scope and permissions apply BEFORE the top-K cut: with 250 session checkpoints matching a query, the cut used to
+    // be filled by notes the caller can't see and the project note they asked about vanished.
+    if (accept) for (const id of [...scores.keys()]) if (!accept(this.docs.get(id))) scores.delete(id);
     // Top-K without sorting everything: find the K-th best score with a native numeric sort, keep what beats it
     // (plus ties, ordered by id so results are deterministic). A common word matching all 50,000 chunks used to
     // cost a full string-comparison sort per query.
@@ -167,6 +173,7 @@ const isSessionPath = (p) => p.startsWith("sessions/") || /^users\/[^/]+\/sessio
 const isCorePath = (p) => p === "core.md" || /^users\/[^/]+\/core\.md$/.test(p);
 
 export function inDefaultScope(c, prefix = "") {
+  if (prefix && !prefix.endsWith("/") && !prefix.endsWith(".md")) prefix += "/"; // a folder, not a string prefix
   if (!c.path.startsWith(prefix)) return false;
   if (prefix) return prefix.startsWith("sessions/") || /\/sessions\//.test(prefix) || !isSessionPath(c.path) ? !c.history || /history/i.test(prefix) : false;
   return !c.history && !isSessionPath(c.path) && !isCorePath(c.path) && c.path !== "index.md";
@@ -238,10 +245,13 @@ export class MemoryIndex {
 
   async flushCache() {
     if (!this.cacheFile) return;
-    const live = new Set((this.chunks || []).map((c) => c.hash));
-    const lineKeys = [...this.vectors.keys()].filter((k) => k.startsWith("line:")).slice(-2000);
-    const keepLines = new Set(lineKeys);
-    for (const k of [...this.vectors.keys()]) if (!live.has(k) && !keepLines.has(k)) this.vectors.delete(k);
+    // Prune only once a sync has completed: before that, "chunks in use" is empty or partial, and a slow first sync
+    // (over the 3 s save delay) used to delete the entire migrated cache, re-embedding everything (paid, with voyage).
+    if (this.synced) {
+      const live = new Set((this.chunks || []).map((c) => c.hash));
+      const keepLines = new Set([...this.vectors.keys()].filter((k) => k.startsWith("line:")).slice(-2000));
+      for (const k of [...this.vectors.keys()]) if (!live.has(k) && !keepLines.has(k)) this.vectors.delete(k);
+    }
     await mkdir(this.cacheDir, { recursive: true });
     const tmp = `${this.cacheFile}.${process.pid}.${Date.now()}.tmp`;
     await writeFile(tmp, encodeVectors(this.vectors));
@@ -250,7 +260,7 @@ export class MemoryIndex {
   }
 
   /** Incremental sync: only files whose blob SHA changed are re-read and re-embedded. */
-  async sync({ maxAgeMs = 5000 } = {}) {
+  async sync({ maxAgeMs = 1500 } = {}) {
     // another process committed to the vault since our last sync → re-sync now, not after maxAgeMs
     const token = this.store.stateToken?.() ?? null;
     if (Date.now() - this.lastSync < maxAgeMs && token === this.lastToken) return;
@@ -270,45 +280,45 @@ export class MemoryIndex {
       }
       const listing = await this.store.list();
       const live = new Set(listing.map((f) => f.path));
-      let touched = false;
-      for (const p of [...this.files.keys()]) {
-        if (!live.has(p)) {
-          this.applyFile(p, null);
-          touched = true;
-        }
-      }
+      const removed = [...this.files.keys()].filter((p) => !live.has(p));
       const changed = listing.filter((f) => this.files.get(f.path)?.version !== f.version);
       // Many changes (cold start): one tarball instead of one request per file, when the store supports it.
       if (changed.length > 20 && this.store.prefetch) await this.store.prefetch().catch(() => 0);
       const read = (f) => (this.store.readVersion ? this.store.readVersion(f.path, f.version) : this.store.read(f.path));
-      const fresh = [];
+      // Read and parse everything first (this awaits); touch the index afterwards (this doesn't). Applying files one by
+      // one while reading let a concurrent remember see a half-updated index ("Cannot read properties of undefined (counts)").
+      const staged = [];
       const failed = [];
       await forEachLimit(changed, 32, async (f) => {
         try {
           const file = await read(f);
           if (!file) return;
           if (/^<{7}( |$)/m.test(file.content) && /^={7}$/m.test(file.content) && /^>{7}( |$)/m.test(file.content)) throw new Error("unresolved git conflict markers");
-          const parsed = this.withContext({ ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content });
-          this.applyFile(f.path, parsed);
-          fresh.push(parsed);
+          staged.push([f.path, this.withContext({ ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content })]);
         } catch (e) {
           // a note that can't be read or parsed is skipped and reported; it never takes the rest of memory down
-          this.applyFile(f.path, null);
+          staged.push([f.path, null]);
           failed.push(`${f.path}: ${String(e.message).split("\n")[0].slice(0, 80)}`);
         }
       });
       if (failed.length) console.error(`[githippo] ${failed.length} note(s) skipped: ${failed.slice(0, 3).join(" | ")}`);
       // loud, not silent: a note that was listed but couldn't be read is a note the user can't search
-      const unreadable = listing.filter((f) => !this.files.has(f.path));
-      if (unreadable.length) console.error(`[githippo] ${unreadable.length} note(s) could not be read and are not searchable, e.g. ${unreadable[0].path}`);
+      const staged_ok = new Set(staged.filter(([, f]) => f).map(([p]) => p));
+      const unreadable = listing.filter((f) => !this.files.has(f.path) && !staged_ok.has(f.path));
+      if (unreadable.length && !failed.length) console.error(`[githippo] ${unreadable.length} note(s) could not be read and are not searchable, e.g. ${unreadable[0].path}`);
+      // --- one synchronous step: removals, additions, graph and chunk list move together
+      for (const p of removed) this.applyFile(p, null);
+      const fresh = [];
+      for (const [p, parsed] of staged) {
+        this.applyFile(p, parsed);
+        if (parsed) fresh.push(parsed);
+      }
       if (reapply) {
         for (const f of this.files.values()) this.withContext(f);
         this.rebuild();
-        await this.embedMissing();
-      } else {
-        await this.embedMissing(fresh);
-        if (touched || changed.length) this.refresh(); // nothing changed → nothing to rebuild
-      }
+      } else if (removed.length || changed.length) this.refresh(); // nothing changed → nothing to rebuild
+      await this.embedMissing(reapply ? undefined : fresh);
+      this.synced = true;
       this.lastSync = Date.now();
     })().finally(() => (this.syncing = null));
     return this.syncing;
@@ -353,8 +363,8 @@ export class MemoryIndex {
   async upsert(path, content, version) {
     const parsed = this.withContext({ ...parseFile(path, content), version, content });
     this.applyFile(path, parsed);
+    this.refresh(); // keep the chunk list and graph in step with the keyword index before anything awaits
     await this.embedMissing([parsed]);
-    this.refresh();
   }
 
   remove(path) {
@@ -407,8 +417,8 @@ export class MemoryIndex {
     this.snapTimer.unref?.();
   }
 
-  bm25(query) {
-    return this.lexical.search(query);
+  bm25(query, accept = null) {
+    return this.lexical.search(query, 1000, accept);
   }
 
   /** Small on-disk snapshot used by the UserPromptSubmit hook (no network, no model). */
@@ -438,7 +448,7 @@ export class MemoryIndex {
     // rank higher, and questions about the past may also see superseded (History) facts that were true then.
     const when = timeWindow(query, now);
     const inScope = (c) => (inDefaultScope(c, prefix) || (when?.past && c.history && inDefaultScope({ ...c, history: false }, prefix))) && canRead(c.path);
-    const lexical = this.bm25(query).filter((x) => inScope(x.c));
+    const lexical = this.bm25(query, inScope);
     const semantic = (await this.dense(query)).filter((x) => inScope(x.c));
     const RRF_K = 60;
     const fused = new Map();
@@ -453,7 +463,7 @@ export class MemoryIndex {
     add(semantic, "cosine");
     // Document evidence: each matching note contributes its RRF term to its best chunk (or its first chunk
     // in scope, if none of its chunks matched on their own).
-    const docHits = this.docLexical.search(query).filter((x) => x.c.path.startsWith(prefix) && canRead(x.c.path)).slice(0, 50);
+    const docHits = this.docLexical.search(query, 200, (d) => inScope({ path: d.path, history: false })).slice(0, 50);
     docHits.forEach(({ c, s }, rank) => {
       let best = null;
       for (const e of fused.values()) if (e.chunk.path === c.path && (!best || e.score > best.score)) best = e;

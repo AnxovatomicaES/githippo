@@ -128,17 +128,21 @@ export async function parseTranscriptFile(path) {
 
 /** Renders a checkpoint that fits a token budget (~4 chars per token). */
 export function renderCheckpoint(t, { sessionId = "", budgetTokens = 900 } = {}) {
-  const project = t.cwd ? basename(t.cwd) : "unknown";
+  // Everything below is text copied from a session (paths, branch names, tool output). A newline in any of it could end the
+  // line it's on and forge a heading or a frontmatter key ("## Where it stopped"), so every value is one clipped line.
+  const safe = (v, n = 200) => clip(oneLine(String(v ?? "")), n);
+  const project = safe(t.cwd ? basename(String(t.cwd)) : "unknown", 80);
+  const sid = safe(sessionId, 80);
   const out = [
     "---",
-    `name: ${project}-${sessionId.slice(0, 8)}`,
+    `name: ${project}-${sid.slice(0, 8)}`,
     `title: Session checkpoint (${project})`,
     "type: session",
     `description: Working state of a Claude Code session in ${project}, saved before compaction`,
-    `session: ${sessionId}`,
+    `session: ${sid}`,
     `project: ${project}`,
-    ...(t.branch ? [`branch: ${t.branch}`] : []),
-    ...(t.cwd ? [`cwd: ${t.cwd}`] : []),
+    ...(t.branch ? [`branch: ${safe(t.branch, 100)}`] : []),
+    ...(t.cwd ? [`cwd: ${safe(t.cwd, 240)}`] : []),
     `updated: ${new Date().toISOString()}`,
     "---",
     "",
@@ -155,9 +159,9 @@ export function renderCheckpoint(t, { sessionId = "", budgetTokens = 900 } = {})
     section("Tasks", t.todos.map((td) => `- [${mark[td.status] ?? " "}] ${clip(oneLine(td.content || ""), 160)}`));
   }
   const files = [...t.files].sort((a, b) => b[1] - a[1]).slice(0, 15);
-  section("Files changed", files.map(([f, n]) => `- ${f}${n > 1 ? ` (${n} edits)` : ""}`));
-  section("Recent errors", [...new Set(t.errors || [])].slice(-4).map((e) => `- ${clip(e, 200)}`));
-  section("Recent commands", [...new Set(t.commands)].slice(-5).map((c) => `- \`${clip(c, 120)}\``));
+  section("Files changed", files.map(([f, n]) => `- ${safe(f, 160)}${n > 1 ? ` (${n} edits)` : ""}`));
+  section("Recent errors", [...new Set(t.errors || [])].slice(-4).map((e) => `- ${safe(e, 200)}`));
+  section("Recent commands", [...new Set(t.commands)].slice(-5).map((c) => `- \`${safe(c, 120).replace(/`/g, "'")}\``));
   if (t.lastAssistant) section("Where it stopped", [`- ${clip(oneLine(t.lastAssistant), 600)}`]);
   if (t.priorSummary) section("Earlier summary", [`- ${clip(oneLine(t.priorSummary), 500)}`]);
 

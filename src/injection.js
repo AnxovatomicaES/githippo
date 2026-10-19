@@ -5,7 +5,9 @@ const PATTERNS = [
   ["override", /\b(ignore|disregard|forget|override)\s+(all\s+|any\s+|the\s+|your\s+)?(previous|prior|above|earlier|system|original)\s+(instructions?|prompts?|rules|messages?|directions)/i],
   ["override", /\b(ignora|olvida)\s+(todas\s+)?(las\s+)?instrucciones\s+(anteriores|previas)/i],
   ["role", /\b(you are now|from now on,? you (are|will|must)|act as (an?|the) (unfiltered|unrestricted|jailbroken))\b/i],
-  ["fake-turn", /(^|\n)\s*(system|assistant|developer)\s*:\s*\S|<\|im_start\|>|<\/?(system|instructions?)>|\[\/?INST\]|BEGIN (SYSTEM|ADMIN) (PROMPT|INSTRUCTIONS)/i],
+  // "system:"/"developer:" lines, chat-template tokens, or an assistant/human/user label followed by an instruction: a plain
+  // "Assistant: Laura handles John's calendar" is a fact about a person
+  ["fake-turn", /(^|\n)\s*(system|developer)\s*:\s*\S|(^|\n)\s*(assistant|human|user)\s*:[^\n]{0,200}\b(ignore|disregard|you must|you will|always|never|do not|don't|send|forward|reveal|override)\b|<\|im_start\|>|<\/?(system|instructions?)>|\[\/?INST\]|BEGIN (SYSTEM|ADMIN) (PROMPT|INSTRUCTIONS)/i],
   ["secrecy", /\b(do not|don't|never)\s+(tell|inform|mention|reveal|show)\s+(this\s+to\s+)?(the\s+)?user\b/i],
   ["exfiltration", /!\[[^\]]*\]\(https?:\/\/[^)]*[?&][^)]*=|\b(send|post|upload|forward|exfiltrate)\b[^.\n]{0,60}\b(api[_ ]?keys?|tokens?|passwords?|credentials|secrets?|memory|conversation)\b[^.\n]{0,40}\b(to|at)\s+(https?:\/\/|[\w.-]+@)/i],
   ["tool-hijack", /\b(call|invoke|use|run)\s+the\s+[\w-]+\s+tool\s+(to|and)\s+(delete|forget|send|write|remember)/i],

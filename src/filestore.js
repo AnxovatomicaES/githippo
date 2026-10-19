@@ -4,11 +4,33 @@
 // commits are pushed in the background with the user's existing git credentials (gh, SSH, keychain).
 import { mkdir, open as openFile, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { KeyedMutex, withFileLock } from "./lock.js";
 import { join, dirname } from "node:path";
 import { MemoryError, MAX_FILE_BYTES, normalizePath, sameVersion } from "./store.js";
+
+/** The real git directory (in a linked worktree, .git is a FILE pointing elsewhere), or null if this isn't a repository. */
+export function gitDirOf(dir) {
+  try {
+    return execFileSync("git", ["-C", dir, "rev-parse", "--absolute-git-dir"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Name of an unfinished git operation in this repository (merge, rebase, bisect…, or a detached HEAD), or null. */
+export function gitBusyState(dir, gitDir = gitDirOf(dir)) {
+  if (!gitDir) return null;
+  for (const [f, name] of [["MERGE_HEAD", "merge"], ["rebase-merge", "rebase"], ["rebase-apply", "rebase"], ["CHERRY_PICK_HEAD", "cherry-pick"], ["REVERT_HEAD", "revert"], ["BISECT_LOG", "bisect"], ["sequencer", "cherry-pick sequence"]]) {
+    if (existsSync(join(gitDir, f))) return name;
+  }
+  try {
+    if (!readFileSync(join(gitDir, "HEAD"), "utf8").startsWith("ref: ")) return "detached HEAD (check out a branch)";
+  } catch {}
+  return null;
+}
 
 /** An unresolved merge/rebase leaves these in a file; their contents are not facts. */
 export const hasConflictMarkers = (c) => /^<{7}( |$)/m.test(c) && /^={7}$/m.test(c) && /^>{7}( |$)/m.test(c);
@@ -42,13 +64,15 @@ export class FileStore {
     return this.mutex.run(path, () => withFileLock(this.lockDir(), path, fn));
   }
 
-  /** In a normal repo locks live inside .git (never committed); in a worktree .git is a file, so use .githippo. */
+  /** The real git directory (cached once found): in a linked worktree .git is a file, and the state lives elsewhere. */
+  realGitDir() {
+    return (this.gitDirCache ||= gitDirOf(this.dir));
+  }
+
+  /** Locks live inside the git directory (never committed); outside a repository, in .githippo. */
   lockDir() {
-    const g = join(this.dir, ".git");
-    try {
-      if (statSync(g).isDirectory()) return join(g, "githippo-locks");
-    } catch {}
-    return join(this.dir, ".githippo", "locks");
+    const g = this.realGitDir();
+    return g ? join(g, "githippo-locks") : join(this.dir, ".githippo", "locks");
   }
 
   abs(p) {
@@ -156,6 +180,13 @@ export class FileStore {
     if (!(await this.hasGit())) return;
     const scope = this.root || ".";
     this.queue = this.queue.then(async () => {
+      // never commit (or push) conflict markers: they would be indexed and recalled as facts
+      const conflicted = await this.conflictedFiles();
+      if (conflicted.length) {
+        this.pendingCommit = true;
+        console.error(`[githippo] not committing: unresolved conflicts in ${conflicted.slice(0, 3).join(", ")}. Resolve them in git.`);
+        return;
+      }
       const locked = (r) => /index\.lock|Unable to create|cannot lock ref|another git process/i.test(r.err);
       const started = Date.now();
       for (let attempt = 0; attempt < 25; attempt++) {
@@ -225,7 +256,9 @@ export class FileStore {
 
   async _write(p, content, ifVersion, op) {
     const busy = this.busyState();
-    if (busy) throw new MemoryError(`The vault has an unfinished git ${busy}. Finish or abort it (git ${busy} --abort) before saving memory.`);
+    if (busy) throw new MemoryError(`The vault has an unfinished git ${busy}. Finish or abort it (git ${busy.split(" ")[0]} --abort) before saving memory.`);
+    const unmerged = await this.git(["ls-files", "-u"]);
+    if (unmerged.ok && unmerged.out) throw new MemoryError("The vault has unresolved merge conflicts. Resolve them in git first; githippo won't write over them.");
     if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) {
       throw new MemoryError(`${p} would exceed ${MAX_FILE_BYTES} bytes. Run maintain or split it.`);
     }
@@ -276,6 +309,8 @@ export class FileStore {
   }
 
   async _delete(p, ifVersion) {
+    const busy = this.busyState();
+    if (busy) throw new MemoryError(`The vault has an unfinished git ${busy}. Finish or abort it (git ${busy.split(" ")[0]} --abort) before changing memory.`);
     const cur = await this.read(p);
     if (!cur) throw new MemoryError(`${p} does not exist.`);
     if (!sameVersion(cur.version, ifVersion)) throw new MemoryError(`Version conflict on ${p}: re-read before deleting.`, { current: cur });
@@ -319,27 +354,51 @@ export class FileStore {
   async pull() {
     const remote = await this.git(["remote"]);
     if (!remote.ok || !remote.out) return false;
+    // Never touch an operation we didn't start: your own unfinished merge or rebase (and the edits you resolved by hand)
+    // would be aborted and lost by the rollback below.
+    const busy = this.busyState();
+    if (busy) {
+      console.error(`[githippo] not syncing: the vault has an unfinished git ${busy}. Finish or abort it yourself; githippo leaves it alone.`);
+      return false;
+    }
     const branch = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"])).out || "main";
     const r = await this.git(["pull", "-q", "--rebase", "--autostash", "origin", branch], 30_000);
-    if (r.ok) return true;
-    // conflicting remote changes: leave nothing half-done (a rebase in progress puts markers in memory files)
-    await this.git(["rebase", "--abort"]);
-    await this.git(["merge", "--abort"]);
-    console.error(`[githippo] sync with the remote failed and was rolled back (${r.err.split("\n")[0].slice(0, 100)}). Resolve it with git in ${this.dir}.`);
-    return false;
+    const started = this.busyState(); // a rebase or merge that THIS pull started and couldn't finish
+    if (!r.ok || started) {
+      if (started === "rebase") await this.git(["rebase", "--abort"]);
+      else if (started === "merge") await this.git(["merge", "--abort"]);
+      console.error(`[githippo] sync with the remote failed and was rolled back (${r.err.split("\n")[0].slice(0, 100)}). Resolve it with git in ${this.dir}.`);
+      return false;
+    }
+    // `pull --rebase --autostash` can exit 0 while re-applying your stash conflicted, leaving markers in your files
+    const bad = await this.conflictedFiles();
+    if (bad.length) {
+      console.error(`[githippo] the remote changes conflict with edits you hadn't committed (${bad.slice(0, 3).join(", ")}). Your edits are safe in the git stash; resolve it in ${this.dir}. githippo won't commit these files until then.`);
+      return false;
+    }
+    return true;
   }
 
-  /** Name of an unfinished git operation (merge, rebase…) in the vault, or null. */
+  /** Files with unresolved merge conflicts (unmerged index entries, or conflict markers in changed notes). */
+  async conflictedFiles() {
+    const names = new Set();
+    const u = await this.git(["ls-files", "-u"]);
+    if (u.ok) for (const l of u.out.split("\n")) if (l.split("\t")[1]) names.add(l.split("\t")[1]);
+    const scope = this.root || ".";
+    for (const out of [await this.git(["diff", "--name-only", "HEAD", "--", scope]), await this.git(["ls-files", "-o", "--exclude-standard", "--", scope])]) {
+      if (!out.ok) continue;
+      for (const p of out.out.split("\n").filter(Boolean).slice(0, 200)) {
+        if (!p.endsWith(".md")) continue;
+        try {
+          if (hasConflictMarkers(readFileSync(join(this.dir, p), "utf8"))) names.add(p);
+        } catch {}
+      }
+    }
+    return [...names];
+  }
+
+  /** Name of an unfinished git operation (merge, rebase, bisect…) or a detached HEAD in the vault, or null. */
   busyState() {
-    const g = join(this.dir, ".git");
-    try {
-      if (!statSync(g).isDirectory()) return null;
-    } catch {
-      return null;
-    }
-    for (const [f, name] of [["MERGE_HEAD", "merge"], ["rebase-merge", "rebase"], ["rebase-apply", "rebase"], ["CHERRY_PICK_HEAD", "cherry-pick"], ["REVERT_HEAD", "revert"]]) {
-      if (existsSync(join(g, f))) return name;
-    }
-    return null;
+    return gitBusyState(this.dir, this.realGitDir());
   }
 }

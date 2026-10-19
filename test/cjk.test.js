@@ -8,10 +8,12 @@ import { MemoryIndex } from "../src/search.js";
 import { Brain } from "../src/brain.js";
 
 test("Chinese, Japanese and Thai are indexed as character bigrams", () => {
-  assert.deepEqual(tokenize("支付团队"), ["支付", "付团", "团队"]);
+  assert.deepEqual(tokenize("支付团队"), ["支付", "付团", "团队", "支", "付", "团", "队"], "character pairs, plus single Chinese characters so 1-character queries match");
+  assert.deepEqual(tokenize("鱼"), ["鱼"]);
+  assert.deepEqual(tokenize("नमस्ते दुनिया"), ["नमस्ते", "दुनिया"], "Hindi (and other Indic scripts) are space-separated words with vowel marks, not bigram text");
   assert.deepEqual(tokenize("リーダー"), ["リー", "ーダ", "ダー"], "katakana long-vowel mark and voicing kept");
   assert.ok(tokenize("ทีมชำระเงิน").includes("ที"), "Thai vowel mark kept");
-  assert.deepEqual(tokenize("使用 Postgres 16 数据库"), ["使用", "postgre", "16", "数据", "据库"], "mixed scripts (Latin part keeps the existing plural folding, same on both sides)");
+  assert.deepEqual(tokenize("使用 Postgres 16 数据库"), ["使用", "使", "用", "postgre", "16", "数据", "据库", "数", "据", "库"], "mixed scripts (Latin part keeps the existing plural folding, same on both sides)");
 });
 
 test("accents are still folded where that's safe, and only there", () => {

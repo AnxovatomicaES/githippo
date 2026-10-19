@@ -98,7 +98,10 @@ test("binary vector cache: round trip, tamper detection, JSON migration", async 
   await old.loadCache();
   assert.deepEqual(Array.from(old.vectors.get("k1")), [0.5, 0.25], "old JSON cache is migrated");
   await old.flushCache();
-  assert.equal(decodeVectors(await readFile(old.cacheFile)).size, 0, "flush keeps only vectors still in use");
+  assert.equal(decodeVectors(await readFile(old.cacheFile)).size, 2, "before the first sync has finished nothing is pruned (a slow first sync used to wipe the cache)");
+  old.synced = true;
+  await old.flushCache();
+  assert.equal(decodeVectors(await readFile(old.cacheFile)).size, 0, "after a sync, flush keeps only vectors still in use");
   await writeFile(old.cacheFile, "this is not a cache");
   const fresh = mk();
   await fresh.loadCache();

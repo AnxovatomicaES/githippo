@@ -14,7 +14,7 @@ const JSONL = [
 test("imports entities, observations and typed relations; guard + dedupe apply; re-run is a no-op", async () => {
   const { brain, gh } = setup();
   const r = await importReferenceMemory(brain, JSONL);
-  assert.deepEqual({ ...r }, { entities: 3, facts: 3, relations: 1, duplicates: 0, blocked: 1, skippedLines: 1 });
+  assert.deepEqual({ ...r }, { entities: 3, facts: 3, relations: 1, duplicates: 0, blocked: 1, rejected: 0, skippedLines: 1, reasons: [] });
   const ada = gh.text("memory/people/ada-lovelace.md");
   assert.match(ada, /title: Ada Lovelace/);
   assert.match(ada, /- Wrote the first published algorithm/);

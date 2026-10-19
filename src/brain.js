@@ -1,14 +1,14 @@
 // The githippo brain: recall, auto-remember, pinned core memory, temporal
 // supersession, forget, session checkpoints, consolidation, graph, time travel.
 import { MemoryError, MAX_FILE_BYTES, normalizePath } from "./store.js";
-import { cleanControl, factLines, hash, parseFile, plain, stamp, stampOf, stem, stripMemoryTags } from "./parse.js";
+import { cleanControl, factLines, hash, parseFile, plain, sourceOf, stamp, stampOf, stem, stripMemoryTags } from "./parse.js";
 import { redact, scan } from "./guard.js";
 import { cosine } from "./embed.js";
 import { tokenize } from "./search.js";
 import { ALLOW_ALL, AclStore } from "./accounts.js";
 import { terse } from "./terse.js";
 import { KeyedMutex } from "./lock.js";
-import { injectionKinds } from "./injection.js";
+import { defang, injectionKinds } from "./injection.js";
 
 const KIND_FOLDER = { person: "people", project: "projects", topic: "topics", company: "orgs", decision: "decisions" };
 const SYSTEM_FILES = new Set(["index.md", "core.md", "inbox.md"]);
@@ -18,11 +18,18 @@ const STARTERS = new Set(
 );
 
 /** Tokens that change a fact's meaning even when embeddings barely notice: numbers, dates, names. */
+// Words that flip a fact's meaning even though a keyword tokenizer drops them as stop words.
+const MEANING_WORDS = new Set("not no never none nobody nothing without except only cannot can't won't don't doesn't isn't aren't shouldn't mustn't must should always before after more less higher lower increase decrease nunca sin salvo solo sólo ningún ninguna nadie nada jamás nicht kein nie ohne pas jamais sans".split(" "));
+// "to"/"from" (and a/de/desde/hasta) change direction before a place, name or number: "to Madrid" is not "from Madrid"
+const DIRECTION_WORDS = new Set(["to", "from", "de", "desde", "hasta", "into", "towards"]); // not "a": it's also the English article
+
 export function salient(text) {
   const words = plain(text).match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || [];
   const out = new Set();
   words.forEach((w, i) => {
     const lw = w.toLowerCase();
+    if (MEANING_WORDS.has(lw)) out.add(lw);
+    else if (DIRECTION_WORDS.has(lw) && words[i + 1] && (/^\p{Lu}/u.test(words[i + 1]) || /\d/.test(words[i + 1]))) out.add(lw);
     if (/\d/.test(w)) out.add(lw);
     else if (/^\p{Lu}/u.test(w) && !(i === 0 && STARTERS.has(lw))) out.add(lw);
   });
@@ -43,7 +50,7 @@ export function salientDiffers(a, b, ignore = new Set()) {
 
 export const approxTokens = (s) => Math.ceil(s.length / 4);
 // B3: names with no Latin letters ("王伟") still get a stable, valid file name.
-const slugify = (s) =>
+export const slugify = (s) =>
   s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) ||
   `entity-${hash(s).slice(0, 8)}`;
 // B4: anything user-supplied that lands in frontmatter is one line and can't open a new key.
@@ -79,30 +86,58 @@ const EVERYDAY = new Set(
 );
 
 const stripLine = (l) => plain(bare(l)).replace(/\s+/g, " ").trim();
+// case-, punctuation- and spacing-insensitive, but NOT stop-word- or number-insensitive: "2 tablets" is not "4 tablets"
+const squash = (s) => s.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}\s]+/gu, " ").trim();
 
 /**
- * Which bullet line does `text` mean? Exact text first (case-sensitive, then case-insensitive); only if neither
- * matches, tokenizer equality (which ignores stop words, plurals and accents, so two different lines can collide).
- * Returns { idx } (or -1), or { ambiguous: n } when several lines match at the same level: never guess.
+ * Which bullet line does `text` mean? Only the same words count: exact text first, then ignoring case, then ignoring
+ * case, punctuation and spacing. There is deliberately no fuzzy level (the previous tokenizer level ignored stop words
+ * and single digits, so "Max dose is 2 tablets" removed "Max dose is 4 tablets" and "from Madrid" removed "to Madrid").
+ * A leading "[external]" (how recall shows untrusted facts) is ignored. Returns { idx } (or -1), or
+ * { ambiguous: n } when several lines match at the same level: never guess.
  */
 export function matchLine(lines, text, from = 0, to = lines.length) {
   const bullets = [];
   for (let i = from; i < to; i++) if (/^\s*[-*]\s+/.test(lines[i])) bullets.push(i);
-  const want = stripLine(text);
-  const levels = [
-    (l) => stripLine(l) === want,
-    (l) => stripLine(l).toLowerCase() === want.toLowerCase(),
-    (l) => tokenize(stripLine(l)).join(" ") === tokenize(want).join(" "),
-  ];
+  const want = stripLine(text).replace(/^\[external\]\s+/i, "");
+  const levels = [(s) => s === want, (s) => s.toLowerCase() === want.toLowerCase(), (s) => squash(s) === squash(want)];
   for (const same of levels) {
-    const hits = bullets.filter((i) => same(lines[i]));
+    const hits = bullets.filter((i) => same(stripLine(lines[i])));
     if (hits.length === 1) return { idx: hits[0] };
     if (hits.length > 1) return { ambiguous: hits.length };
   }
   return { idx: -1 };
 }
 
+/** Provenance can't be laundered by a rewrite: lines keep their origin, and anything merged in a note that holds external facts counts as external. */
+export function restoreProvenance(original, rewritten) {
+  const known = new Map();
+  let anyExternal = false;
+  for (const l of original.split("\n")) {
+    if (!/^\s*[-*]\s+/.test(l)) continue;
+    const src = sourceOf(l);
+    if (src) known.set(squash(stripLine(l)), src);
+    if (src === "external") anyExternal = true;
+  }
+  return rewritten
+    .split("\n")
+    .map((l) => {
+      if (!/^\s*[-*]\s+/.test(l) || sourceOf(l)) return l;
+      const src = known.get(squash(stripLine(l))) || (anyExternal ? "external" : null);
+      if (!src) return l;
+      return /<!--\+\d{4}-\d{2}-\d{2}(?: src:\w+)?-->/.test(l) ? l.replace(/<!--\+(\d{4}-\d{2}-\d{2})(?: src:\w+)?-->/, `<!--+$1 src:${src}-->`) : `${l}${stamp(undefined, src)}`;
+    })
+    .join("\n");
+}
+
 const MAX_FACT_BYTES = 4000;
+const SYSTEM_PATH = /(^|\/)(core|index)\.md$/i;
+const RESERVED_NAMES = new Set(["core", "index", "inbox"]);
+/** about:"core" must never resolve to (or create) the pinned core memory or the index. */
+const entitySlug = (about) => {
+  const s = slugify(about);
+  return RESERVED_NAMES.has(s) ? `${s}-notes` : s;
+};
 
 export function assertSafe(text) {
   const findings = scan(text);
@@ -175,12 +210,29 @@ export class Brain {
   // ---------- core memory (pinned, injected into the system prompt) ----------
   async loadCore() {
     const parts = [];
+    let droppedExternal = 0;
     for (const p of [...new Set(["core.md", this.acl.home("core.md")])]) {
       if (!this.acl.canRead(p)) continue;
       const f = this.file(p) || (await this.store.read(p).catch(() => null));
-      if (f) parts.push(plain(parseFile(p, f.content).body.trim()));
+      if (!f) continue;
+      const lines = parseFile(p, f.content).body.split("\n");
+      const trusted = lines.filter((l) => sourceOf(l) !== "external"); // untrusted text never reaches the system prompt as "pinned"
+      if (trusted.length !== lines.length) droppedExternal += lines.length - trusted.length;
+      parts.push(plain(trusted.join("\n").trim()));
     }
     this.core = parts.filter(Boolean).join("\n");
+    if (approxTokens(this.core) > this.coreBudgetTokens) {
+      // the budget is a hard cap on what is loaded, whoever wrote the file (pin enforces it too, but files can be edited by hand)
+      const kept = [];
+      let used = 0;
+      for (const l of this.core.split("\n")) {
+        used += approxTokens(l) + 1;
+        if (used > this.coreBudgetTokens) break;
+        kept.push(l);
+      }
+      this.core = `${kept.join("\n")}\n(core memory truncated to its ${this.coreBudgetTokens}-token budget)`;
+    }
+    if (droppedExternal) this.core += `\n(${droppedExternal} externally sourced line(s) in core memory were not loaded; review core.md)`;
     if (this.style === "terse") this.core = terse(this.core);
     return this.core;
   }
@@ -201,7 +253,7 @@ export class Brain {
 
   async similarity(fact, lines) {
     if (!lines.length) return [];
-    const norm = (s) => tokenize(plain(s)).join(" ");
+    const norm = (s) => squash(plain(s));
     const vecs = await this.lineVectors([plain(fact), ...lines.map(plain)]);
     return lines.map((line, i) =>
       norm(line) === norm(fact) ? 1 : +(vecs ? cosine(vecs[0], vecs[i + 1]) : jaccard(fact, line)).toFixed(4),
@@ -270,12 +322,15 @@ export class Brain {
     if (path) {
       // a new note created by explicit path still gets a proper title and type when we know them
       const create = about ? { title: oneLine(about), kind: kind || (/^people\//.test(path) ? "person" : "topic") } : undefined;
-      return { path: normalizePath(path), reason: "explicit", ...(create ? { create } : {}) };
+      const np = normalizePath(path);
+      if (SYSTEM_PATH.test(np)) throw new MemoryError(`${np} is managed by githippo: pin a fact with pin=true to put it in core memory, or save it somewhere else.`);
+      return { path: np, reason: "explicit", ...(create ? { create } : {}) };
     }
     if (about) {
-      const id = this.graph.resolve(about);
+      let id = this.graph.resolve(about);
+      if (id && SYSTEM_PATH.test(this.graph.nodes.get(id).path)) id = null;
       if (id) return { path: this.graph.nodes.get(id).path, reason: `entity:${id}` };
-      return { path: `${KIND_FOLDER[kind] || "topics"}/${slugify(about)}.md`, reason: "new entity", create: { title: about, kind: kind || "topic" } };
+      return { path: `${KIND_FOLDER[kind] || "topics"}/${entitySlug(about)}.md`, reason: "new entity", create: { title: about, kind: kind || "topic" } };
     }
     const mentioned = this.graph.mentions(fact).map((m) => m.id).filter((id) => this.acl.canRead(this.graph.nodes.get(id).path));
     const hits = await this.search(fact, { k: 5, expand: false });
@@ -302,7 +357,7 @@ export class Brain {
     const fileOf = new Map();
     for (const c of this.index.chunks || []) {
       if (SYSTEM_FILES.has(c.path) || c.path.startsWith("sessions/") || c.history || !this.acl.canRead(c.path)) continue;
-      for (const t of lex.tf.get(c.id).counts.keys()) {
+      for (const t of lex.tf.get(c.id)?.counts.keys() || []) {
         if (!fileOf.has(t)) fileOf.set(t, new Set());
         fileOf.get(t).add(c.path);
       }
@@ -366,7 +421,7 @@ export class Brain {
       throw new MemoryError(`Not saved: this reads like instructions aimed at an AI (${inj.join(", ")}), and memory is replayed into future sessions as trusted context. If it's a genuine fact, rephrase it as a statement about the source.`);
     }
     const source = ["user", "inferred", "external", "import"].includes(opts.source) ? opts.source : null;
-    await this.index.sync();
+    await this.index.sync({ maxAgeMs: 0 }); // a write must see what other processes just wrote (duplicates, versions)
     if (opts.pin) {
       if (source === "external") throw new MemoryError("External content can't be pinned to core memory, which is treated as always true.");
       return this.pin(clean);
@@ -399,7 +454,7 @@ export class Brain {
     if (dup) return { status: "duplicate", path: dup.path, existing: plain(dup.line) };
     const related = scored.filter((s) => s.sim >= this.t.related).slice(0, 2);
 
-    const { text, linked } = this.graph.autoLink(clean, [this.graph.idOf(target.path)]);
+    const { text, linked } = this.graph.autoLink(clean, [this.graph.idOf(target.path)], (p) => this.acl.canRead(p));
     const line = `- ${text}${stamp(undefined, source)}`;
     let next;
     if (!content) {
@@ -408,6 +463,9 @@ export class Brain {
       next = `${frontmatter({ name: stem(target.path), title: c.title, kind: c.kind, description: c.title, aliases })}${line}\n`;
     } else {
       next = insertLive(content, line);
+      if (Buffer.byteLength(next) > MAX_FILE_BYTES * 0.9 && /(^|\/)inbox\.md$/.test(target.path)) {
+        next = await this.rotateInbox(target.path, existing, line);
+      }
       if (Buffer.byteLength(next) > MAX_FILE_BYTES * 0.9) {
         throw new MemoryError(`${target.path} is nearly full (${Buffer.byteLength(content)} of ${MAX_FILE_BYTES} bytes); run maintain with rewrite=${target.path} first.`);
       }
@@ -435,12 +493,14 @@ export class Brain {
     if (m.idx < 0) throw new MemoryError(`Line to replace not found in ${path}.`);
     const idx = m.idx;
     const old = plain(bare(lines[idx]));
-    const { text, linked } = this.graph.autoLink(newFact, [this.graph.idOf(path)]);
-    // the replacement keeps its provenance: an external fact that replaces a trusted one stays marked [external]
-    lines[idx] = `- ${text}${stamp(undefined, source)}`;
+    const { text, linked } = this.graph.autoLink(newFact, [this.graph.idOf(path)], (p) => this.acl.canRead(p));
+    // the replacement keeps its provenance, and an automatic one (consolidation, import) that replaces an external
+    // fact inherits the taint instead of laundering it
+    const oldSource = sourceOf(lines[idx]);
+    const effective = (source === "inferred" || source === "import") && oldSource === "external" ? "external" : source;
+    lines[idx] = `- ${text}${stamp(undefined, effective)}`;
     let next = lines.join("\n").replace(/\n*$/, "\n");
-    const record = `- ~~${old}~~ (until ${today()})`;
-    next = /^#{1,6}\s+history\s*$/im.test(next) ? `${next}${record}\n` : `${next}\n## History\n${record}\n`;
+    next = addToHistory(next, `- ~~${old}~~ (until ${today()})`);
     const r = await this.store.write(path, next, existing.version, "supersede");
     await this.index.upsert(path, next, r.version);
     return { status: "superseded", path, old: plain(old), new: plain(text), linked };
@@ -450,7 +510,7 @@ export class Brain {
     const corePath = this.acl.canWrite("core.md") ? "core.md" : this.acl.home("core.md");
     const existing = this.file(corePath) || (await this.store.read(corePath));
     const base = existing?.content ?? frontmatter({ name: "core", title: "Core memory", kind: "core", description: "Pinned facts injected into every session" });
-    if (factLines(base).some((l) => tokenize(plain(l)).join(" ") === tokenize(fact).join(" "))) {
+    if (factLines(base).some((l) => squash(plain(l)) === squash(fact))) {
       return { status: "duplicate", path: "core.md", existing: fact };
     }
     const next = insertLive(base, `- ${fact}`); // core is pinned: never stamped, never decays
@@ -468,6 +528,25 @@ export class Brain {
     return this.retrying(() => this._forget(text, opts));
   }
 
+  /**
+   * The inbox is where unrouted facts wait. When it's nearly full, its oldest half moves (stamps and provenance intact)
+   * to inbox-archive-YYYY-MM.md, an ordinary searchable note, and the new fact goes in. Deterministic: no model, no key.
+   */
+  async rotateInbox(path, existing, line) {
+    const lines = existing.content.split("\n");
+    const bullets = lines.map((l, i) => (/^\s*[-*]\s+/.test(l) ? i : -1)).filter((i) => i >= 0);
+    const move = new Set(bullets.slice(0, Math.ceil(bullets.length / 2)));
+    if (!move.size) return insertLive(existing.content, line);
+    const ym = new Date().toISOString().slice(0, 7);
+    const archivePath = this.acl.user ? this.acl.home(`inbox-archive-${ym}.md`) : `topics/inbox-archive-${ym}.md`;
+    const moved = lines.filter((_, i) => move.has(i)).join("\n");
+    const old = this.file(archivePath) || (await this.store.read(archivePath).catch(() => null));
+    const body = old ? insertLive(old.content, moved) : `${frontmatter({ name: stem(archivePath), title: `Inbox archive ${ym}`, kind: "topic", description: `Older inbox facts, ${ym}` })}${moved}\n`;
+    const r = await this.store.write(archivePath, body, old ? old.version : "new", "inbox-rotate");
+    await this.index.upsert(archivePath, body, r.version);
+    return insertLive(lines.filter((_, i) => !move.has(i)).join("\n"), line);
+  }
+
   /** Candidate notes for forget(text): the given path, or what search finds plus core memory. */
   async forgetCandidates(text, path) {
     if (path) return [normalizePath(path)];
@@ -477,7 +556,7 @@ export class Brain {
 
   /** The single line forget(text) would remove, or null. Throws if the text matches more than one line or note. */
   async findForgettable(text, path) {
-    await this.index.sync();
+    await this.index.sync({ maxAgeMs: 0 });
     const found = [];
     for (const p of await this.forgetCandidates(text, path)) {
       const f = this.file(p);
@@ -526,7 +605,8 @@ export class Brain {
 
   async _checkpoint({ session = "default", task, state, next, files } = {}) {
     // free text from the model: strip control characters like every other entry point does
-    const c = (v) => (typeof v === "string" ? cleanControl(v) : v);
+    // (one line each: a newline in "state" could otherwise forge a "## Where it stopped" section; instruction-like text is neutralised)
+    const c = (v) => (typeof v === "string" ? defang(cleanControl(v).replace(/\s*[\r\n\u2028\u2029]+\s*/g, " ")) : v);
     task = c(task);
     state = c(state);
     next = c(next);
@@ -677,12 +757,12 @@ export class Brain {
     for (const raw of inboxFile ? factLines(inboxFile.body) : []) {
       const fact = plain(raw);
       const home = await this.suggestHome(fact);
-      if (home) report.inbox.push({ fact, ...home });
+      if (home) report.inbox.push({ fact, ...home, source: sourceOf(raw) });
     }
     if (tidy && report.inbox.length) {
       let moved = 0;
-      for (const { fact, path } of report.inbox) {
-        const r = await this.remember(fact, { path, movingFrom: "inbox.md" });
+      for (const { fact, path, source } of report.inbox) {
+        const r = await this.remember(fact, { path, movingFrom: "inbox.md", source: source || undefined }); // a moved fact keeps its origin
         // Delete the inbox copy only once the fact verifiably lives in the destination note.
         const landed = (r.status === "saved" && r.path === path) || (r.status === "duplicate" && r.path === path);
         if (!landed) continue;
@@ -737,7 +817,7 @@ export class Brain {
       const f = this.file(p);
       if (!f) throw new MemoryError(`${p} not found.`);
       const hints = duplicates.filter((d) => d.a.path === p || d.b.path === p).map((d) => [d.a.line, d.b.line]);
-      const next = await this.llm.consolidate(f.content, hints);
+      const next = restoreProvenance(f.content, await this.llm.consolidate(f.content, hints));
       assertSafe(next);
       const lost = [...f.content.matchAll(/\[\[([^\[\]|]+)/g)].map((m) => m[1]).filter((l) => !next.includes(`[[${l}`));
       if (lost.length) throw new MemoryError(`Rewrite dropped links (${[...new Set(lost)].join(", ")}); not saved.`);
@@ -772,6 +852,18 @@ export class Brain {
 }
 
 /** Appends a line to the live section, i.e. before any "## History" heading. */
+/** Append `record` to the end of the History section (before whatever heading follows it), creating the section if needed. */
+export function addToHistory(content, record) {
+  const lines = content.replace(/\n*$/, "\n").split("\n");
+  const h = lines.findIndex((l) => /^#{1,6}\s+history\s*$/i.test(l));
+  if (h < 0) return `${lines.join("\n")}\n## History\n${record}\n`;
+  let end = lines.findIndex((l, i) => i > h && /^#{1,6}\s/.test(l));
+  if (end < 0) end = lines.length;
+  while (end > h + 1 && lines[end - 1].trim() === "") end--;
+  lines.splice(end, 0, record);
+  return lines.join("\n").replace(/\n*$/, "\n");
+}
+
 export function insertLive(content, line) {
   const m = content.match(/\n#{1,6}\s+(?:history|archived)\s*\n/i);
   if (!m) return `${content.replace(/\n*$/, "\n")}${line}\n`;

@@ -13,11 +13,16 @@ export const MAX_FILE_BYTES = 64 * 1024;
 
 export function normalizePath(input) {
   if (typeof input !== "string" || !input.trim()) throw new MemoryError("Path is required.");
-  const p = input.trim().replace(/^\/+/, "");
-  if (p.split("/").some((s) => s === ".." || s === "." || s === "")) {
-    throw new MemoryError(`Invalid path: ${input}`);
+  // Refuse, never repair: a permission check and the filesystem must read the exact same path. (This used to trim
+  // spaces after the ACL had already looked at the untrimmed text, so " users/bob/x.md" slipped through.)
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(input) || /\p{Zs}/u.test(input.replace(/ /g, ""))) {
+    throw new MemoryError(`Unsupported whitespace or control characters in path: ${JSON.stringify(input)}`);
   }
+  const p = input.replace(/^\/+/, "");
   const segs = p.split("/");
+  if (segs.some((s) => s === ".." || s === "." || s === "" || s !== s.trim())) {
+    throw new MemoryError(`Invalid path: ${JSON.stringify(input)}`);
+  }
   // refused: control characters, backslashes and characters that no common filesystem accepts everywhere,
   // hidden (dot-leading) names, and over-long names. Everything else is fine: "my notes.md", "café.md", "笔记.md".
   if (/[\u0000-\u001f\u007f\\<>:"|?*]/.test(p) || segs.some((s) => s.startsWith(".") || Buffer.byteLength(s) > 255)) {

@@ -40,6 +40,8 @@ export class KnowledgeGraph {
         this.addNode(f, counts.get(stem(f.path)) > 1 ? f.path.replace(/\.md$/, "") : stem(f.path));
       } catch {}
     }
+    for (const [key, id] of this.aliasQueue || []) if (!this.lookup.has(key)) this.lookup.set(key, id);
+    this.aliasQueue = null;
     for (const f of files) {
       try {
         this.addEdges(f);
@@ -56,7 +58,14 @@ export class KnowledgeGraph {
     const names = [...new Set([id, s, f.name, f.title, ...f.aliases, s.replace(/[-_]/g, " ")].filter(Boolean))];
     this.nodes.set(id, { id, path: f.path, type: f.type, title: f.title, description: f.description, names });
     this.idByPath.set(f.path, id);
-    for (const n of names) if (!this.lookup.has(n.toLowerCase())) this.lookup.set(n.toLowerCase(), id);
+    // A note's own name (file name, name, title) claims its key right away; its aliases only fill keys nobody owns, and
+    // only after every note has been added (flushAliases): bob.md with alias "robert" must not take over robert.md.
+    const aliasSet = new Set((f.aliases || []).map((a) => a.toLowerCase()));
+    for (const n of names) {
+      const key = n.toLowerCase();
+      if (aliasSet.has(key) && ![id, s, f.name, f.title].filter(Boolean).some((x) => x.toLowerCase() === key)) (this.aliasQueue ||= []).push([key, id]);
+      else if (!this.lookup.has(key)) this.lookup.set(key, id);
+    }
   }
 
   resolve(name) {
@@ -122,7 +131,7 @@ export class KnowledgeGraph {
    *     a common word is ignored at the start of a sentence. Lowercase stems ("johnny") match any case.
    * B7: URLs, inline code and existing [[links]] are masked so nothing inside them is ever linked.
    */
-  mentions(text, exclude = []) {
+  mentions(text, exclude = [], visible = null) {
     const idx = (this.nameIndex ??= this.buildNameIndex());
     const masked = maskSpans(text);
     // words (letters/digits) with positions; phrases of up to idx.maxWords consecutive words, joined only by
@@ -140,6 +149,7 @@ export class KnowledgeGraph {
         const hits = [...(idx.exact.get(key) || []), ...(idx.lower.get(key.toLowerCase()) || [])];
         for (const { id, proper, oneWordCommon } of hits) {
           if (exclude.includes(id)) continue;
+          if (visible && !visible(this.nodes.get(id).path)) continue; // never reveal a note the caller can't read
           if (proper && oneWordCommon && /(^|[.!?]\s+)$/.test(text.slice(0, pos))) continue; // B6
           const prev = found.get(id);
           if (!prev || span.length > prev.match.length) found.set(id, { id, match: span, pos });
@@ -178,8 +188,8 @@ export class KnowledgeGraph {
   }
 
   /** Rewrites the first mention of each entity as a [[link]], by position (never inside URLs, code or links). */
-  autoLink(text, exclude = []) {
-    const ms = this.mentions(text, exclude).filter((m) => !text.includes(`[[${m.id}`));
+  autoLink(text, exclude = [], visible = null) {
+    const ms = this.mentions(text, exclude, visible).filter((m) => !text.includes(`[[${m.id}`));
     // non-overlapping, applied right to left so earlier positions stay valid
     const keep = [];
     for (const m of ms) if (!keep.some((k) => m.pos < k.pos + k.match.length && k.pos < m.pos + m.match.length)) keep.push(m);

@@ -11,7 +11,8 @@ test("terse keeps negations, numbers, code, URLs, paths, links and accented name
     ["- The deploy uses `npm run the-deploy` and the docs at https://example.com/the/a/path", "- Deploy uses `npm run the-deploy` and docs at https://example.com/the/a/path"],
     ["- Logs live in ./var/the/logs and the owner is [[sam-okafor|the Sam]]", "- Logs live in ./var/the/logs and owner is [[sam-okafor|the Sam]]"],
     ["- The team moved to Grafana Cloud in order to cut costs by about 40 percent", "- Team moved to Grafana Cloud to cut costs by about 40 percent"],
-    ["- Do not deploy on Fridays without a rollback plan", "- Do not deploy on Fridays without rollback plan"],
+    ["- Do not deploy on Fridays without a rollback plan", "- Do not deploy on Fridays without a rollback plan"], // "a" is kept: it's also a letter and a Spanish preposition
+    ["- Class A shares vote de lunes a martes", "- Class A shares vote de lunes a martes"],
     ["- An A/B test runs for four weeks", "- A/B test runs for four weeks"],
   ];
   for (const [input, want] of cases) assert.equal(terse(input), want);

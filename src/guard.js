@@ -15,7 +15,7 @@ function luhn(digits) {
 }
 
 function ibanValid(raw) {
-  const s = raw.replace(/\s+/g, "").toUpperCase();
+  const s = raw.replace(/[\s-]+/g, "").toUpperCase();
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(s)) return false;
   const moved = s.slice(4) + s.slice(0, 4);
   const numeric = moved.replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
@@ -26,7 +26,7 @@ function ibanValid(raw) {
 
 const DNI_LETTERS = "TRWAGMYFPDXBNJZSQVHLCKE";
 function dniValid(raw) {
-  const s = raw.toUpperCase();
+  const s = raw.replace(/[\s-]+/g, "").toUpperCase();
   const nie = { X: "0", Y: "1", Z: "2" };
   const num = s.replace(/^[XYZ]/, (c) => nie[c]).slice(0, -1);
   return DNI_LETTERS[Number(num) % 23] === s.slice(-1);
@@ -48,7 +48,7 @@ function nirValid(raw) {
 }
 
 const RULES = [
-  { kind: "private_key", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g },
+  { kind: "private_key", re: /-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----/g }, // incl. "PGP PRIVATE KEY BLOCK"
   { kind: "anthropic_key", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/g },
   { kind: "openai_key", re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}/g },
   { kind: "github_token", re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{40,}/g },
@@ -59,13 +59,22 @@ const RULES = [
   { kind: "sendgrid_key", re: /\bSG\.[\w-]{16,32}\.[\w-]{30,50}/g },
   { kind: "npm_token", re: /\bnpm_[A-Za-z0-9]{36}\b/g },
   { kind: "huggingface_token", re: /\bhf_[A-Za-z0-9]{30,}\b/g },
-  { kind: "jwt", re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
-  { kind: "password_assignment", re: /\b(?:password|passwd|pwd|contraseña|secret)\s*[:=]\s*\S{6,}/gi },
-  { kind: "iban", re: /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){2,7}(?:\s?[A-Z0-9]{1,4})?\b/g, check: ibanValid },
-  { kind: "spanish_dni_nie", re: /\b[XYZ]?\d{7,8}[A-Z]\b/g, check: dniValid },
+  { kind: "jwt", re: /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g }, // short segments and an empty (alg:none) signature too
+  // a value with a digit or symbol (6+), or a long all-letters passphrase (14+); "password: required" is just a sentence
+  { kind: "password_assignment", re: /\b(?:password|passwd|pwd|contraseña|secret)\s*[:=]\s*(?:(?=\S{0,200}[\d!@#$%^&*()+=/\\|~`])\S{6,300}|[A-Za-z]{14,300})/gi },
+  // env-style names (DB_PASSWORD=…, AWS_SECRET_ACCESS_KEY=…, STRIPE_API_KEY: …): the value must look secret (a digit or a symbol),
+  // so a note saying "token: required" or "password: rotate" still saves
+  { kind: "secret_assignment", re: /(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]{0,40}(?:password|passwd|pwd|contraseña|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_.-]{0,40}\s{0,3}[:=]\s{0,3}["']?(?=[^\s"',;]{6,})(?=[^\s"',;]{0,200}[\d!@#$%^&*()+=/\\|~`])[^\s"',;]{1,300}/gi },
+  // scheme://user:password@host (database and broker URLs)
+  { kind: "connection_string", re: /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s:/@]+:[^\s@/]+@[^\s/]+/gi },
+  // card security codes must never be stored, even without the card number next to them
+  { kind: "card_security_code", re: /\b(?:cvv2?|cvc2?|security code|código de seguridad)\b[^\w]{0,3}\d{3,4}\b/gi },
+  { kind: "iban", re: /\b[A-Z]{2}\d{2}(?:[\s-]?[A-Z0-9]{4}){2,7}(?:[\s-]?[A-Z0-9]{1,4})?\b/g, check: ibanValid },
+  { kind: "spanish_dni_nie", re: /\b(?:[XYZ][\s-]?\d{7}|\d{8})[\s-]?[A-Z]\b/g, check: dniValid },
+  // NI numbers are written in capitals; matching them case-insensitively read "el 12/10/26 a las…" as one
   { kind: "uk_nino", re: /\b[A-Z]{2}\s?\d{2}\s?\d{2}\s?\d{2}\s?[A-D]\b/g, check: ninoValid },
   { kind: "french_nir", re: /\b[12]\s?\d{2}\s?\d{2}\s?(?:\d{2}|2A|2B)\s?\d{3}\s?\d{3}\s?\d{2}\b/gi, check: nirValid },
-  { kind: "us_ssn", re: /\b(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b/g },
+  { kind: "us_ssn", re: /\b(?!000|666|9\d\d)\d{3}[- ](?!00)\d{2}[- ](?!0000)\d{4}\b/g },
 ];
 
 /**
@@ -74,7 +83,7 @@ const RULES = [
  * between digit groups treated as separators. ID formats are matched case-insensitively via an upper-cased copy.
  */
 // ID numbers can be typed in any case; API keys and tokens are case-exact formats.
-const CASE_INSENSITIVE = new Set(["iban", "payment_card", "spanish_dni_nie", "uk_nino", "french_nir", "us_ssn"]);
+const CASE_INSENSITIVE = new Set(["iban", "payment_card", "spanish_dni_nie", "french_nir", "us_ssn"]);
 const COMPILED = RULES.map((r) => ({ ...r, re: CASE_INSENSITIVE.has(r.kind) && !r.re.flags.includes("i") ? new RegExp(r.re.source, `${r.re.flags}i`) : r.re }));
 
 // Letters that look like Latin ones (Cyrillic, Greek): "ЕS91 …" must still read as an IBAN. Scanning only.
@@ -140,7 +149,7 @@ export const normalizeForScan = (text) => normalizeWithMap(text).norm;
 function longestValid(text, check) {
   for (let s = text; ; ) {
     if (check(s)) return s;
-    const i = s.lastIndexOf(" ");
+    const i = Math.max(s.lastIndexOf(" "), s.lastIndexOf("-"));
     if (i < 0) return null;
     s = s.slice(0, i);
   }
@@ -151,6 +160,10 @@ function longestValid(text, check) {
  * and look for a window of whole groups with 13-19 digits that passes Luhn. A single regex that grabs "19 digits"
  * and then fails the checksum misses a card that merely has other digits next to it.
  */
+/** Printed card numbers are one solid run or grouped 4-4-4-4(-n), 4-6-5 (Amex), 4-6-4 (Diners): never 3-3-3 like a phone number. */
+const CARD_GROUPS = /^(?:4,4,4,[1-4]|4,4,4,4(?:,[1-3])?|4,6,5|4,6,4)$/;
+const cardShaped = (gs) => gs.length === 1 || CARD_GROUPS.test(gs.map((g) => g.end - g.start).join(","));
+
 function* cardMatches(norm) {
   for (const run of norm.matchAll(/(?<![\p{L}\p{N}_])\d+(?:[ -]\d+)*(?![\p{L}\p{N}_])/gu)) {
     const s = run[0];
@@ -160,7 +173,7 @@ function* cardMatches(norm) {
       for (let j = i; j < groups.length; j++) {
         digits += s.slice(groups[j].start, groups[j].end);
         if (digits.length > 19) break;
-        if (digits.length >= 13 && luhn(digits)) {
+        if (digits.length >= 13 && cardShaped(groups.slice(i, j + 1)) && luhn(digits)) {
           yield { kind: "payment_card", start: run.index + groups[i].start, end: run.index + groups[j].end, text: s.slice(groups[i].start, groups[j].end) };
           i = j; // continue after this card
           break;
