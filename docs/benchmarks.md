@@ -16,6 +16,23 @@ hit@k: the right file is among the first k results. Recall puts several results 
 
 What this does and doesn't tell you: the set is small, hand-written by the author, and in-domain, so treat it as a regression guard and a rough guide, not a leaderboard number. Filing is the weakest area. It's deliberately cautious: when the evidence is a tie it parks the fact in the inbox (visible, one move away) rather than guessing, so a third of held-out facts wait in the inbox but none go to a wrong file. Filing rules were tuned on a separate development set (90% there, 2 of 20 in a wrong file) and the held-out number is reported as measured; it went down from 75% when the rules changed, in exchange for no wrong-file errors. Thresholds were calibrated on separate sentence pairs ([docs/calibration.md](calibration.md)), not tuned on this set.
 
+## A harder paraphrase set: no shared words
+
+The 12 paraphrases in the table at the top are easy to match by accident: several share a word with the note ("invoices", "customer", "database"), and the vault has 19 notes. `node eval/paraphrase.js` (or `npm run bench:paraphrase`) runs a set built to remove that: 119 notes in five domains (an engineering team, sales, personal life, a research lab, a small business), each with two English questions about different facts and one Spanish question. Every English query was checked after stemming (`violations()` in [`eval/paraphrase.js`](../eval/paraphrase.js), guarded by `test/paraphrase.test.js`): it shares **no content word with its note** except the entity's own name, so keyword search has nothing to match on and only meaning can find the note. Notes and queries were written by five Claude Sonnet 5.5 subagents (one domain each) from a fixed brief; of the queries for the 119 kept notes, 9 failed the check and were dropped, and one note was dropped for repeating another note's path. Local, no API key, about 4 seconds with the model. Hit@k is over the files recall returns for the query.
+
+| 348 queries over 119 notes | keyword + graph | + paraphrase-multilingual-MiniLM-L12-v2 (the default local model) |
+|---|---|---|
+| English paraphrases (229) | 24.9% hit@1 · 55.9% hit@5 · MRR 0.375 | 42.4% hit@1 · 65.5% hit@5 · MRR 0.530 |
+| Spanish questions (119) | 44.5% hit@1 · 54.6% hit@5 · MRR 0.488 | 70.6% hit@1 · 84.9% hit@5 · MRR 0.772 |
+| **All** | **31.6% hit@1 · 55.5% hit@5 · MRR 0.413** | **52.0% hit@1 · 72.1% hit@5 · MRR 0.613** |
+
+What it shows: when a question shares no words with the note, the right note is first for about a quarter of English questions with keyword search and for about two in five with the default model, and it is missing from the top five for a third. That is much lower than the 100% hit@5 of the paraphrase row at the top, which is why the top row should not be read as "paraphrases are solved". The weakest domain is small-business notes (42.6% hit@1 with the model, 27.9% without), where many notes share the same shape (terms, schedules, limits); with keyword search sales is nearly as weak.
+
+Read it carefully:
+- **Spanish scores higher than English with keyword search (44.5% against 24.9%)** because a Spanish question usually contains the entity's name or a technical term that is the same in both languages ("Redis", "Atlas"); only the English questions were checked for shared words. Treat the Spanish rows as "across languages, names allowed", not as pure paraphrase.
+- **The data is generated, by a model from the same family as the one that uses the tool.** The notes are short and tidy, the questions are fluent, and there are 119 notes: real notes are messier and there are more of them. It was not tuned against retrieval results; treat it as a way to compare retrieval settings and models on one yardstick, not as a leaderboard number.
+- The overlap check is a stemming heuristic: a few queries that a human would call a paraphrase were dropped for sharing a stem ("plane" and "plan"), and a few synonyms that are cognates may remain.
+
 ## Public benchmark: LongMemEval-S
 
 [LongMemEval](https://arxiv.org/abs/2410.10813) (ICLR 2025) is a public long-term-memory benchmark: 500 questions, each with about 48 past chat sessions to search. githippo runs it with the same retrieval protocol [agentmemory publishes](https://github.com/rohitg00/agentmemory/blob/main/benchmark/LONGMEMEVAL.md) (fresh index per question, recall_any@K over sessions, retrieval only, no LLM), on a pinned dataset revision, weekly in CI ([`eval/longmemeval.js`](../eval/longmemeval.js), results in [#3](https://github.com/AnxovatomicaES/githippo/issues/3)).
