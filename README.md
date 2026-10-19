@@ -212,7 +212,7 @@ Every change is pushed in the background; the server pulls other machines' chang
 The phone and web apps can't reach your laptop, so this mode reads the vault from GitHub:
 
 1. `githippo sync --github` (above).
-2. Click **Deploy to Render** at the top. Set `MEMORY_REPO` (e.g. `you/githippo-memory`), `GITHUB_TOKEN` (fine-grained, that one repo, *Contents: Read and write*) and `PUBLIC_URL` (your service's https URL). `MCP_SECRET` is generated for you.
+2. Click **Deploy to Render** at the top. Set `MEMORY_REPO` (e.g. `you/githippo-memory`), `GITHUB_TOKEN` (fine-grained, that one repo, *Contents: Read and write*) and `PUBLIC_URL` (your service's https URL). `MCP_SECRET` is generated for you. The default Render plan has 512 MB, so the server starts with keyword search (`EMBEDDINGS=none`); on a plan with 2 GB or more, set `EMBEDDINGS=local` for the multilingual model.
 3. In claude.ai: Settings → Connectors → Add custom connector → `https://<your-app>.onrender.com/mcp`. Claude registers itself and opens a sign-in page; enter `MCP_SECRET` once. That's standard OAuth 2.1 (PKCE, dynamic client registration, audience-bound tokens), so nothing secret ever sits in a URL.
 
 **A shared vault for a team.** Add people with folder-level access; each signs in with their own password:

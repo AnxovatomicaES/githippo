@@ -2,7 +2,8 @@ services:
   - type: web
     name: githippo
     runtime: node
-    plan: starter            # local embeddings need ~900 MB RAM; on free/small plans set EMBEDDINGS=voyage or none
+    plan: starter            # 512 MB RAM. The local embedding model needs ~600 MB while in use, so this plan runs keyword search
+                             # (EMBEDDINGS=none, 96% R@5 on LongMemEval). On a 2 GB+ plan set EMBEDDINGS=local.
     buildCommand: npm ci
     startCommand: node src/cli.js http
     healthCheckPath: /health
@@ -22,7 +23,7 @@ services:
       - key: TRUST_PROXY         # Render's proxy appends the real client address to X-Forwarded-For
         value: "1"
       - key: EMBEDDINGS
-        value: local
+        value: none              # none | local (needs 2 GB+) | static (English only, ~200 MB) | voyage (API key)
       - key: CACHE_DIR
         value: /tmp/githippo
       - key: VOYAGE_API_KEY
