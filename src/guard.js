@@ -62,7 +62,6 @@ const RULES = [
   { kind: "jwt", re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
   { kind: "password_assignment", re: /\b(?:password|passwd|pwd|contraseña|secret)\s*[:=]\s*\S{6,}/gi },
   { kind: "iban", re: /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){2,7}(?:\s?[A-Z0-9]{1,4})?\b/g, check: ibanValid },
-  { kind: "payment_card", re: /\b\d(?:[ -]?\d){12,18}\b/g, check: (m) => luhn(m.replace(/\D/g, "")) && m.replace(/\D/g, "").length >= 13 },
   { kind: "spanish_dni_nie", re: /\b[XYZ]?\d{7,8}[A-Z]\b/g, check: dniValid },
   { kind: "uk_nino", re: /\b[A-Z]{2}\s?\d{2}\s?\d{2}\s?\d{2}\s?[A-D]\b/g, check: ninoValid },
   { kind: "french_nir", re: /\b[12]\s?\d{2}\s?\d{2}\s?(?:\d{2}|2A|2B)\s?\d{3}\s?\d{3}\s?\d{2}\b/gi, check: nirValid },
@@ -147,15 +146,48 @@ function longestValid(text, check) {
   }
 }
 
-function* ruleMatches(norm) {
-  for (const { kind, re, check } of COMPILED) {
-    for (const m of norm.matchAll(re)) {
-      const text = !check ? m[0] : kind === "iban" ? longestValid(m[0], check) : check(m[0]) ? m[0] : null;
-      if (text) yield { kind, start: m.index, end: m.index + text.length, text };
+/**
+ * Card numbers: take each run of digit groups joined by single spaces or hyphens ("ref 20241 4111 1111 1111 1111 2026"),
+ * and look for a window of whole groups with 13-19 digits that passes Luhn. A single regex that grabs "19 digits"
+ * and then fails the checksum misses a card that merely has other digits next to it.
+ */
+function* cardMatches(norm) {
+  for (const run of norm.matchAll(/(?<![\p{L}\p{N}_])\d+(?:[ -]\d+)*(?![\p{L}\p{N}_])/gu)) {
+    const s = run[0];
+    const groups = [...s.matchAll(/\d+/g)].map((g) => ({ start: g.index, end: g.index + g[0].length }));
+    for (let i = 0; i < groups.length; i++) {
+      let digits = "";
+      for (let j = i; j < groups.length; j++) {
+        digits += s.slice(groups[j].start, groups[j].end);
+        if (digits.length > 19) break;
+        if (digits.length >= 13 && luhn(digits)) {
+          yield { kind: "payment_card", start: run.index + groups[i].start, end: run.index + groups[j].end, text: s.slice(groups[i].start, groups[j].end) };
+          i = j; // continue after this card
+          break;
+        }
+      }
     }
   }
 }
 
+function* ruleMatches(norm) {
+  yield* cardMatches(norm);
+  for (const { kind, re, check } of COMPILED) {
+    const rx = new RegExp(re.source, re.flags); // own lastIndex
+    let m;
+    while ((m = rx.exec(norm))) {
+      if (m[0] === "") {
+        rx.lastIndex++;
+        continue;
+      }
+      const text = !check ? m[0] : kind === "iban" ? longestValid(m[0], check) : check(m[0]) ? m[0] : null;
+      if (text) {
+        yield { kind, start: m.index, end: m.index + text.length, text };
+        rx.lastIndex = m.index + text.length; // resume right after what was accepted (a trimmed match must not swallow what follows)
+      } else rx.lastIndex = m.index + 1; // a failed check must not hide a valid match that starts inside this one
+    }
+  }
+}
 /** Returns findings; an empty array means the text is safe to store. */
 export function scan(text) {
   return [...ruleMatches(normalizeWithMap(text).norm)].map(({ kind, text: v }) => ({ kind, preview: `${v.slice(0, 4)}…${v.slice(-2)}` }));

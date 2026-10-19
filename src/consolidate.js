@@ -47,7 +47,8 @@ export async function proposeUpdates({ llm, sessionText, brain }) {
  * Returns { branch, applied:[...], rejected:[{op, reason}], contradictions:[...] }.
  */
 export async function applyOnBranch({ vaultDir, ops, root = "memory", stampNow = new Date() }) {
-  const branch = `githippo/proposals-${stampNow.toISOString().slice(0, 16).replace(/[-:T]/g, "")}`;
+  // minute resolution collided when two runs landed in the same minute ("branch already exists"); add seconds and a suffix
+  const branch = `githippo/proposals-${stampNow.toISOString().slice(0, 19).replace(/[-:T]/g, "")}-${Math.random().toString(36).slice(2, 6)}`;
   const wt = join(vaultDir, "..", `.githippo-worktree-${process.pid}-${Date.now()}`);
   git(vaultDir, "worktree", "add", "-q", "-b", branch, wt, "HEAD");
   const result = { branch, applied: [], rejected: [], contradictions: [] };

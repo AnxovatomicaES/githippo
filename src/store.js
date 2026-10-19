@@ -170,6 +170,7 @@ export class GitHubMemoryStore {
   }
 
   async write(path, content, ifVersion, op = "write") {
+    if (String(content).includes("\0")) throw new MemoryError("Content contains NUL bytes; memory files are text.");
     const p = normalizePath(path);
     if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) {
       throw new MemoryError(`${p} would exceed ${MAX_FILE_BYTES} bytes. Run memory_consolidate or split it.`);

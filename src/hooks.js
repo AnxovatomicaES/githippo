@@ -222,11 +222,29 @@ export async function promptRecall(input, { cacheDir, maxTokens = 300 } = {}) {
   return emit("UserPromptSubmit", `githippo memory that may be relevant:\n${lines.join("\n")}`);
 }
 
+const HOOK_STRING_FIELDS = ["session_id", "transcript_path", "cwd", "source", "prompt", "hook_event_name", "trigger", "custom_instructions", "compact_summary"];
+
+/**
+ * One normalisation at the hook boundary: the payload is always a plain object, and the fields every hook reads as
+ * text are text or absent. (null, arrays, numbers and an object where a string belongs used to throw inside the
+ * individual hooks, silently turning that hook off.)
+ */
+export function hookInput(v) {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? { ...v } : {};
+  for (const k of HOOK_STRING_FIELDS) if (k in o && typeof o[k] !== "string") delete o[k];
+  return o;
+}
+
 export async function readStdin() {
-  let s = "";
-  for await (const c of process.stdin) s += c;
+  const chunks = [];
+  let size = 0;
+  for await (const c of process.stdin) {
+    size += c.length;
+    if (size > 16_000_000) return {}; // nothing legitimate is this big; don't buffer an unbounded stream
+    chunks.push(c);
+  }
   try {
-    return JSON.parse(s || "{}");
+    return hookInput(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
   } catch {
     return {};
   }

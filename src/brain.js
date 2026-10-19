@@ -1,7 +1,7 @@
 // The githippo brain: recall, auto-remember, pinned core memory, temporal
 // supersession, forget, session checkpoints, consolidation, graph, time travel.
 import { MemoryError, MAX_FILE_BYTES, normalizePath } from "./store.js";
-import { factLines, hash, parseFile, plain, stamp, stampOf, stem, stripMemoryTags } from "./parse.js";
+import { cleanControl, factLines, hash, parseFile, plain, stamp, stampOf, stem, stripMemoryTags } from "./parse.js";
 import { redact, scan } from "./guard.js";
 import { cosine } from "./embed.js";
 import { tokenize } from "./search.js";
@@ -353,7 +353,8 @@ export class Brain {
 
   async _remember(fact, opts = {}) {
     // control characters (NUL etc.) never belong in a fact; tabs/newlines become spaces below
-    const { text: visible, removed } = stripMemoryTags(String(fact).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ""));
+    const { text: visible, removed, unclosed } = stripMemoryTags(cleanControl(fact));
+    if (unclosed) throw new MemoryError("Not saved: a <private> (or similar) tag is opened but never closed, so everything after it would count as private. Close the tag, or remove it.");
     const clean = bare(visible).replace(/\s+/g, " ");
     if (clean.length < 3) throw new MemoryError(removed ? "Nothing to save: the fact was entirely inside <private> tags." : "Fact is empty.");
     if (Buffer.byteLength(clean) > MAX_FACT_BYTES) {
@@ -524,6 +525,12 @@ export class Brain {
   }
 
   async _checkpoint({ session = "default", task, state, next, files } = {}) {
+    // free text from the model: strip control characters like every other entry point does
+    const c = (v) => (typeof v === "string" ? cleanControl(v) : v);
+    task = c(task);
+    state = c(state);
+    next = c(next);
+    if (Array.isArray(files)) files = files.map(c);
     await this.index.sync();
     const dirOf = this.acl.user ? this.acl.home("sessions/") : "sessions/";
     if (!task && !state && !next && session === "default") {

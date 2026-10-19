@@ -26,22 +26,27 @@ export async function importReferenceMemory(brain, jsonl) {
     const e = entities.get(name);
     return `${FOLDER[String(e?.entityType || "").toLowerCase()] || "topics"}/${slug(name)}.md`;
   };
-  const r = { entities: entities.size, facts: 0, relations: 0, duplicates: 0, blocked: 0, skippedLines: bad };
+  const r = { entities: entities.size, facts: 0, relations: 0, duplicates: 0, blocked: 0, rejected: 0, skippedLines: bad, reasons: [] };
   const save = async (fact, path, about, kind) => {
     try {
       const out = await brain.remember(fact, { path, about, kind, source: "import" });
       if (out.status === "duplicate") r.duplicates++;
       return out.status !== "duplicate";
     } catch (e) {
+      // One bad observation (too long, an unclosed <private> tag, instruction-like text, a secret…) must never abort
+      // an import of thousands: count it, keep a few reasons, carry on.
       if (/compliance guard/.test(e.message)) r.blocked++;
-      else throw e;
+      else {
+        r.rejected++;
+        if (r.reasons.length < 5) r.reasons.push(String(e.message).split("\n")[0].slice(0, 120));
+      }
       return false;
     }
   };
   for (const e of entities.values()) {
     const path = pathOf(e.name);
     const kind = FOLDER[String(e.entityType || "").toLowerCase()] === "people" ? "person" : "topic";
-    const obs = (e.observations || []).filter((x) => typeof x === "string" && x.trim());
+    const obs = (Array.isArray(e.observations) ? e.observations : []).filter((x) => typeof x === "string" && x.trim());
     if (!obs.length) obs.push(`${title(e.name)} (${e.entityType || "entity"})`);
     for (const o of obs) if (await save(o, path, title(e.name), kind)) r.facts++;
   }

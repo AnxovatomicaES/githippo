@@ -24,6 +24,7 @@ export class InMemoryStore {
     return [...this.files].filter(([p]) => p.startsWith(prefix)).map(([path, f]) => ({ path, size: f.content.length, version: f.version })).sort((a, b) => a.path.localeCompare(b.path));
   }
   async write(path, content, ifVersion, op = "write") {
+    if (String(content).includes("\0")) throw new MemoryError("Content contains NUL bytes; memory files are text.");
     const p = normalizePath(path);
     const cur = this.files.get(p);
     if (ifVersion === "new" && cur) throw new MemoryError(`${p} already exists.`, { current: { path: p, ...cur } });

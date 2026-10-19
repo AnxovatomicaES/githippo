@@ -123,27 +123,41 @@ export function factLines(body) {
 //  <private>…</private>          user opt-out for sensitive text
 //  <githippo-context>…</…>      what our own hooks injected (prevents re-saving memory as new memory)
 //  <system-reminder>…</…>       harness-injected text
+/** Control characters (NUL, bell…) never belong in memory text; tab and newline stay. */
+export const cleanControl = (s) => String(s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+
 const MEMORY_TAGS = ["private", "githippo-context", "system-reminder"];
 
 /** Removes balanced memory-tag blocks (nested ok). An unclosed "<private>" in ordinary prose is left alone. */
 export function stripMemoryTags(input) {
-  if (!input || !input.includes("<")) return { text: input || "", removed: 0 };
+  if (!input || !input.includes("<")) return { text: input || "", removed: 0, unclosed: false };
   let text = input;
   let removed = 0;
-  for (let pass = 0; pass < 8; pass++) {
-    let changed = false;
-    for (const tag of MEMORY_TAGS) {
-      // innermost-first: an opener with no other opener of the same tag before its closer
-      const re = new RegExp(`<${tag}(?:\\s[^>]*)?>(?:(?!<${tag}[\\s>])[\\s\\S])*?<\\/${tag}\\s*>`, "gi");
-      text = text.replace(re, () => {
-        removed++;
-        changed = true;
-        return "";
-      });
+  let unclosed = false;
+  for (const tag of MEMORY_TAGS) {
+    // Depth-counting scan, one tag name at a time. Everything inside an open tag is dropped, nested tags included.
+    // A closing tag with nothing open is just removed. An opener that never closes makes everything after it
+    // private: content the user marked private must never survive because they forgot (or an attacker omitted) the closer.
+    const re = new RegExp(`<(\\/?)${tag}(?:\\s[^>]*)?>`, "gi");
+    let out = "";
+    let last = 0;
+    let depth = 0;
+    let found = false;
+    for (const m of text.matchAll(re)) {
+      found = true;
+      if (depth === 0) out += text.slice(last, m.index);
+      if (m[1] !== "/") {
+        if (depth === 0) removed++;
+        depth++;
+      } else if (depth > 0) depth--;
+      last = m.index + m[0].length;
     }
-    if (!changed) break;
+    if (!found) continue;
+    if (depth === 0) out += text.slice(last);
+    else unclosed = true;
+    text = out;
   }
-  return { text: text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(), removed };
+  return { text: text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(), removed, unclosed };
 }
 
 export const wrapContext = (s) => (s ? `<githippo-context>\n${s}\n</githippo-context>` : s);

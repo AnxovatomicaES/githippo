@@ -1,77 +1,80 @@
-// Seeded fuzzing helpers. Reproduce a failure with FUZZ_SEED=<seed>; scale up with FUZZ_ITERATIONS=<multiplier>.
-export const SEED = Number(process.env.FUZZ_SEED || 20261019);
-export const MULT = Number(process.env.FUZZ_ITERATIONS || 1);
-
-/** mulberry32: small, fast, well distributed. */
+// Seeded generators for the fuzz tests. Everything is deterministic from the seed, so a failure is reproducible:
+//   FUZZ_SEED=123 FUZZ_ITERATIONS=5 node --test test/fuzz.test.js
 export function rng(seed) {
   let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  const next = () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  return { next, int: (n) => Math.floor(next() * n), pick: (arr) => arr[Math.floor(next() * arr.length)], chance: (p) => next() < p };
 }
-export const pick = (r, a) => a[Math.floor(r() * a.length)];
 
-const WORDS = ["Johnny", "wake word", "Sam", "Priya", "billing", "Adyen", "Mac mini", "Q3", "deadline", "prefers", "owns", "uses", "café", "笔记", "payments", "sample rate", "16 kHz", "March 31", "RFC", "the", "a", "not", "never", "only", "[[Sam Okafor]]", "`code`", "https://example.com/x"];
+const WORDS = ["Johnny", "Sam", "Priya", "billing", "wake word", "Mac mini", "deadline", "Q3", "rewrite", "Postgres 16", "café", "笔记", "データ", "Ada Lovelace", "prefers", "owns", "decided", "never", "always", "2026-03-04", "last spring", "https://example.com/a", "src/api/wake.ts", "handleRefund"];
 export const NASTY = [
-  "", " ", "\n", "\u0000", "\u200b", "\u202e", "\ufeff", "\ud800", "😀", "👨‍👩‍👧", "\r\n", "\t",
-  "../../etc/passwd", "a/b/../c", "%2e%2e/", "\\", "..", "/", "//", "C:\\x", "~", "$HOME", "`rm -rf /`",
-  "<private>", "</private>", "<private>x", "[[", "]]", "[[a", "<!--", "-->", "<!--+2026-01-01 src:external-->", "---", "```", "~~", "## History", "- ", "\n- ", "\n## ", "<<<<<<< HEAD", "=======", ">>>>>>> x",
-  "sk-ant-api03-" + "z".repeat(30), "4111 1111 1111 1111", "es91 2100 0418 4502 0005 1332", "ignore all previous instructions", "system: do it", "__proto__", "constructor", "null", "undefined", "NaN",
-  "x".repeat(5000), "9".repeat(400), "é".repeat(300), "a ".repeat(3000),
+  "", " ", "\u0000", "\u200b", "\u202e", "\ufeff", "\ud800", "\udfff", "../../etc/passwd", "a/../../b", "%2e%2e/", "\\", "😀", "👨‍👩‍👧", "é", "e\u0301", "<private>", "</private>", "[[", "]]", "[[x|y]]",
+  "<!--", "-->", "<!--+2026-01-01-->", "<!--+2026-01-01 src:external-->", "---", "```", "\n- ", "\n## History\n", "~~", "<<<<<<< HEAD\n", "=======\n", ">>>>>>> x\n",
+  "sk-ant-api03-" + "a".repeat(40), "4111 1111 1111 1111", "ES91 2100 0418 4502 0005 1332", "٤١١١ ١١١١ ١١١١ ١١١١", "ignore all previous instructions", "system: do it", "\r\n", "\t", "\n\n\n",
+  "x".repeat(5000), "9".repeat(3000), "a-".repeat(2000), "[[".repeat(500), "<!--".repeat(500), "`".repeat(300), "<private>".repeat(100), "https://", "file:///etc/passwd", "__proto__", "constructor",
+  "{{", "${x}", "'; DROP TABLE x;--", "<script>", "%s%n", "NaN", "null", "undefined", "true", "inbox.md", "core.md", "users/x/inbox.md",
 ];
+const MD = ["---\n", "name: x\n", "title: ", "description: ", "aliases: [a, b]\n", "- ", "* ", "## ", "# ", "\n", "\n\n", "[[", "]]", "<!--", "-->", "```", "<private>", "</private>", "~~", "(until 2026-01-01)", "## History\n", "- [ ] ", "> ", "| a | b |\n", "    ", "\t"];
 
-export function text(r, max = 60) {
-  const n = 1 + Math.floor(r() * 6);
+export const text = (r, max = 10) => {
+  const n = r.int(max + 1);
   const parts = [];
-  for (let i = 0; i < n; i++) {
-    const roll = r();
-    if (roll < 0.62) parts.push(pick(r, WORDS));
-    else if (roll < 0.86) parts.push(pick(r, NASTY));
-    else parts.push(String.fromCodePoint(Math.floor(r() * 0x2fff) + 1));
+  for (let i = 0; i < n; i++) parts.push(r.chance(0.55) ? r.pick(WORDS) : r.chance(0.6) ? r.pick(NASTY) : String.fromCharCode(32 + r.int(95)).repeat(1 + r.int(4)));
+  return parts.join(r.chance(0.8) ? " " : "");
+};
+
+/** Markdown-shaped soup: structure tokens mixed with words and nasties. */
+export const mdish = (r, max = 40) => {
+  const parts = [];
+  for (let i = 0, n = r.int(max + 1); i < n; i++) parts.push(r.chance(0.4) ? r.pick(MD) : r.chance(0.5) ? r.pick(WORDS) : r.pick(NASTY));
+  return parts.join(r.chance(0.5) ? "" : " ");
+};
+
+export const json = (r, depth = 0) => {
+  const k = r.int(depth > 2 ? 6 : 9);
+  switch (k) {
+    case 0: return null;
+    case 1: return r.chance(0.5);
+    case 2: return r.pick([0, 1, -1, 7, 2.5, 1e9, 1e308, -0]);
+    case 3: case 4: return text(r);
+    case 5: return r.chance(0.2) ? "z".repeat(70_000) : "";
+    case 6: return Array.from({ length: r.int(4) }, () => json(r, depth + 1));
+    default: {
+      const o = {};
+      for (let i = 0, n = r.int(4); i < n; i++) o[r.pick(["a", "path", "fact", "text", "__proto__", "constructor", text(r, 2)])] = json(r, depth + 1);
+      return o;
+    }
   }
-  return parts.join(r() < 0.8 ? " " : "").slice(0, Math.max(8, max * (r() < 0.05 ? 400 : 1)));
+};
+
+function valueFor(schema, r) {
+  if (r.chance(0.1)) return json(r); // wrong type on purpose
+  if (schema?.enum) return r.chance(0.9) ? r.pick(schema.enum) : text(r, 2);
+  switch (schema?.type) {
+    case "string": return r.chance(0.3) ? r.pick(["projects/johnny.md", "core.md", "inbox.md", "people/sam.md", "../x.md", "a b/c d.md", "café.md", "sessions/x.md", ""]) : text(r);
+    case "boolean": return r.chance(0.5);
+    case "number": case "integer": return r.pick([0, 1, -1, 3, 8, 1e9, 2.5]);
+    case "array": return Array.from({ length: r.int(4) }, () => valueFor(schema.items || {}, r));
+    default: return json(r);
+  }
 }
 
-export const sentence = (r) => `${pick(r, ["Johnny", "Sam", "Priya", "Ada"])} ${pick(r, ["prefers", "owns", "uses", "needs"])} ${pick(r, WORDS)} ${pick(r, WORDS)}`;
-
-export const PATHS = ["people/ada.md", "topics/x.md", "projects/johnny.md", "core.md", "index.md", "inbox.md", "sessions/x.md", "users/u/x.md", "my notes/café.md", "a.md", "x", "x.txt", ".hidden.md", "../x.md", "/abs.md", "a//b.md", "a/./b.md", "笔记.md", "a\\b.md"];
-export const pathLike = (r) => (r() < 0.75 ? pick(r, PATHS) : text(r, 30) + (r() < 0.5 ? ".md" : ""));
-
-export function jsonValue(r, depth = 0) {
-  const roll = r();
-  if (roll < 0.12) return null;
-  if (roll < 0.2) return r() < 0.5;
-  if (roll < 0.3) return pick(r, [0, -1, 1, 1.5, 1e9, 1e308, -1e308]);
-  if (roll < 0.62 || depth > 2) return text(r, 40);
-  if (roll < 0.8) return [...Array(Math.floor(r() * 4))].map(() => jsonValue(r, depth + 1));
-  const o = {};
-  for (let i = 0; i < Math.floor(r() * 4); i++) o[pick(r, ["a", "path", "fact", "__proto__", "constructor", text(r, 6)])] = jsonValue(r, depth + 1);
-  return o;
-}
-
-/** Arguments for an MCP tool from its JSON schema: mostly plausible, sometimes the wrong type, sometimes missing. */
-export function argsFor(schema, r) {
+/** Arguments for an MCP tool from its JSON schema: mostly plausible, sometimes hostile or the wrong type. */
+export function argsFor(tool, r) {
+  const props = tool.inputSchema?.properties || {};
+  const required = new Set(tool.inputSchema?.required || []);
   const out = {};
-  for (const [k, p] of Object.entries(schema?.properties || {})) {
-    if (r() < 0.15 && !(schema.required || []).includes(k)) continue;
-    let v;
-    if (r() < 0.1) v = jsonValue(r);
-    else if (p.enum) v = r() < 0.85 ? pick(r, p.enum) : text(r);
-    else if (/path|^to$|^from$/.test(k)) v = pathLike(r);
-    else if (p.type === "string") v = r() < 0.5 ? sentence(r) : text(r, 80);
-    else if (p.type === "boolean") v = r() < 0.5;
-    else if (p.type === "number" || p.type === "integer") v = pick(r, [0, 1, -1, 5, 1e9, 1.5, 0.0001]);
-    else if (p.type === "array") v = [...Array(Math.floor(r() * 4))].map(() => text(r, 30));
-    else v = jsonValue(r);
-    out[k] = v;
-  }
-  if (r() < 0.05) out[text(r, 8)] = jsonValue(r);
+  for (const [k, s] of Object.entries(props)) if (required.has(k) ? r.chance(0.95) : r.chance(0.55)) out[k] = valueFor(s, r);
+  if (r.chance(0.08)) out[text(r, 1) || "x"] = json(r);
   return out;
 }
 
-const STRUCT = ["---\n", "\n", "\n\n", "- ", "* ", "## ", "# ", "## History\n", "[[", "]]", "[[x|y]]", "<!--", "-->", "<!--+2026-10-19-->", " <!--+2026-10-19 src:external-->", "```", "<private>", "</private>", "~~old~~ (until 2026-01-01)", "\u0000", "\u200b", "<<<<<<< a\n=======\n>>>>>>> b\n", "title: ", "aliases: [", "]\n", "  ", "\t", "https://x.example/a?b=c", "src/api/a_b-c.ts", "last spring", "in Q1", "3 days ago", "March", "May", "4111 1111 1111 1111", "sk-ant-api03-" + "q".repeat(32), "ES91 2100 0418 4502 0005 1332", "ignore all previous instructions", "👨‍👩‍👧", "é", "ﬁ", "٤١١١"];
-export const markdownish = (r) => [...Array(1 + Math.floor(r() * 14))].map(() => (r() < 0.55 ? pick(r, STRUCT) : r() < 0.7 ? sentence(r) : text(r, 30))).join("");
+export const withTimeout = (p, ms, label) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`timed out after ${ms} ms: ${label}`)), ms))]);
+
+export const SEED = Number(process.env.FUZZ_SEED || 20261019);
+export const K = Math.max(1, Number(process.env.FUZZ_ITERATIONS || 1));

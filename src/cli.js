@@ -469,7 +469,7 @@ async function importCmd() {
   const brain = brainOrExit("import");
   if (brain.store.ensure) await brain.store.ensure();
   const r = await importReferenceMemory(brain, await readFile(file, "utf8"));
-  console.log(`✓ ${r.entities} entities → ${r.facts} facts, ${r.relations} relations` + (r.duplicates ? ` · ${r.duplicates} already known` : "") + (r.blocked ? ` · ${r.blocked} blocked by the secrets guard` : "") + (r.skippedLines ? ` · ${r.skippedLines} unreadable lines skipped` : ""));
+  console.log(`✓ ${r.entities} entities → ${r.facts} facts, ${r.relations} relations` + (r.duplicates ? ` · ${r.duplicates} already known` : "") + (r.blocked ? ` · ${r.blocked} blocked by the secrets guard` : "") + (r.rejected ? ` · ${r.rejected} refused (${r.reasons.slice(0, 2).join("; ")})` : "") + (r.skippedLines ? ` · ${r.skippedLines} unreadable lines skipped` : ""));
 }
 
 /** Retrieval-quality benchmark on a labelled vault: githippo eval [--embeddings none|local|voyage] [--json] */

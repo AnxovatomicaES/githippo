@@ -218,6 +218,7 @@ export class FileStore {
   }
 
   async write(path, content, ifVersion, op = "write") {
+    if (String(content).includes("\0")) throw new MemoryError("Content contains NUL bytes; memory files are text.");
     const p = normalizePath(path);
     return this.locked(p, () => this._write(p, content, ifVersion, op));
   }

@@ -26,7 +26,7 @@ export function terse(text) {
   s = s
     .split("\n")
     .map((line) => {
-      const m = line.match(/^(\s*(?:[-*]|\d+\.)\s+|#+\s+|§\s+)?(.*)$/);
+      const m = line.match(/^(\s*(?:[-*]|\d+\.)\s+|#+\s+|§\s+)?([^]*)$/); // [^]* matches \r and U+2028/9 too, unlike .*
       let body = m[2];
       for (const [re, to] of PADDING) body = body.replace(re, to);
       body = body.replace(/\s{2,}/g, " ").replace(/\s+([,.;:])/g, "$1").trim();

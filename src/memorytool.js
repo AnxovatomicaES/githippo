@@ -40,6 +40,19 @@ export function createMemoryTool(brain) {
   const index = brain.index;
   const findFile = async (rel) => (rel ? await store.read(storeName(rel)).catch(() => null) : null);
   const listUnder = async (rel) => (await store.list(rel ? `${rel}/` : "")).filter((f) => !rel || f.path.startsWith(`${rel}/`));
+  const isDir = async (rel) => (await listUnder(rel)).length > 0;
+  /** A name is a file or a folder, never both (a real filesystem guarantees that, and delete/rename rely on it). */
+  const assertPlaceable = async (rel, shown) => {
+    if (await isDir(rel)) throw new MemoryToolError(`Error: ${shown} is a directory`);
+    const segs = rel.split("/");
+    for (let i = 1; i < segs.length; i++) {
+      const anc = segs.slice(0, i).join("/");
+      if ((await findFile(anc)) && !(await isDir(anc))) throw new MemoryToolError(`Error: ${ROOT}/${anc} is a file, not a directory`);
+    }
+  };
+  const assertUnambiguous = async (rel, shown) => {
+    if ((await findFile(rel)) && (await isDir(rel))) throw new MemoryToolError(`Error: ${shown} is both a file and a directory; address the file as ${shown}.md`);
+  };
   const write = async (rel, content, version, op) => {
     try {
       assertSafe(content);
@@ -84,6 +97,7 @@ export function createMemoryTool(brain) {
     if (cmd === "create") {
       const rel = toRel(input.path);
       if (!rel) throw new MemoryToolError(`Error: Cannot create ${ROOT} itself`);
+      await assertPlaceable(rel, input.path);
       const existing = await findFile(rel);
       // reference behavior is an error; the docs allow overwriting, and Claude's tool description says "creates or overwrites"
       await write(rel, String(input.file_text ?? ""), existing ? existing.version : "new", existing ? "memory-tool overwrite" : "memory-tool create");
@@ -122,6 +136,7 @@ export function createMemoryTool(brain) {
       const rel = toRel(input.path);
       if (!rel) throw new MemoryToolError(`Error: Cannot delete the ${ROOT} directory itself`);
       const file = await findFile(rel);
+      await assertUnambiguous(rel, input.path);
       const targets = file ? [{ path: storeName(rel), version: file.version }] : await listUnder(rel);
       if (!targets.length) throw new MemoryToolError(`Error: The path ${input.path} does not exist`);
       for (const f of targets) {
@@ -134,7 +149,11 @@ export function createMemoryTool(brain) {
       const from = toRel(input.old_path);
       const to = toRel(input.new_path);
       if (!from) throw new MemoryToolError(`Error: Cannot rename the ${ROOT} directory itself`);
+      if (!to) throw new MemoryToolError(`Error: Cannot rename onto the ${ROOT} directory itself`);
+      if (!to) throw new MemoryToolError(`Error: Cannot rename onto the ${ROOT} directory itself`);
       if ((await findFile(to)) || (to && (await listUnder(to)).length)) throw new MemoryToolError(`Error: The destination ${input.new_path} already exists`);
+      await assertUnambiguous(from, input.old_path);
+      if (to) await assertPlaceable(to, input.new_path);
       const file = await findFile(from);
       const moves = file ? [{ src: storeName(from), dst: storeName(to), file }] : (await listUnder(from)).map((f) => ({ src: f.path, dst: `${to}${f.path.slice(from.length)}` }));
       if (!moves.length) throw new MemoryToolError(`Error: The path ${input.old_path} does not exist`);
