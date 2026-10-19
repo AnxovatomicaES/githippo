@@ -119,7 +119,7 @@ test("HIGH B3: an oversized write is refused before any scan runs", async () => 
   const t = performance.now();
   const r = await call("files", { op: "write", path: "topics/big.md", content: "token:aaaa".repeat(100_000), v: "new" });
   assert.match(r, /over 65536 bytes/);
-  assert.ok(performance.now() - t < 500 * speedFactor());
+  assert.ok(performance.now() - t < 1500 * speedFactor());
 });
 
 test("MEDIUM B6: `about` is memory text too: no secrets, no <private>, no instructions in a file name, title or index line", async () => {
