@@ -188,6 +188,8 @@ export function isTrivialPrompt(p = "") {
   return /^(y(es)?|no|ok(ay)?|sure|continue|go( on| ahead)?|next|thanks?|thank you|lgtm|do it|proceed|retry|again|s[ií]|vale|dale|gracias|sigue|contin[uú]a|adelante|oui|merci|d'accord|vas-y|continue[sz]|ja|nein|danke|weiter|genau|sim|não|obrigad[oa]|continua|grazie|va bene|avanti)[.!\s]*$/i.test(t);
 }
 
+const UNKNOWN_WORD_WEIGHT = 0.5;
+
 export async function promptRecall(input, { cacheDir, maxTokens = 300 } = {}) {
   if (!input.prompt || !hookEnabled("prompt") || isTrivialPrompt(input.prompt) || tokenize(input.prompt).length < 2) return "";
   let snap;
@@ -199,20 +201,28 @@ export async function promptRecall(input, { cacheDir, maxTokens = 300 } = {}) {
   const qTokens = [...new Set(tokenize(input.prompt))];
   const corpus = snap.chunks.length;
   let docs = snap.chunks;
+  let unknownWords = 0;
   if (corpus > 8000) {
     // A big vault: tokenising every chunk on every prompt cost seconds against this hook's 5 s budget. A chunk can only pass
     // the confidence rule below if it contains at least two of the prompt's words, so tokenise just those (a cheap substring
     // test on a word's stem-safe prefix finds them; ranking among the survivors is unchanged).
-    const needles = qTokens.filter((t) => t.length > 2).map((t) => t.slice(0, Math.max(3, t.length - 2)));
+    const needles = qTokens.filter((t) => t.length > 2).map((t) => ({ t, needle: t.slice(0, Math.max(3, t.length - 2)) }));
+    const known = new Set(); // words of the prompt that appear anywhere in the vault (found in the same pass)
     docs = snap.chunks.filter((c) => {
       const low = String(c.embedText || c.text || "").toLowerCase(); // what BM25 ranks on: title, heading and text
       let n = 0;
-      for (const t of needles) if (low.includes(t) && ++n >= 2) return true;
-      return false;
+      for (const { t, needle } of needles) if (low.includes(needle)) { known.add(t); n++; }
+      return n >= 2;
     });
+    unknownWords = needles.filter(({ t }) => !known.has(t)).length;
   }
   const bm = new Bm25(docs);
-  const idfSum = qTokens.reduce((s, t) => s + (bm.df.has(t) ? Math.log(1 + corpus / bm.df.get(t)) : 0), 0);
+  if (corpus <= 8000) unknownWords = qTokens.filter((t) => !bm.df.has(t)).length;
+  // The prompt's informative weight: the words the vault knows (by how rare they are), PLUS the words it has never seen, each worth half the rarest
+  // word. It used to count only the known ones, so "refactor the parser to use async iterators" matched two generic notes perfectly (refactor, use)
+  // and the three words the vault has never heard of were ignored: on 1,000 to 10,000 notes about a quarter of unrelated prompts got ~220 tokens of
+  // memory injected for nothing. A word the vault doesn't have is evidence the prompt is about something else.
+  const idfSum = qTokens.reduce((s, t) => s + (bm.df.has(t) ? Math.log(1 + corpus / bm.df.get(t)) : 0), 0) + unknownWords * UNKNOWN_WORD_WEIGHT * Math.log(1 + corpus);
   // Size-independent confidence: share of the prompt's informative (IDF-weighted) terms the chunk covers,
   // and at least two distinct matched terms. Absolute BM25 cutoffs break on small vaults.
   const idf = (t) => Math.log(1 + corpus / bm.df.get(t));
