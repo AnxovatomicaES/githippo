@@ -48,9 +48,9 @@ const run = (cwd, args, timeout = 10_000) =>
   );
 
 export class FileStore {
-  constructor({ dir, root = "memory", source = "githippo", autoPush = true } = {}) {
+  constructor({ dir, root = "memory", source = "githippo", autoPush = true, pushGuard = null } = {}) {
     if (!dir) throw new MemoryError("VAULT_DIR is not set.");
-    Object.assign(this, { dir, source, autoPush });
+    Object.assign(this, { dir, source, autoPush, pushGuard }); // pushGuard(store) → false vetoes a push (see remote.js)
     this.root = root.replace(/^\/+|\/+$/g, "");
     this.base = this.root ? join(dir, this.root) : dir;
     this.repo = `local:${dir}`;
@@ -261,7 +261,9 @@ export class FileStore {
     clearTimeout(this.pushTimer);
     this.pushTimer = setTimeout(async () => {
       const remote = await this.git(["remote"]);
-      if (remote.ok && remote.out) await this.git(["push", "-q", "origin", "HEAD"], 30_000);
+      if (!remote.ok || !remote.out) return;
+      if (this.pushGuard && !(await this.pushGuard(this).catch(() => true))) return;
+      await this.git(["push", "-q", "origin", "HEAD"], 30_000);
     }, 4000);
     this.pushTimer.unref?.();
   }
