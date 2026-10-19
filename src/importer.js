@@ -1,10 +1,10 @@
+import { slugify } from "./brain.js";
 // Issue #1: import from the MCP reference "Knowledge Graph Memory Server" (memory.jsonl).
 //   {"type":"entity","name":"John_Smith","entityType":"person","observations":["Speaks fluent Spanish"]}
 //   {"type":"relation","from":"John_Smith","to":"Anthropic","relationType":"works_at"}
 // Every fact goes through remember(): the secrets guard and dedupe apply, so re-running is safe.
 const FOLDER = { person: "people", people: "people", project: "projects", organization: "orgs", organisation: "orgs", company: "orgs", decision: "decisions" };
-const slug = (s) =>
-  String(s).toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "entity";
+const slug = (s) => slugify(String(s));
 const title = (s) => String(s).replace(/_/g, " ").trim();
 
 export async function importReferenceMemory(brain, jsonl) {

@@ -23,7 +23,7 @@ export const DEFAULT_LOCAL_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2
 export const DEFAULT_STATIC_MODEL = "minishlab/potion-multilingual-128M";
 
 import { fork, spawn } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -50,9 +50,57 @@ export async function importTransformers() {
 export function ensureRuntime({ wait = false } = {}) {
   mkdirSync(RUNTIME_DIR, { recursive: true });
   const lock = join(RUNTIME_DIR, ".installing");
-  const started = existsSync(lock) ? Number(readFileSync(lock, "utf8")) || 0 : 0;
-  if (!wait && Date.now() - started < 10 * 60_000) return null;
-  writeFileSync(lock, String(Date.now()));
+  const alive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (e) {
+      return e.code === "EPERM";
+    }
+  };
+  const holder = () => {
+    try {
+      const [pid, t] = readFileSync(lock, "utf8").trim().split(/\s+/).map(Number);
+      return { pid, t };
+    } catch {
+      return null;
+    }
+  };
+  // One installer at a time: the lock is created exclusively (two processes can't both win it), holds the installer's
+  // pid, and counts as abandoned once that process is gone or it's 15 minutes old. (It used to be check-then-write,
+  // so setup's background warm and a second process each ran their own ~500 MB `npm i`.)
+  const tryLock = () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const fd = openSync(lock, "wx");
+        writeSync(fd, `${process.pid} ${Date.now()}`);
+        closeSync(fd);
+        return true;
+      } catch (e) {
+        if (e.code !== "EEXIST") return true; // can't lock for some other reason: carry on rather than block
+        const h = holder();
+        if (h && alive(h.pid) && Date.now() - h.t < 15 * 60_000) return false;
+        try {
+          unlinkSync(lock);
+        } catch {}
+      }
+    }
+    return false;
+  };
+  if (!tryLock()) {
+    if (!wait) return null;
+    return (async () => {
+      // someone else is installing: wait for them instead of starting a second install
+      const until = Date.now() + 15 * 60_000;
+      for (let h = holder(); h && alive(h.pid) && Date.now() < until; h = holder()) await new Promise((r) => setTimeout(r, 1000));
+      return true;
+    })();
+  }
+  const release = () => {
+    try {
+      unlinkSync(lock);
+    } catch {}
+  };
   if (!existsSync(join(RUNTIME_DIR, "package.json"))) writeFileSync(join(RUNTIME_DIR, "package.json"), '{"private":true}\n');
   const log = openSync(join(RUNTIME_DIR, "install.log"), "a");
   const child = spawn("npm", ["i", "--no-audit", "--no-fund", "--loglevel=error", "--prefix", RUNTIME_DIR, RUNTIME_PKG], {
@@ -61,18 +109,22 @@ export function ensureRuntime({ wait = false } = {}) {
     shell: process.platform === "win32",
   });
   // no npm on PATH (or it can't start): without a listener, Node turns the 'error' event into a crash
-  const failed = (e) => {
+  child.on("error", (e) => {
     try {
-      writeFileSync(lock, "0"); // allow a retry later
       writeFileSync(join(RUNTIME_DIR, "install.log"), `could not run npm: ${e.message}\n`, { flag: "a" });
     } catch {}
-  };
-  child.on("error", failed);
+    release();
+  });
+  if (child.pid) {
+    try {
+      writeFileSync(lock, `${child.pid} ${Date.now()}`); // from now on the lock lives and dies with the npm process, even if we exit first
+    } catch {}
+  }
   if (wait) {
     return new Promise((r) => {
       child.on("error", () => r(false));
       child.on("exit", (code) => {
-        writeFileSync(lock, "0");
+        release();
         r(code === 0);
       });
     });

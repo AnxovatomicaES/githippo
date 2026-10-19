@@ -22,7 +22,8 @@ export function collect() {
     "src/server.js VERSION": read("src/server.js").match(/VERSION = "([^"]+)"/)?.[1],
     "install.sh VERSION": read("install.sh").match(/VERSION="v([^"]+)"/)?.[1]?.replace(/^v/, ""),
   };
-  for (const f of PINNED) if (existsSync(join(ROOT, f))) for (const m of read(f).matchAll(TAG)) v[`${f} (pinned tag)`] = m[1];
+  // every occurrence is its own entry: keying by file alone let a stale tag hide behind a correct one later in the same file
+  for (const f of PINNED) if (existsSync(join(ROOT, f))) [...read(f).matchAll(TAG)].forEach((m, i) => (v[`${f} (pinned tag #${i + 1})`] = m[1]));
   if (process.env.GITHUB_REF_TYPE === "tag" && process.env.GITHUB_REF_NAME) v["git tag"] = process.env.GITHUB_REF_NAME.replace(/^v/, "");
   return v;
 }

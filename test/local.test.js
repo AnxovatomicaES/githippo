@@ -84,7 +84,8 @@ test("githippo setup: one command, zero questions, no GitHub", async () => {
   assert.ok(existsSync(join(home, ".githippo/vault/memory/core.md")));
   const settings = JSON.parse(await readFile(join(home, ".claude/settings.json"), "utf8"));
   for (const e of ["PreCompact", "PostCompact", "SessionStart", "SessionEnd", "UserPromptSubmit"]) assert.ok(settings.hooks[e], e);
-  assert.equal(settings.statusLine.command, "githippo statusline");
+  assert.match(settings.statusLine.command, /githippo statusline$|githippo statusline'$/);
+  if (process.platform !== "win32") assert.match(settings.statusLine.command, /command -v githippo/, "a no-op once githippo is uninstalled");
   // idempotent: running it again changes nothing important
   execFileSync("node", [CLI, "setup"], { env, stdio: "pipe" });
   const again = JSON.parse(await readFile(join(home, ".claude/settings.json"), "utf8"));

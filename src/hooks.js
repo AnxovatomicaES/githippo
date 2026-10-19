@@ -189,12 +189,26 @@ export async function promptRecall(input, { cacheDir, maxTokens = 300 } = {}) {
   } catch {
     return "";
   }
-  const bm = new Bm25(snap.chunks);
   const qTokens = [...new Set(tokenize(input.prompt))];
-  const idfSum = qTokens.reduce((s, t) => s + (bm.df.has(t) ? Math.log(1 + snap.chunks.length / bm.df.get(t)) : 0), 0);
+  const corpus = snap.chunks.length;
+  let docs = snap.chunks;
+  if (corpus > 8000) {
+    // A big vault: tokenising every chunk on every prompt cost seconds against this hook's 5 s budget. A chunk can only pass
+    // the confidence rule below if it contains at least two of the prompt's words, so tokenise just those (a cheap substring
+    // test on a word's stem-safe prefix finds them; ranking among the survivors is unchanged).
+    const needles = qTokens.filter((t) => t.length > 2).map((t) => t.slice(0, Math.max(3, t.length - 2)));
+    docs = snap.chunks.filter((c) => {
+      const low = String(c.embedText || c.text || "").toLowerCase(); // what BM25 ranks on: title, heading and text
+      let n = 0;
+      for (const t of needles) if (low.includes(t) && ++n >= 2) return true;
+      return false;
+    });
+  }
+  const bm = new Bm25(docs);
+  const idfSum = qTokens.reduce((s, t) => s + (bm.df.has(t) ? Math.log(1 + corpus / bm.df.get(t)) : 0), 0);
   // Size-independent confidence: share of the prompt's informative (IDF-weighted) terms the chunk covers,
   // and at least two distinct matched terms. Absolute BM25 cutoffs break on small vaults.
-  const idf = (t) => Math.log(1 + snap.chunks.length / bm.df.get(t));
+  const idf = (t) => Math.log(1 + corpus / bm.df.get(t));
   const hits = bm.search(input.prompt).filter((h) => {
     const counts = bm.tf.get(h.c.id).counts;
     const matched = qTokens.filter((t) => counts.has(t));

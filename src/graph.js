@@ -74,15 +74,41 @@ export class KnowledgeGraph {
     const exact = this.lookup.get(key) || this.lookup.get(key.split("/").pop());
     if (exact) return exact;
     // Fuzzy: a unique entity whose name contains the query as whole words ("Hersh" -> "Hersh Oberoi").
+    // Through a word index: scanning every node for every unresolved link made each graph rebuild quadratic, and a vault
+    // with a few thousand broken links took seconds per write.
     const words = key.split(/\s+/).filter(Boolean);
+    if (!words.length) return null;
+    this.wordIndex ||= this.buildWordIndex();
+    let candidates = null;
+    for (const w of words) {
+      const ids = this.wordIndex.get(w);
+      if (!ids) return null;
+      candidates = candidates ? new Set([...candidates].filter((id) => ids.has(id))) : new Set(ids);
+      if (!candidates.size) return null;
+    }
     const hits = new Set();
-    for (const node of this.nodes.values()) {
-      for (const n of node.names) {
+    for (const id of candidates) {
+      // the words must all be in ONE of the note's names, as before (the index only narrows the candidates)
+      if (this.nodes.get(id).names.some((n) => {
         const nw = n.toLowerCase().split(/[\s_-]+/);
-        if (words.every((w) => nw.includes(w))) hits.add(node.id);
-      }
+        return words.every((w) => nw.includes(w));
+      })) hits.add(id);
     }
     return hits.size === 1 ? [...hits][0] : null;
+  }
+
+  buildWordIndex() {
+    const idx = new Map();
+    for (const node of this.nodes.values()) {
+      for (const n of node.names) {
+        for (const w of new Set(n.toLowerCase().split(/[\s_-]+/))) {
+          if (!w) continue;
+          if (!idx.has(w)) idx.set(w, new Set());
+          idx.get(w).add(node.id);
+        }
+      }
+    }
+    return idx;
   }
 
   addEdges(f) {

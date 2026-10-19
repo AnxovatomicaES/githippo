@@ -2,6 +2,7 @@
 // (meaning, cross-lingual) fused with Reciprocal Rank Fusion, then expanded
 // one hop through the knowledge graph.
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { parseFile, stem } from "./parse.js";
 import { KnowledgeGraph } from "./graph.js";
@@ -172,6 +173,18 @@ export class Bm25 {
 const isSessionPath = (p) => p.startsWith("sessions/") || /^users\/[^/]+\/sessions\//.test(p);
 const isCorePath = (p) => p === "core.md" || /^users\/[^/]+\/core\.md$/.test(p);
 
+/** Write-then-rename with a temp name unique to THIS call (two writers in one process used to share one and the second rename failed). */
+async function atomicWrite(file, data) {
+  const tmp = `${file}.${process.pid}.${randomBytes(5).toString("hex")}.tmp`;
+  try {
+    await writeFile(tmp, data);
+    await rename(tmp, file);
+  } catch (e) {
+    await rm(tmp, { force: true }).catch(() => {});
+    throw e;
+  }
+}
+
 export function inDefaultScope(c, prefix = "") {
   if (prefix && !prefix.endsWith("/") && !prefix.endsWith(".md")) prefix += "/"; // a folder, not a string prefix
   if (!c.path.startsWith(prefix)) return false;
@@ -253,9 +266,7 @@ export class MemoryIndex {
       for (const k of [...this.vectors.keys()]) if (!live.has(k) && !keepLines.has(k)) this.vectors.delete(k);
     }
     await mkdir(this.cacheDir, { recursive: true });
-    const tmp = `${this.cacheFile}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(tmp, encodeVectors(this.vectors));
-    await rename(tmp, this.cacheFile); // atomic: a crash never leaves a half-written cache
+    await atomicWrite(this.cacheFile, encodeVectors(this.vectors)); // a crash never leaves a half-written cache
     await rm(this.cacheFile.replace(/\.bin$/, ".json"), { force: true }); // migrated: drop the old JSON cache
   }
 
@@ -296,6 +307,7 @@ export class MemoryIndex {
           if (/^<{7}( |$)/m.test(file.content) && /^={7}$/m.test(file.content) && /^>{7}( |$)/m.test(file.content)) throw new Error("unresolved git conflict markers");
           staged.push([f.path, this.withContext({ ...parseFile(f.path, file.content, this.chunkChars ? { maxChars: this.chunkChars } : undefined), version: file.version, content: file.content })]);
         } catch (e) {
+          if (["EMFILE", "ENFILE", "ENOMEM"].includes(e.code)) throw e; // a resource problem says nothing about the note: abort, don't remove it from the index
           // a note that can't be read or parsed is skipped and reported; it never takes the rest of memory down
           staged.push([f.path, null]);
           failed.push(`${f.path}: ${String(e.message).split("\n")[0].slice(0, 80)}`);
@@ -428,7 +440,7 @@ export class MemoryIndex {
     const chunks = this.chunks
       .filter((c) => inDefaultScope(c))
       .map(({ id, path, line, text, embedText }) => ({ id, path, line, text, embedText }));
-    await writeFile(join(this.cacheDir, "snapshot.json"), JSON.stringify({ at: Date.now(), chunks }));
+    await atomicWrite(join(this.cacheDir, "snapshot.json"), JSON.stringify({ at: Date.now(), chunks })); // a reader sees the old snapshot or the new one, never half of one
   }
 
   async dense(query) {

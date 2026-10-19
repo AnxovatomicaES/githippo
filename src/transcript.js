@@ -81,7 +81,7 @@ export function transcriptParser() {
         const f = input.file_path || input.notebook_path;
         files.set(f, (files.get(f) || 0) + 1);
       }
-      if (b.name === "TodoWrite" && Array.isArray(input.todos)) todos = input.todos;
+      if (b.name === "TodoWrite" && Array.isArray(input.todos)) todos = input.todos.filter((td) => td && typeof td === "object");
       if (b.name === "TaskCreate" && (input.subject || input.description)) {
         const id = String(++seq);
         tasks.set(id, { content: input.subject || input.description, status: "pending" });
@@ -156,7 +156,7 @@ export function renderCheckpoint(t, { sessionId = "", budgetTokens = 900 } = {})
   }
   if (t.todos?.length) {
     const mark = { completed: "x", in_progress: "~", pending: " " };
-    section("Tasks", t.todos.map((td) => `- [${mark[td.status] ?? " "}] ${clip(oneLine(td.content || ""), 160)}`));
+    section("Tasks", t.todos.filter((td) => td && typeof td === "object").map((td) => `- [${mark[td.status] ?? " "}] ${safe(td.content ?? "", 160)}`));
   }
   const files = [...t.files].sort((a, b) => b[1] - a[1]).slice(0, 15);
   section("Files changed", files.map(([f, n]) => `- ${safe(f, 160)}${n > 1 ? ` (${n} edits)` : ""}`));
