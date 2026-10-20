@@ -42,7 +42,17 @@ What it shows: when a question shares no words with the note, the right note is 
 
 Keeping the first 256 of the 768 dimensions (Matryoshka truncation, `GITHIPPO_EMBED_DIMS=256`) gives 60.6% hit@1 · 77.0% hit@5 on all queries (English unchanged at 51.1% · 68.1%, Spanish hit@5 94.1%): a third of the vector storage for 1.7 points of hit@5. At 512 it is 59.5% · 78.7%, at 128 it is 59.2% · 75.9%.
 
-Why it is not the default yet: a vault of a few thousand chunks takes minutes to index instead of seconds (in the background; keyword search works meanwhile), changing the default re-embeds everyone's vault, the Gemma licence is not an open-source one, and the LongMemEval sample has not been run with it (that needs the dataset downloaded). The duplicate/update/new row is the one place it is worse. It is calibrated on the same sentence pairs as MiniLM ([calibration](calibration.md)).
+On LongMemEval-S it neither helps nor hurts, because that benchmark is already saturated for retrieval (an evenly spaced sample of 25 of the 500 questions, every 20th, run one arm after another on one laptop):
+
+| LongMemEval-S, 25 questions | R@5 | R@10 | R@20 | MRR | NDCG@10 | time |
+|---|---|---|---|---|---|---|
+| keyword + graph | 100% | 100% | 100% | 97.0 | 93.4 | 2 s |
+| + MiniLM (default) | 100% | 100% | 100% | 97.0 | 94.5 | 601 s |
+| + EmbeddingGemma q4 | 100% | 100% | 100% | 95.0 | 93.7 | 2,160 s (3.6× slower) |
+
+Every arm finds the evidence in the top five for every question, so the sample can only show a regression, and a 25-question sample cannot show a small one: the 2-point MRR gap is one multi-session question ranked second instead of first. A 100-question run was started too and stopped (EmbeddingGemma would have needed about 4 more hours); on those 100, a fresh run gave keyword 97% / 98% / 98% R@5 / R@10 / R@20 with MRR 93.6 and MiniLM 98% / 99% / 100% with MRR 95.8 (0.5 to 1 MRR point above the sampled table below, which was measured earlier, before later ranking changes).
+
+Why it is not the default: a vault of a few thousand chunks takes minutes to index instead of seconds (in the background; keyword search works meanwhile), changing the default re-embeds everyone's vault, the Gemma licence is not an open-source one, LongMemEval cannot show a gain for it, and the duplicate/update/new row is the one place it is worse. What it buys is paraphrase and cross-language recall (the paraphrase table above), which matters if your questions rarely repeat the words of your notes. It is calibrated on the same sentence pairs as MiniLM ([calibration](calibration.md)).
 
 Read it carefully:
 - **Spanish scores higher than English with keyword search (44.5% against 24.9%)** because a Spanish question usually contains the entity's name or a technical term that is the same in both languages ("Redis", "Atlas"); only the English questions were checked for shared words. Treat the Spanish rows as "across languages, names allowed", not as pure paraphrase.
